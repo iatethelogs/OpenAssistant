@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wakeforge-cli"
+version = "0.6.0"
+description = "Local wake-word dataset synthesis, hard negatives, MicroFrontend and one TFLite model"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+authors = [{name="iatethelogs"}]
+license = "MIT"
+dependencies = []
+
+[project.scripts]
+wakeforge = "wakeforge.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["wakeforge*"]
