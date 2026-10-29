@@ -12,6 +12,7 @@ public sealed class AudioUploadQueue : IAsyncDisposable
     private readonly Task _worker;
     private long _queuedBytes;
     private int _overloaded;
+    private long _generation;
     private const long MaxQueuedAudio = 1024 * 1024;
 
     public event Action<string>? Error;
@@ -32,10 +33,10 @@ public sealed class AudioUploadQueue : IAsyncDisposable
             Interlocked.Add(ref _queuedBytes, -pcm.Length);
             Interlocked.Exchange(ref _overloaded, 1);
             Error?.Invoke("очередь микрофона переполнена; текущую фразу необходимо повторить");
-            _pending.Writer.TryWrite(new Packet(null, "cancel"));
+            _pending.Writer.TryWrite(new Packet(null, "cancel", null, Volatile.Read(ref _generation)));
             return;
         }
-        if (!_pending.Writer.TryWrite(new Packet(pcm, null)))
+        if (!_pending.Writer.TryWrite(new Packet(pcm, null, null, Volatile.Read(ref _generation))))
             Interlocked.Add(ref _queuedBytes, -pcm.Length);
     }
 
@@ -43,15 +44,19 @@ public sealed class AudioUploadQueue : IAsyncDisposable
     public void EndPhrase()
     {
         if (Volatile.Read(ref _overloaded) != 0) return;
-        _pending.Writer.TryWrite(new Packet(null, "end"));
+        _pending.Writer.TryWrite(new Packet(null, "end", null, Volatile.Read(ref _generation)));
     }
 
     /// <summary>отправляет отмену текущей операции после уже поставленных сообщений.</summary>
-    public void Cancel() => _pending.Writer.TryWrite(new Packet(null, "cancel"));
+    public void Cancel() => _pending.Writer.TryWrite(new Packet(null, "cancel", null, Volatile.Read(ref _generation)));
+
+    /// <summary>отправляет текст в том же порядке, что аудио и его завершение.</summary>
+    public void QueueText(string text) => _pending.Writer.TryWrite(new Packet(null, "text", text, Volatile.Read(ref _generation)));
 
     /// <summary>очищает очередь при отключении и разрешает новую запись.</summary>
     public void Reset()
     {
+        Interlocked.Increment(ref _generation);
         while (_pending.Reader.TryRead(out var packet))
             if (packet.Audio is not null) Interlocked.Add(ref _queuedBytes, -packet.Audio.Length);
         Interlocked.Exchange(ref _overloaded, 0);
@@ -66,12 +71,16 @@ public sealed class AudioUploadQueue : IAsyncDisposable
             {
                 try
                 {
+                    if (packet.Generation != Volatile.Read(ref _generation)) continue;
                     if (packet.Audio is { } pcm)
                     {
                         if (_socket.Connected) await _socket.SendPcmAsync(pcm);
                     }
                     else if (packet.Command is { } command && _socket.Connected)
-                        await _socket.SendControlAsync(new { type = command });
+                    {
+                        if (command == "text") await _socket.SendControlAsync(new { type = "text", text = packet.Text });
+                        else await _socket.SendControlAsync(new { type = command });
+                    }
                 }
                 catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or System.Net.WebSockets.WebSocketException)
                 {
@@ -96,5 +105,5 @@ public sealed class AudioUploadQueue : IAsyncDisposable
         _stop.Dispose();
     }
 
-    private sealed record Packet(byte[]? Audio, string? Command);
+    private sealed record Packet(byte[]? Audio, string? Command, string? Text, long Generation);
 }
