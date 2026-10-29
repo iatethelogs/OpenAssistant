@@ -32,7 +32,7 @@ public partial class MainWindow : Window
         _wake.Detected += (word, score) =>
         {
             Ui(() => { Log($"кодовое слово: {word}, уверенность {score:F2}"); StateText.Text = "Слушаю команду"; });
-            if (WakeEnabled.IsChecked == true && _socket.Connected && !_gate.Capturing) _gate.Activate();
+            Ui(() => { if (WakeEnabled.IsChecked == true && _socket.Connected && !_gate.Capturing) _gate.Activate(); });
         };
         _wake.Diagnostic += message => Ui(() => Log("детектор: " + message.Trim()));
         Closed += async (_, _) =>
