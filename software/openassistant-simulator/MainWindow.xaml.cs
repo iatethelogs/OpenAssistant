@@ -286,8 +286,10 @@ public partial class MainWindow : Window
         _microphone.Dispose();
         _gate.Stop();
         _wake.Dispose();
-        await _socket.DisposeAsync();
+        // сначала прерываем сетевые операции, затем дожидаемся писателя очереди.
+        await _socket.DisconnectAsync();
         await _upload.DisposeAsync();
+        await _socket.DisposeAsync();
         _speaker.Dispose();
     }
 }
