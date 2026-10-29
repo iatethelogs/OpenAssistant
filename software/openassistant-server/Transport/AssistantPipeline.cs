@@ -122,13 +122,13 @@ public sealed class AssistantPipeline(
                 }
             }
 
-            using var workerStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            
             Task speaker = SpeakAsync();
             try
             {
                 await foreach (string token in llm.GenerateAsync(messages, ct))
                 {
-                    if (speaker.IsFaulted) await speaker;
+                    if (speaker.IsCompleted && !speaker.IsCompletedSuccessfully) await speaker;
                     complete.Append(token);
                     await JsonAsync(new { type = "text", delta = token }, ct);
                     string? sentence = segmenter.Push(token);
