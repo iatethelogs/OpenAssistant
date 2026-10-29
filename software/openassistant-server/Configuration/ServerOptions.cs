@@ -14,6 +14,7 @@ public sealed class ServerOptions
     public string TtsLanguage { get; set; } = "Russian";
     public string HomeAssistantUrl { get; set; } = "";
     public string HomeAssistantToken { get; set; } = "";
+    public string DeviceToken { get; set; } = "";
     public int InputSampleRate { get; set; } = 16000;
     public int OutputSampleRate { get; set; } = 24000;
     public Dictionary<string, string> RadioStations { get; set; } = new();
