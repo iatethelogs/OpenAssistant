@@ -2,31 +2,43 @@ using System.Text;
 
 namespace OpenAssistant.Server.Chat;
 
-/// <summary>выделяет законченные предложения из потока токенов языковой модели.</summary>
+/// <summary>отделяет готовые предложения из потокового ответа llm для синтезатора.</summary>
 public sealed class SentenceSegmenter
 {
     private readonly StringBuilder _buffer = new();
+    private const int MaxPhraseLength = 240;
 
-    /// <summary>выдаёт готовую фразу, чтобы tts не ждал весь ответ.</summary>
+    /// <summary>находит границу предложения даже при нескольких знаках в одном токене.</summary>
     public string? Push(string token)
     {
+        if (string.IsNullOrEmpty(token)) return null;
         _buffer.Append(token);
-        if (_buffer.Length < 2) return null;
-        char last = _buffer[^1];
-        if (last is '.' or '!' or '?' or '…' or '\n')
+        for (int i = 1; i < _buffer.Length; i++)
         {
-            var sentence = _buffer.ToString().Trim();
-            _buffer.Clear();
-            return sentence.Length > 0 ? sentence : null;
+            char current = _buffer[i];
+            if (current is not ('.' or '!' or '?' or '…' or '\n')) continue;
+            if (current == '.' && char.IsDigit(_buffer[i - 1]) && i + 1 < _buffer.Length && char.IsDigit(_buffer[i + 1])) continue;
+            if (i + 1 < _buffer.Length && !char.IsWhiteSpace(_buffer[i + 1]) && _buffer[i + 1] is not ('"' or '»')) continue;
+            string phrase = _buffer.ToString(0, i + 1).Trim();
+            _buffer.Remove(0, i + 1);
+            if (phrase.Length > 0) return phrase;
+        }
+        if (_buffer.Length >= MaxPhraseLength)
+        {
+            int pos = _buffer.ToString().LastIndexOf(' ', Math.Min(MaxPhraseLength, _buffer.Length - 1));
+            if (pos <= 0) pos = MaxPhraseLength;
+            string phrase = _buffer.ToString(0, pos).Trim();
+            _buffer.Remove(0, pos);
+            return phrase.Length > 0 ? phrase : null;
         }
         return null;
     }
 
-    /// <summary>забирает оставшийся хвост ответа после окончания генерации.</summary>
+    /// <summary>возвращает остаток ответа после завершения генерации.</summary>
     public string? Flush()
     {
-        string tail = _buffer.ToString().Trim();
+        string phrase = _buffer.ToString().Trim();
         _buffer.Clear();
-        return tail.Length > 0 ? tail : null;
+        return phrase.Length > 0 ? phrase : null;
     }
 }
