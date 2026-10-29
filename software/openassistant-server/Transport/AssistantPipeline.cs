@@ -124,6 +124,12 @@ public sealed class AssistantPipeline(
 
             
             Task speaker = SpeakAsync();
+            // если синтезатор упал, разбудим ожидающего запись в заполненную очередь.
+            _ = speaker.ContinueWith(task =>
+            {
+                if (task.IsFaulted) phrases.Writer.TryComplete(task.Exception);
+                else if (task.IsCanceled) phrases.Writer.TryComplete(new OperationCanceledException());
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             try
             {
                 await foreach (string token in llm.GenerateAsync(messages, ct))
