@@ -1,0 +1,5 @@
+# Локальные настройки, токены и сгенерированные файлы
+settings.local.json
+settings.local.json.*.tmp
+bin/
+obj/
