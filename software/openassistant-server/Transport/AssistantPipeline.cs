@@ -19,6 +19,7 @@ public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(disconnected);
         using var writeLock = new SemaphoreSlim(1, 1);
         using var input = new MemoryStream();
+        string selectedVoice = settings.Value.TtsVoice;
         var history = new List<ChatMessage> { new("system", settings.Value.SystemPrompt) };
         CancellationTokenSource? active = null;
         Task? running = null;
@@ -72,10 +73,10 @@ public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
                 complete.Append(token);
                 await SendJsonAsync(new { type = "text", delta = token }, ct);
                 var phrase = segmenter.Push(token);
-                if (phrase is not null) await SendAudioAsync(await speech.SynthesizeAsync(phrase, ct), ct);
+                if (phrase is not null) await SendAudioAsync(await speech.SynthesizeAsync(phrase, selectedVoice, ct), ct);
             }
             var tail = segmenter.Flush();
-            if (tail is not null) await SendAudioAsync(await speech.SynthesizeAsync(tail, ct), ct);
+            if (tail is not null) await SendAudioAsync(await speech.SynthesizeAsync(tail, selectedVoice, ct), ct);
             history.Add(new ChatMessage("assistant", complete.ToString()));
             await SendJsonAsync(new { type = "done" }, ct);
         }
@@ -119,6 +120,14 @@ public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
                 using var command = JsonDocument.Parse(frame.ToArray());
                 var root = command.RootElement;
                 var kind = root.GetProperty("type").GetString();
+                if (kind == "voice")
+                {
+                    string voice = root.GetProperty("voice").GetString() ?? "";
+                    if (voice.Length is < 1 or > 80 || !System.Text.RegularExpressions.Regex.IsMatch(voice, "^[\\w.-]+$"))
+                        await SendJsonAsync(new { type = "error", message = "некорректный голос" }, disconnected);
+                    else { selectedVoice = voice; await SendJsonAsync(new { type = "voice", voice }, disconnected); }
+                    continue;
+                }
                 if (kind == "cancel")
                 {
                     await CancelAsync();
