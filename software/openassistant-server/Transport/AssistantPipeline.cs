@@ -48,14 +48,14 @@ public sealed class AssistantPipeline(
             SendAsync(JsonSerializer.SerializeToUtf8Bytes(payload), WebSocketMessageType.Text, ct);
 
         /// <summary>последовательно отправляет одну готовую аудиофразу.</summary>
-        async Task AudioAsync(byte[] pcm, CancellationToken ct)
+        async Task AudioAsync(byte[] pcm, int rate, CancellationToken ct)
         {
             // audio_start, бинарные фреймы и audio_end должны быть одним атомарным блоком.
             // иначе llm-токены могут вклиниться между пакетами звука.
             await sendLock.WaitAsync(ct);
             try
             {
-                await socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new { type = "audio_start", sampleRate = settings.CurrentValue.OutputSampleRate }).AsMemory(), WebSocketMessageType.Text, true, ct);
+                await socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new { type = "audio_start", sampleRate = rate }).AsMemory(), WebSocketMessageType.Text, true, ct);
                 foreach (var chunk in AudioChunker.Split(pcm))
                     await socket.SendAsync(chunk, WebSocketMessageType.Binary, true, ct);
                 await socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new { type = "audio_end" }).AsMemory(), WebSocketMessageType.Text, true, ct);
@@ -118,6 +118,7 @@ public sealed class AssistantPipeline(
             var messages = history.Append(new ChatMessage("user", text)).ToArray();
             var segmenter = new SentenceSegmenter();
             var complete = new StringBuilder();
+            int outputRate = settings.CurrentValue.OutputSampleRate;
             using var speechStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var speechToken = speechStop.Token;
             var phrases = Channel.CreateBounded<string>(new BoundedChannelOptions(5)
@@ -130,8 +131,8 @@ public sealed class AssistantPipeline(
             {
                 await foreach (string phrase in phrases.Reader.ReadAllAsync(speechToken))
                 {
-                    byte[] pcm = await speech.SynthesizeAsync(phrase, voice, speechToken);
-                    await AudioAsync(pcm, speechToken);
+                    byte[] pcm = await speech.SynthesizeAsync(phrase, voice, outputRate, speechToken);
+                    await AudioAsync(pcm, outputRate, speechToken);
                 }
             }
 
@@ -289,7 +290,7 @@ public sealed class AssistantPipeline(
                         await JsonAsync(new { type = "tool_result", name = toolName, result }, inner);
                     }, token);
                 }
-                catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException)
+                catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException or KeyNotFoundException)
                 {
                     await JsonAsync(new { type = "error", message = ex.Message }, disconnected);
                 }

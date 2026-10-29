@@ -10,9 +10,15 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
     public async Task SaveTokenAsync(string token, CancellationToken ct)
     {
         if (token.Length is < 10 or > 4096) throw new ArgumentException("некорректный токен");
-        await File.WriteAllTextAsync(TokenFile, JsonSerializer.Serialize(new { token }), ct);
-        if (OperatingSystem.IsLinux())
-            File.SetUnixFileMode(TokenFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        string tmp = TokenFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(new { token }), ct);
+            if (OperatingSystem.IsLinux())
+                File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            File.Move(tmp, TokenFile, overwrite: true);
+        }
+        finally { if (File.Exists(tmp)) File.Delete(tmp); }
     }
     /// <summary>выполняет поиск треков через api.music.yandex.net по токену аккаунта.</summary>
     public async Task<object> SearchAsync(string query, CancellationToken ct)

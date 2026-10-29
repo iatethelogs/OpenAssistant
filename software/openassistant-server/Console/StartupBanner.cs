@@ -27,9 +27,10 @@ public static class StartupBanner
             System.Console.WriteLine("  SERVER  /  LOCAL VOICE PLATFORM");
             System.Console.WriteLine("  ─────────────────────────────────────────────────────────────");
             System.Console.ForegroundColor = ConsoleColor.White;
-            System.Console.WriteLine($"  Web control    {url}/settings.html");
-            System.Console.WriteLine($"  Voice chat     {url}/");
-            System.Console.WriteLine($"  WebSocket      {url.Replace("http", "ws", StringComparison.Ordinal)}/ws");
+            string displayUrl = url.Replace("0.0.0.0", "127.0.0.1", StringComparison.Ordinal);
+            System.Console.WriteLine($"  Web control    {displayUrl}/settings.html");
+            System.Console.WriteLine($"  Voice chat     {displayUrl}/");
+            System.Console.WriteLine($"  WebSocket      {displayUrl.Replace("http", "ws", StringComparison.Ordinal)}/ws");
             System.Console.ForegroundColor = ConsoleColor.DarkGray;
             System.Console.WriteLine("  GigaAM  /  Qwen3-TTS  /  OpenAI-compatible LLM");
             System.Console.WriteLine("  Ctrl+C to stop");

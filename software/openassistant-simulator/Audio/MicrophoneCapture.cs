@@ -11,7 +11,8 @@ public sealed class MicrophoneCapture : IDisposable
         if (_mic is not null) return;
         _mic = new WaveInEvent { WaveFormat = new WaveFormat(16000, 16, 1), BufferMilliseconds = 40 };
         _mic.DataAvailable += (_, e) => Data?.Invoke(e.Buffer.AsSpan(0, e.BytesRecorded).ToArray());
-        _mic.StartRecording();
+        try { _mic.StartRecording(); }
+        catch { _mic.Dispose(); _mic = null; throw; }
     }
     /// <summary>останавливает микрофон, освобождая аудиоустройство.</summary>
     public void Stop() { if (_mic is null) return; _mic.StopRecording(); _mic.Dispose(); _mic = null; }
