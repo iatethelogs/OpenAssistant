@@ -7,7 +7,7 @@ public sealed class AudioUploadQueue : IAsyncDisposable
 {
     private readonly DeviceSocket _socket;
     private readonly Channel<Packet> _pending = Channel.CreateUnbounded<Packet>(
-        new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+        new UnboundedChannelOptions { SingleReader = false, SingleWriter = false });
     private readonly CancellationTokenSource _stop = new();
     private readonly Task _worker;
     private long _queuedBytes;
