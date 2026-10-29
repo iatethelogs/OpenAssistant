@@ -255,7 +255,7 @@ public sealed class AssistantPipeline(
                         current = RunRequestAsync(async inner =>
                             await RespondAsync(await speech.TranscribeAsync(pcm, inner), inner), token);
                     }
-                    else if (kind == "text") { input.SetLength(0); current = RunRequestAsync(inner => RespondAsync(text ?? "", inner), token); }
+                    else if (kind == "text") { input.SetLength(0); rejectingOversizedAudio = false; current = RunRequestAsync(inner => RespondAsync(text ?? "", inner), token); }
                     else current = RunRequestAsync(async inner =>
                     {
                         object result = await tools.InvokeAsync(toolName ?? "", arguments, inner);
