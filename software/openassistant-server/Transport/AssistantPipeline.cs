@@ -49,10 +49,17 @@ public sealed class AssistantPipeline(
         /// <summary>последовательно отправляет одну готовую аудиофразу.</summary>
         async Task AudioAsync(byte[] pcm, CancellationToken ct)
         {
-            await JsonAsync(new { type = "audio_start", sampleRate = settings.CurrentValue.OutputSampleRate }, ct);
-            foreach (var chunk in AudioChunker.Split(pcm))
-                await SendAsync(chunk, WebSocketMessageType.Binary, ct);
-            await JsonAsync(new { type = "audio_end" }, ct);
+            // audio_start, бинарные фреймы и audio_end должны быть одним атомарным блоком.
+            // иначе llm-токены могут вклиниться между пакетами звука.
+            await sendLock.WaitAsync(ct);
+            try
+            {
+                await socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new { type = "audio_start", sampleRate = settings.CurrentValue.OutputSampleRate }).AsMemory(), WebSocketMessageType.Text, true, ct);
+                foreach (var chunk in AudioChunker.Split(pcm))
+                    await socket.SendAsync(chunk, WebSocketMessageType.Binary, true, ct);
+                await socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new { type = "audio_end" }).AsMemory(), WebSocketMessageType.Text, true, ct);
+            }
+            finally { sendLock.Release(); }
         }
 
         /// <summary>отменяет текущий ответ, дожидается окончания и освобождает ресурсы.</summary>
