@@ -127,7 +127,6 @@ public partial class MainWindow : Window
                 MusicText.Text = "Плеер: остановлен";
                 break;
             case "cancelled":
-                _upload.Reset();
                 _llmAnswer.Clear();
                 _speaker.EndSpeech();
                 StateText.Text = "Ожидаю кодовое слово";
