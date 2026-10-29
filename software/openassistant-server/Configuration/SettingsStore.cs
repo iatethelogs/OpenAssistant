@@ -61,9 +61,9 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
             try
             {
                 await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }), ct);
-                File.Move(tmp, destination, true);
                 if (OperatingSystem.IsLinux())
-                    File.SetUnixFileMode(destination, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                    File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                File.Move(tmp, destination, true);
             }
             finally { if (File.Exists(tmp)) File.Delete(tmp); }
         }
