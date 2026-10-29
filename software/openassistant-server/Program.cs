@@ -27,6 +27,21 @@ builder.Services.AddSingleton<IAssistantTool, RadioTool>();
 builder.Services.AddSingleton<ToolRegistry>();
 builder.Services.AddSingleton<AssistantPipeline>();
 var app = builder.Build();
+// блокируем запросы к локальному api из посторонних веб-страниц.
+app.Use(async (ctx, next) =>
+{
+    if (ctx.Request.Path.StartsWithSegments("/api") && ctx.Request.Method is "POST" or "PUT" or "DELETE")
+    {
+        string expected = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+        if (ctx.Request.Headers.Origin.Count > 0 &&
+            !string.Equals(ctx.Request.Headers.Origin.ToString(), expected, StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+    }
+    await next();
+});
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
