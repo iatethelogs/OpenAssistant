@@ -50,6 +50,10 @@ button:disabled{opacity:.5;cursor:default}.bar{position:sticky;bottom:15px;backg
 <label for="HomeAssistantToken">Токен доступа</label><input id="HomeAssistantToken" type="password" autocomplete="new-password" placeholder="Не изменять">
 <div class="hint" id="tokenHint">Оставьте пустым, чтобы сохранить прежний токен.</div>
 </section>
+<section class="full"><h2>Подключение колонок по сети</h2>
+<label for="DeviceToken">Ключ устройства</label><input id="DeviceToken" type="password" autocomplete="new-password" placeholder="Оставить прежний ключ">
+<div class="hint" id="deviceHint">Для подключения с других компьютеров требуется общий ключ.</div>
+</section>
 <section class="full"><h2>Интернет-радио</h2><label for="RadioStations">Станции в формате JSON: название и адрес потока</label>
 <textarea id="RadioStations" spellcheck="false" style="min-height:130px;font-family:ui-monospace,monospace">{}</textarea>
 </section>
@@ -67,6 +71,7 @@ async function load(){
   for(const key of ids)$(key).value=data[key]??'';
   $('RadioStations').value=JSON.stringify(data.radioStations??{},null,2);
   $('tokenHint').textContent=data.hasHomeAssistantToken?'Токен сохранён. Оставьте поле пустым, чтобы его не менять.':'Токен ещё не задан.';
+  $('deviceHint').textContent=data.hasDeviceToken?'Ключ задан. Оставьте поле пустым, чтобы сохранить его.':'Ключ не задан: удалённые устройства не смогут подключиться.';
   $('save').disabled=false;notice('Настройки загружены');
  }catch(e){notice('Ошибка: '+e.message)}
 }
@@ -76,9 +81,10 @@ $('settings').onsubmit=async e=>{
   const data={};for(const id of ids)data[id]=id.endsWith('SampleRate')?Number($(id).value):$(id).value;
   data.RadioStations=JSON.parse($('RadioStations').value);
   if($('HomeAssistantToken').value!=='')data.HomeAssistantToken=$('HomeAssistantToken').value;
+  if($('DeviceToken').value!=='')data.DeviceToken=$('DeviceToken').value;
   const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
   if(!res.ok){const d=await res.json().catch(()=>({}));throw Error(d.error??('HTTP '+res.status))}
-  $('HomeAssistantToken').value='';notice('Сохранено. Новые настройки применяются к следующим запросам.');
+  $('HomeAssistantToken').value='';$('DeviceToken').value='';notice('Сохранено. Новые настройки применяются к следующим запросам.');
  }catch(e){notice('Не сохранено: '+e.message)}
  finally{$('save').disabled=false}
 };
