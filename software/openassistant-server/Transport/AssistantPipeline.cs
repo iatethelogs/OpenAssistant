@@ -1,6 +1,7 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using Microsoft.Extensions.Options;
 using OpenAssistant.Server.Audio;
 using OpenAssistant.Server.Chat;
@@ -10,113 +11,162 @@ using OpenAssistant.Server.Monitoring;
 
 namespace OpenAssistant.Server.Transport;
 
-/// <summary>одна сессия колонки: входящее аудио, диалог, tts и поток обратно.</summary>
-public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
-    ToolRegistry tools, RadioBrowserService radioBrowser, ConversationLog conversationLog, IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
+/// <summary>независимый сеанс устройства: речь, llm, tts и музыкальные команды.</summary>
+public sealed class AssistantPipeline(
+    SpeechService speech, LlmService llm, ToolRegistry tools,
+    RadioBrowserService radioBrowser, ConversationLog conversationLog,
+    IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
 {
-    /// <summary>обслуживает websocket до отключения; новый запрос отменяет предыдущий.</summary>
+    /// <summary>принимает аудио и команды клиента до отключения websocket.</summary>
     public async Task RunAsync(WebSocket socket, CancellationToken disconnected)
     {
-        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(disconnected);
-        using var writeLock = new SemaphoreSlim(1, 1);
+        using var lifecycle = CancellationTokenSource.CreateLinkedTokenSource(disconnected);
+        using var sendLock = new SemaphoreSlim(1, 1);
         using var input = new MemoryStream();
-        string selectedVoice = settings.CurrentValue.TtsVoice;
         var history = new List<ChatMessage> { new("system", settings.CurrentValue.SystemPrompt) };
+        string voice = settings.CurrentValue.TtsVoice;
         CancellationTokenSource? active = null;
-        Task? running = null;
-        var buffer = new byte[16384];
+        Task? current = null;
+        var receiveBuffer = new byte[16384];
 
-        /// <summary>отправляет json, сохраняя порядок сообщений в одном сокете.</summary>
-        async Task SendJsonAsync(object value, CancellationToken ct)
+        /// <summary>посылает целое сообщение под общим замком; текст и PCM не перемешиваются.</summary>
+        async Task SendAsync(ReadOnlyMemory<byte> data, WebSocketMessageType type, CancellationToken ct)
         {
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(value);
-            await writeLock.WaitAsync(ct);
-            try { await socket.SendAsync(bytes.AsMemory(), WebSocketMessageType.Text, true, ct); }
-            finally { writeLock.Release(); }
-        }
-
-        /// <summary>отправляет куски готового аудио, не смешивая фреймы разных задач.</summary>
-        async Task SendAudioAsync(byte[] pcm, CancellationToken ct)
-        {
-            await SendJsonAsync(new { type = "audio_start", sampleRate = settings.CurrentValue.OutputSampleRate }, ct);
-            foreach (var chunk in AudioChunker.Split(pcm))
+            await sendLock.WaitAsync(ct);
+            try
             {
-                await writeLock.WaitAsync(ct);
-                try { await socket.SendAsync(chunk, WebSocketMessageType.Binary, true, ct); }
-                finally { writeLock.Release(); }
+                if (socket.State != WebSocketState.Open) throw new WebSocketException("соединение закрыто");
+                await socket.SendAsync(data, type, true, ct);
             }
-            await SendJsonAsync(new { type = "audio_end" }, ct);
+            finally { sendLock.Release(); }
         }
 
-        /// <summary>останавливает синтез и генерацию; старый ответ больше не должен звучать.</summary>
+        /// <summary>отправляет событие протокола в json.</summary>
+        Task JsonAsync(object payload, CancellationToken ct) =>
+            SendAsync(JsonSerializer.SerializeToUtf8Bytes(payload), WebSocketMessageType.Text, ct);
+
+        /// <summary>последовательно отправляет одну готовую аудиофразу.</summary>
+        async Task AudioAsync(byte[] pcm, CancellationToken ct)
+        {
+            await JsonAsync(new { type = "audio_start", sampleRate = settings.CurrentValue.OutputSampleRate }, ct);
+            foreach (var chunk in AudioChunker.Split(pcm))
+                await SendAsync(chunk, WebSocketMessageType.Binary, ct);
+            await JsonAsync(new { type = "audio_end" }, ct);
+        }
+
+        /// <summary>отменяет текущий ответ, дожидается окончания и освобождает ресурсы.</summary>
         async Task CancelAsync()
         {
             if (active is null) return;
             active.Cancel();
-            if (running is not null)
-                try { await running; } catch (OperationCanceledException) { }
-                  catch (Exception ex) { logger.LogWarning(ex, "previous request failed"); }
+            if (current is not null)
+            {
+                try { await current; }
+                catch (OperationCanceledException) { }
+                catch (Exception ex) { logger.LogWarning(ex, "previous operation failed"); }
+            }
             active.Dispose();
             active = null;
-            running = null;
+            current = null;
         }
 
-        /// <summary>запускает ответ по тексту и произносит его предложение за предложением.</summary>
+        /// <summary>формирует ответ; генерация токенов идёт параллельно синтезу фраз.</summary>
         async Task RespondAsync(string text, CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(text)) { await SendJsonAsync(new { type = "done" }, ct); return; }
-            conversationLog.Add("stt", text);
-            // музыкальные потоки не проходят через сервер. клиент получает ссылку и воспроизводит её сам.
-            var normalized = text.Trim();
-            var match = System.Text.RegularExpressions.Regex.Match(normalized,
-                @"^(?:включи|поставь|запусти)\s+(?:радио\s+)?(.+)$",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (match.Success && (normalized.Contains("радио", StringComparison.OrdinalIgnoreCase)))
+            if (string.IsNullOrWhiteSpace(text))
             {
-                string station = System.Text.RegularExpressions.Regex.Replace(match.Groups[1].Value.Trim(), @"^радио\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                var stations = System.Text.Json.JsonSerializer.SerializeToElement(await radioBrowser.SearchAsync(station, ct));
+                await JsonAsync(new { type = "done" }, ct);
+                return;
+            }
+            text = text.Trim();
+            await JsonAsync(new { type = "transcript", text }, ct);
+            conversationLog.Add("stt", text);
+
+            // для радио клиенту нужен URL, а не гигабайты музыки через сервер.
+            var radio = System.Text.RegularExpressions.Regex.Match(text,
+                @"^(?:включи|поставь|запусти)\s+радио\s+(.+)$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (radio.Success)
+            {
+                string station = radio.Groups[1].Value.Trim();
+                var stations = JsonSerializer.SerializeToElement(await radioBrowser.SearchAsync(station, ct));
                 if (stations.GetArrayLength() > 0)
                 {
-                    var item = stations[0];
-                    string url = item.GetProperty("url").GetString() ?? "";
-                    string title = item.GetProperty("name").GetString() ?? station;
-                    await SendJsonAsync(new { type = "play_media", url, title, source = "radio_browser" }, ct);
+                    var first = stations[0];
+                    string url = first.GetProperty("url").GetString() ?? "";
+                    string title = first.GetProperty("name").GetString() ?? station;
+                    await JsonAsync(new { type = "play_media", url, title, source = "radio_browser" }, ct);
                     string answer = "Включаю радио " + title;
+                    await JsonAsync(new { type = "text", delta = answer }, ct);
                     conversationLog.Add("llm", answer);
-                    await SendJsonAsync(new { type = "text", delta = answer }, ct);
-                    await SendJsonAsync(new { type = "done" }, ct);
+                    await JsonAsync(new { type = "done" }, ct);
                     return;
                 }
             }
-            history.Add(new ChatMessage("user", text));
-            await SendJsonAsync(new { type = "transcript", text }, ct);
+
+            var messages = history.Append(new ChatMessage("user", text)).ToArray();
             var segmenter = new SentenceSegmenter();
             var complete = new StringBuilder();
-            await foreach (var token in llm.GenerateAsync(history, ct))
+            var phrases = Channel.CreateBounded<string>(new BoundedChannelOptions(5)
             {
-                complete.Append(token);
-                await SendJsonAsync(new { type = "text", delta = token }, ct);
-                var phrase = segmenter.Push(token);
-                if (phrase is not null) await SendAudioAsync(await speech.SynthesizeAsync(phrase, selectedVoice, ct), ct);
+                SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait
+            });
+
+            /// <summary>отдельно синтезирует фразы и передаёт pcm, пока llm генерирует продолжение.</summary>
+            async Task SpeakAsync()
+            {
+                await foreach (string phrase in phrases.Reader.ReadAllAsync(ct))
+                {
+                    byte[] pcm = await speech.SynthesizeAsync(phrase, voice, ct);
+                    await AudioAsync(pcm, ct);
+                }
             }
-            var tail = segmenter.Flush();
-            if (tail is not null) await SendAudioAsync(await speech.SynthesizeAsync(tail, selectedVoice, ct), ct);
-            conversationLog.Add("llm", complete.ToString());
-            history.Add(new ChatMessage("assistant", complete.ToString()));
-            await SendJsonAsync(new { type = "done" }, ct);
+
+            using var workerStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            Task speaker = SpeakAsync();
+            try
+            {
+                await foreach (string token in llm.GenerateAsync(messages, ct))
+                {
+                    if (speaker.IsFaulted) await speaker;
+                    complete.Append(token);
+                    await JsonAsync(new { type = "text", delta = token }, ct);
+                    string? sentence = segmenter.Push(token);
+                    if (sentence is not null) await phrases.Writer.WriteAsync(sentence, ct);
+                }
+                string? tail = segmenter.Flush();
+                if (tail is not null) await phrases.Writer.WriteAsync(tail, ct);
+                phrases.Writer.TryComplete();
+                await speaker;
+                ct.ThrowIfCancellationRequested();
+                history.Add(new ChatMessage("user", text));
+                history.Add(new ChatMessage("assistant", complete.ToString()));
+                conversationLog.Add("llm", complete.ToString());
+                await JsonAsync(new { type = "done" }, ct);
+            }
+            finally
+            {
+                phrases.Writer.TryComplete();
+                if (!speaker.IsCompleted)
+                {
+                    // при отмене канала дочерний синтез должен остановиться вместе с запросом.
+                    try { await speaker.WaitAsync(TimeSpan.FromSeconds(3), ct); }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+                    catch (TimeoutException) { logger.LogWarning("tts worker still stopping"); }
+                }
+            }
         }
 
-        /// <summary>обрабатывает команду; ошибки возвращает клиенту, а не роняет весь сервер.</summary>
-        async Task HandleRequestAsync(Func<CancellationToken, Task> handler, CancellationToken ct)
+        /// <summary>оборачивает обработку запроса, чтобы ошибка gpu-сервиса не убила websocket.</summary>
+        async Task RunRequestAsync(Func<CancellationToken, Task> action, CancellationToken ct)
         {
-            try { await handler(ct); }
+            try { await action(ct); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
             catch (Exception ex)
             {
-                logger.LogError(ex, "request failed");
-                if (socket.State == WebSocketState.Open)
-                    try { await SendJsonAsync(new { type = "error", message = ex.Message }, disconnected); }
-                    catch { /* соединение могло уже умереть */ }
+                logger.LogError(ex, "assistant request failed");
+                try { if (socket.State == WebSocketState.Open) await JsonAsync(new { type = "error", message = ex.Message }, disconnected); }
+                catch { /* клиент мог отключиться */ }
             }
         }
 
@@ -125,82 +175,92 @@ public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
             while (socket.State == WebSocketState.Open && !disconnected.IsCancellationRequested)
             {
                 using var frame = new MemoryStream();
-                WebSocketReceiveResult result;
+                WebSocketReceiveResult message;
                 do
                 {
-                    result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), disconnected);
-                    if (result.MessageType == WebSocketMessageType.Close) break;
-                    frame.Write(buffer, 0, result.Count);
-                    if (frame.Length > 16 * 1024 * 1024) throw new InvalidOperationException("слишком большое websocket-сообщение");
-                } while (!result.EndOfMessage);
-                if (result.MessageType == WebSocketMessageType.Close) break;
-                if (result.MessageType == WebSocketMessageType.Binary)
+                    message = await socket.ReceiveAsync(new ArraySegment<byte>(receiveBuffer), disconnected);
+                    if (message.MessageType == WebSocketMessageType.Close) break;
+                    if (frame.Length + message.Count > 16 * 1024 * 1024)
+                        throw new InvalidDataException("websocket пакет больше 16 МБ");
+                    frame.Write(receiveBuffer, 0, message.Count);
+                } while (!message.EndOfMessage);
+                if (message.MessageType == WebSocketMessageType.Close) break;
+
+                if (message.MessageType == WebSocketMessageType.Binary)
                 {
-                    if (input.Length + frame.Length > settings.CurrentValue.InputSampleRate * 2 * 60)
-                        throw new InvalidOperationException("аудиозапись длиннее 60 секунд");
+                    if (frame.Length % 2 != 0) { await JsonAsync(new { type = "error", message = "pcm16 требует чётного числа байт" }, disconnected); continue; }
+                    if (input.Length + frame.Length > settings.CurrentValue.InputSampleRate * 2L * 60)
+                    {
+                        input.SetLength(0);
+                        await JsonAsync(new { type = "error", message = "запись длиннее 60 секунд" }, disconnected);
+                        continue;
+                    }
                     frame.Position = 0;
                     await frame.CopyToAsync(input, disconnected);
                     continue;
                 }
-                using var command = JsonDocument.Parse(frame.ToArray());
-                var root = command.RootElement;
-                var kind = root.GetProperty("type").GetString();
-                if (kind == "voice")
+
+                JsonDocument? document = null;
+                try
                 {
-                    string voice = root.GetProperty("voice").GetString() ?? "";
-                    if (voice.Length is < 1 or > 80 || !System.Text.RegularExpressions.Regex.IsMatch(voice, "^[\\w.-]+$"))
-                        await SendJsonAsync(new { type = "error", message = "некорректный голос" }, disconnected);
-                    else { selectedVoice = voice; await SendJsonAsync(new { type = "voice", voice }, disconnected); }
-                    continue;
-                }
-                if (kind == "cancel")
-                {
+                    document = JsonDocument.Parse(frame.ToArray());
+                    var root = document.RootElement;
+                    if (!root.TryGetProperty("type", out var typeElement) || typeElement.ValueKind != JsonValueKind.String)
+                        throw new JsonException("не указана команда type");
+                    string? kind = typeElement.GetString();
+                    if (kind == "voice")
+                    {
+                        string chosen = root.GetProperty("voice").GetString() ?? "";
+                        if (chosen.Length is < 1 or > 80 || !System.Text.RegularExpressions.Regex.IsMatch(chosen, @"^[\w.-]+$"))
+                            throw new JsonException("некорректный голос");
+                        voice = chosen;
+                        await JsonAsync(new { type = "voice", voice }, disconnected);
+                        continue;
+                    }
+                    if (kind == "cancel")
+                    {
+                        await CancelAsync();
+                        input.SetLength(0);
+                        await JsonAsync(new { type = "cancelled" }, disconnected);
+                        continue;
+                    }
+                    if (kind is not ("end" or "text" or "tool"))
+                        throw new JsonException("неизвестная команда");
+                    string? text = kind == "text" ? root.GetProperty("text").GetString() : null;
+                    string? toolName = kind == "tool" ? root.GetProperty("name").GetString() : null;
+                    JsonElement arguments = kind == "tool" ? root.GetProperty("args").Clone() : default;
                     await CancelAsync();
-                    input.SetLength(0);
-                    await SendJsonAsync(new { type = "cancelled" }, disconnected);
-                    continue;
-                }
-                if (kind is not ("end" or "text" or "tool"))
-                {
-                    await SendJsonAsync(new { type = "error", message = "неизвестная команда" }, disconnected);
-                    continue;
-                }
-                await CancelAsync();
-                active = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-                var token = active.Token;
-                if (kind == "end")
-                {
-                    var pcm = input.ToArray();
-                    input.SetLength(0);
-                    running = HandleRequestAsync(async ct =>
+                    active = CancellationTokenSource.CreateLinkedTokenSource(lifecycle.Token);
+                    var token = active.Token;
+                    if (kind == "end")
                     {
-                        string transcription = await speech.TranscribeAsync(pcm, ct);
-                        await RespondAsync(transcription, ct);
+                        byte[] pcm = input.ToArray();
+                        input.SetLength(0);
+                        current = RunRequestAsync(async inner =>
+                            await RespondAsync(await speech.TranscribeAsync(pcm, inner), inner), token);
+                    }
+                    else if (kind == "text") current = RunRequestAsync(inner => RespondAsync(text ?? "", inner), token);
+                    else current = RunRequestAsync(async inner =>
+                    {
+                        object result = await tools.InvokeAsync(toolName ?? "", arguments, inner);
+                        await JsonAsync(new { type = "tool_result", name = toolName, result }, inner);
                     }, token);
                 }
-                else if (kind == "text")
+                catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException)
                 {
-                    string text = root.GetProperty("text").GetString() ?? "";
-                    running = HandleRequestAsync(ct => RespondAsync(text, ct), token);
+                    await JsonAsync(new { type = "error", message = ex.Message }, disconnected);
                 }
-                else
-                {
-                    string name = root.GetProperty("name").GetString() ?? "";
-                    var args = root.GetProperty("args").Clone();
-                    running = HandleRequestAsync(async ct =>
-                    {
-                        object answer = await tools.InvokeAsync(name, args, ct);
-                        await SendJsonAsync(new { type = "tool_result", name, result = answer }, ct);
-                    }, token);
-                }
+                finally { document?.Dispose(); }
             }
         }
+        catch (WebSocketException ex) { logger.LogInformation(ex, "device disconnected"); }
+        catch (OperationCanceledException) when (disconnected.IsCancellationRequested) { }
         finally
         {
-            lifetime.Cancel();
+            lifecycle.Cancel();
             await CancelAsync();
             if (socket.State == WebSocketState.Open)
-                await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None);
+                try { await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None); } catch { }
         }
     }
 }
