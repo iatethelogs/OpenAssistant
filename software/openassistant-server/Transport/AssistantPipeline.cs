@@ -11,7 +11,7 @@ namespace OpenAssistant.Server.Transport;
 
 /// <summary>одна сессия колонки: входящее аудио, диалог, tts и поток обратно.</summary>
 public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
-    ToolRegistry tools, IOptions<ServerOptions> settings, ILogger<AssistantPipeline> logger)
+    ToolRegistry tools, IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
 {
     /// <summary>обслуживает websocket до отключения; новый запрос отменяет предыдущий.</summary>
     public async Task RunAsync(WebSocket socket, CancellationToken disconnected)
@@ -19,8 +19,8 @@ public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(disconnected);
         using var writeLock = new SemaphoreSlim(1, 1);
         using var input = new MemoryStream();
-        string selectedVoice = settings.Value.TtsVoice;
-        var history = new List<ChatMessage> { new("system", settings.Value.SystemPrompt) };
+        string selectedVoice = settings.CurrentValue.TtsVoice;
+        var history = new List<ChatMessage> { new("system", settings.CurrentValue.SystemPrompt) };
         CancellationTokenSource? active = null;
         Task? running = null;
         var buffer = new byte[16384];
@@ -37,7 +37,7 @@ public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
         /// <summary>отправляет куски готового аудио, не смешивая фреймы разных задач.</summary>
         async Task SendAudioAsync(byte[] pcm, CancellationToken ct)
         {
-            await SendJsonAsync(new { type = "audio_start", sampleRate = settings.Value.OutputSampleRate }, ct);
+            await SendJsonAsync(new { type = "audio_start", sampleRate = settings.CurrentValue.OutputSampleRate }, ct);
             foreach (var chunk in AudioChunker.Split(pcm))
             {
                 await writeLock.WaitAsync(ct);
@@ -111,7 +111,7 @@ public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
                 if (result.MessageType == WebSocketMessageType.Close) break;
                 if (result.MessageType == WebSocketMessageType.Binary)
                 {
-                    if (input.Length + frame.Length > settings.Value.InputSampleRate * 2 * 60)
+                    if (input.Length + frame.Length > settings.CurrentValue.InputSampleRate * 2 * 60)
                         throw new InvalidOperationException("аудиозапись длиннее 60 секунд");
                     frame.Position = 0;
                     await frame.CopyToAsync(input, disconnected);
