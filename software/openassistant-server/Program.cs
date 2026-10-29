@@ -6,6 +6,7 @@ using OpenAssistant.Server.Chat;
 using OpenAssistant.Server.Configuration;
 using OpenAssistant.Server.Integrations;
 using OpenAssistant.Server.Transport;
+using OpenAssistant.Server.Monitoring;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("settings.local.json", optional: true, reloadOnChange: true);
@@ -26,6 +27,7 @@ builder.Services.AddSingleton<IAssistantTool, HomeAssistantTool>();
 builder.Services.AddSingleton<IAssistantTool, RadioTool>();
 builder.Services.AddSingleton<ToolRegistry>();
 builder.Services.AddSingleton<AssistantPipeline>();
+builder.Services.AddSingleton<ConversationLog>();
 var app = builder.Build();
 // блокируем запросы к локальному api из посторонних веб-страниц.
 app.Use(async (ctx, next) =>
@@ -93,6 +95,8 @@ app.MapPost("/api/yandex/token", async (HttpContext ctx, YandexTokenInput input,
     try { await music.SaveTokenAsync(input.Token, ct); return Results.Ok(new { saved = true }); }
     catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
+app.MapGet("/api/events", (HttpContext ctx, long? after, ConversationLog log) =>
+    localOnly(ctx) ? Results.Ok(log.Since(Math.Max(0, after ?? 0))) : Results.StatusCode(403));
 app.MapGet("/tools", (ToolRegistry registry) => Results.Ok(registry.Names()));
 app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline) =>
 {
