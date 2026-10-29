@@ -31,6 +31,7 @@ public static class WavePcmReader
             }
             if (chunk == "data")
             {
+                if ((length & 1) != 0) throw new InvalidDataException("нечётная длина pcm16");
                 if (!validFmt) throw new InvalidDataException("tts: ожидается wav pcm16 mono с правильной частотой");
                 return wav.AsSpan(dataOffset, length).ToArray();
             }
