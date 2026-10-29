@@ -6,6 +6,7 @@
 
 - [WakeForge](software/wakeforge/README.md) — создание датасетов, обучение и экспорт моделей слова активации в TFLite.
 - [Martin P4 Wake-word Test](software/martin-p4-wakeword-test/README.md) — тестирование распознавания слова «Мартин» на ESP32-P4.
+- [Martin Matrix Simulator](software/martin-matrix/README.md) — симулятор светодиодной матрицы с импортом GIF и SVG, монохромным предпросмотром и экспортом кадров.
 
 ## Hardware
 
