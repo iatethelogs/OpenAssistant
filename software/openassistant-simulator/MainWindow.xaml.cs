@@ -76,6 +76,8 @@ public partial class MainWindow : Window
     /// <summary>обрабатывает результаты сервера и управляющие пакеты медиаплеера.</summary>
     private void OnControl(JsonElement packet) => Ui(() =>
     {
+        try
+        {
         if (!packet.TryGetProperty("type", out var typeNode)) return;
         var type = typeNode.GetString();
         switch (type)
@@ -130,7 +132,12 @@ public partial class MainWindow : Window
                 _speaker.EndSpeech();
                 StateText.Text = "Ожидаю кодовое слово";
                 break;
+            case "listening":
+                StateText.Text = "Слушаю команду";
+                break;
         }
+        }
+        catch (Exception ex) { Log("обработка события сервера: " + ex.Message); }
     });
 
     /// <summary>передаёт PCM локальному детектору и шлюзу записи в правильном порядке.</summary>
@@ -251,8 +258,8 @@ public partial class MainWindow : Window
         _microphone.Dispose();
         _gate.Stop();
         _wake.Dispose();
-        await _upload.DisposeAsync();
         await _socket.DisposeAsync();
+        await _upload.DisposeAsync();
         _speaker.Dispose();
     }
 }
