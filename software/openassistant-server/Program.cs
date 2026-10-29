@@ -99,7 +99,7 @@ app.MapGet("/api/events", (HttpContext ctx, long? after, ConversationLog log) =>
     localOnly(ctx) ? Results.Ok(log.Since(Math.Max(0, after ?? 0))) : Results.StatusCode(403));
 app.MapGet("/tools", (HttpContext ctx, ToolRegistry registry) =>
     localOnly(ctx) ? Results.Ok(registry.Names()) : Results.StatusCode(403));
-app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline) =>
+app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline, Microsoft.Extensions.Options.IOptionsMonitor<ServerOptions> options) =>
 {
     if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
     // браузерный websocket с чужого сайта не должен управлять колонкой в локальной сети.
@@ -109,6 +109,15 @@ app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline) =>
             || !string.Equals(origin.Host, ctx.Request.Host.Host, StringComparison.OrdinalIgnoreCase)
             || origin.Port != (ctx.Request.Host.Port ?? (ctx.Request.IsHttps ? 443 : 80)))
         { ctx.Response.StatusCode = 403; return; }
+    }
+    if (!localOnly(ctx))
+    {
+        var token = options.CurrentValue.DeviceToken;
+        var supplied = ctx.Request.Headers["X-OpenAssistant-Token"].ToString();
+        if (string.IsNullOrEmpty(token) || supplied.Length != token.Length ||
+            !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(supplied), System.Text.Encoding.UTF8.GetBytes(token)))
+        { ctx.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
     }
     using var socket = await ctx.WebSockets.AcceptWebSocketAsync();
     await pipeline.RunAsync(socket, ctx.RequestAborted);
