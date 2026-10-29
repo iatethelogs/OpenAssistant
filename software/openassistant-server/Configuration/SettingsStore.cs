@@ -38,7 +38,7 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
             throw new ArgumentException("частота дискретизации вне допустимого диапазона");
         foreach (string value in new[] { update.LlmModel, update.SttModel, update.TtsModel, update.TtsVoice, update.TtsLanguage })
             if (string.IsNullOrWhiteSpace(value) || value.Length > 150) throw new ArgumentException("некорректное название модели или голоса");
-        if (update.SystemPrompt.Length > 16000) throw new ArgumentException("системная инструкция слишком длинная");
+        if (update.SystemPrompt is null || update.SystemPrompt.Length > 16000) throw new ArgumentException("системная инструкция слишком длинная");
 
         await _writeLock.WaitAsync(ct);
         try
@@ -60,6 +60,8 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
             {
                 await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }), ct);
                 File.Move(tmp, destination, true);
+                if (OperatingSystem.IsLinux())
+                    File.SetUnixFileMode(destination, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             }
             finally { if (File.Exists(tmp)) File.Delete(tmp); }
         }
