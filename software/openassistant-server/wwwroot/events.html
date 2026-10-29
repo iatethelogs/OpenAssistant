@@ -15,7 +15,7 @@ async function update(){
  try{const r=await fetch('/api/events?after='+last,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);
  const data=await r.json();for(const e of data){last=Math.max(last,e.id);
  const card=document.createElement('article'),info=document.createElement('small'),label=document.createElement('span'),body=document.createElement('p');
- label.className='label';label.textContent=e.kind==='stt'?'РАСПОЗНАНО':'ОТВЕТ LLM';
+ label.className='label';label.textContent=({stt:'РАСПОЗНАНО',user:'ТЕКСТОВЫЙ ЗАПРОС',action:'ДЕЙСТВИЕ',llm:'ОТВЕТ LLM'})[e.kind]||e.kind;
  info.textContent=' · '+new Date(e.time).toLocaleTimeString('ru-RU');body.textContent=e.text;card.append(label,info,body);records.prepend(card);
  }while(records.children.length>100)records.lastElementChild.remove();
  }catch(e){document.title='Нет соединения · OpenAssistant'}
