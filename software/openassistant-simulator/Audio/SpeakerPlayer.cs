@@ -5,12 +5,15 @@ public sealed class SpeakerPlayer : IDisposable
 {
     private WaveOutEvent? _speechOut;
     private BufferedWaveProvider? _speechBuffer;
+    private int _speechRate;
     private WaveOutEvent? _musicOut;
     private MediaFoundationReader? _media;
     /// <summary>создаёт буфер голоса с частотой, объявленной сервером.</summary>
     public void BeginSpeech(int rate)
     {
+        if (_speechOut is not null && _speechRate == rate) return;
         EndSpeech();
+        _speechRate = rate;
         _speechBuffer = new BufferedWaveProvider(new WaveFormat(rate, 16, 1)) { BufferDuration = TimeSpan.FromSeconds(15), DiscardOnBufferOverflow = true };
         _speechOut = new WaveOutEvent { DesiredLatency = 120 };
         _speechOut.Init(_speechBuffer);
