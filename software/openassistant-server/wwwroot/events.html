@@ -1,0 +1,24 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Диалоги • OpenAssistant</title>
+<style>
+:root{color-scheme:dark;font:15px system-ui;background:#10141d;color:#ebeff8}body{max-width:960px;margin:32px auto;padding:0 18px}
+a{color:#93b5ff;text-decoration:none}header{display:flex;justify-content:space-between;gap:20px;align-items:center}
+h1{letter-spacing:-.045em}nav{display:flex;gap:18px;flex-wrap:wrap}.muted{color:#9eabc2}
+article{padding:18px 22px;background:#1b2430;border:1px solid #354257;border-radius:12px;margin:15px 0}
+small{color:#9dacc5}p{white-space:pre-wrap;line-height:1.6;margin-bottom:0}
+span.label{color:#a8c3ff;font-weight:700}#records{min-height:120px}
+</style></head><body><header><h1>OPENASSISTANT <span style="color:#95b6ff">/ LOG</span></h1>
+<nav><a href="/">Диалог</a><a href="/settings.html">Настройки</a><a href="/media.html">Модели</a></nav></header>
+<p class="muted">Распознанные GigaAM запросы и ответы языковой модели, полученные со всех подключённых колонок.</p><div id="records" role="log"></div>
+<script>
+let last=0;const records=document.getElementById('records');
+async function update(){
+ try{const r=await fetch('/api/events?after='+last,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);
+ const data=await r.json();for(const e of data){last=Math.max(last,e.id);
+ const card=document.createElement('article'),info=document.createElement('small'),label=document.createElement('span'),body=document.createElement('p');
+ label.className='label';label.textContent=e.kind==='stt'?'РАСПОЗНАНО':'ОТВЕТ LLM';
+ info.textContent=' · '+new Date(e.time).toLocaleTimeString('ru-RU');body.textContent=e.text;card.append(label,info,body);records.prepend(card);
+ }while(records.children.length>100)records.lastElementChild.remove();
+ }catch(e){document.title='Нет соединения · OpenAssistant'}
+}
+update();setInterval(update,1000);
+</script></body></html>
