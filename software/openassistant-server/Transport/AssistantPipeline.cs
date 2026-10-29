@@ -80,7 +80,7 @@ public sealed class AssistantPipeline(
         }
 
         /// <summary>формирует ответ; генерация токенов идёт параллельно синтезу фраз.</summary>
-        async Task RespondAsync(string text, CancellationToken ct)
+        async Task RespondAsync(string text, bool fromAudio, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -89,7 +89,7 @@ public sealed class AssistantPipeline(
             }
             text = text.Trim();
             await JsonAsync(new { type = "transcript", text }, ct);
-            conversationLog.Add("stt", text);
+            conversationLog.Add(fromAudio ? "stt" : "user", text);
 
             // для радио клиенту нужен URL, а не гигабайты музыки через сервер.
             var radio = System.Text.RegularExpressions.Regex.Match(text,
@@ -107,7 +107,9 @@ public sealed class AssistantPipeline(
                     await JsonAsync(new { type = "play_media", url, title, source = "radio_browser" }, ct);
                     string answer = "Включаю радио " + title;
                     await JsonAsync(new { type = "text", delta = answer }, ct);
-                    conversationLog.Add("llm", answer);
+                    conversationLog.Add("action", answer);
+                    history.Add(new ChatMessage("user", text));
+                    history.Add(new ChatMessage("assistant", answer));
                     await JsonAsync(new { type = "done" }, ct);
                     return;
                 }
@@ -278,9 +280,9 @@ public sealed class AssistantPipeline(
                         pendingWakeWord = null;
                         input.SetLength(0);
                         current = RunRequestAsync(async inner =>
-                            await RespondAsync(RemoveActivationWord(await speech.TranscribeAsync(pcm, inner), activation), inner), token);
+                            await RespondAsync(RemoveActivationWord(await speech.TranscribeAsync(pcm, inner), activation), true, inner), token);
                     }
-                    else if (kind == "text") { input.SetLength(0); rejectingOversizedAudio = false; pendingWakeWord = null; current = RunRequestAsync(inner => RespondAsync(text ?? "", inner), token); }
+                    else if (kind == "text") { input.SetLength(0); rejectingOversizedAudio = false; pendingWakeWord = null; current = RunRequestAsync(inner => RespondAsync(text ?? "", false, inner), token); }
                     else current = RunRequestAsync(async inner =>
                     {
                         object result = await tools.InvokeAsync(toolName ?? "", arguments, inner);
