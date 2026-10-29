@@ -15,7 +15,7 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
         return new {
             s.LlmUrl, s.LlmModel, s.SystemPrompt,
             s.SttUrl, s.SttModel, s.TtsUrl, s.TtsModel, s.TtsVoice, s.TtsLanguage,
-            s.HomeAssistantUrl, hasHomeAssistantToken = !string.IsNullOrWhiteSpace(s.HomeAssistantToken),
+            s.HomeAssistantUrl, hasDeviceToken = !string.IsNullOrWhiteSpace(s.DeviceToken), hasHomeAssistantToken = !string.IsNullOrWhiteSpace(s.HomeAssistantToken),
             s.InputSampleRate, s.OutputSampleRate, s.RadioStations
         };
     }
@@ -38,6 +38,7 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
             throw new ArgumentException("частота дискретизации вне допустимого диапазона");
         foreach (string value in new[] { update.LlmModel, update.SttModel, update.TtsModel, update.TtsVoice, update.TtsLanguage })
             if (string.IsNullOrWhiteSpace(value) || value.Length > 150) throw new ArgumentException("некорректное название модели или голоса");
+        if (update.DeviceToken is { Length: > 256 } || update.HomeAssistantToken is { Length: > 4096 }) throw new ArgumentException("слишком длинный токен");
         if (update.SystemPrompt is null || update.SystemPrompt.Length > 16000) throw new ArgumentException("системная инструкция слишком длинная");
 
         await _writeLock.WaitAsync(ct);
@@ -50,6 +51,7 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
                     update.SttUrl, update.SttModel, update.TtsUrl, update.TtsModel,
                     update.TtsVoice, update.TtsLanguage, update.HomeAssistantUrl,
                     HomeAssistantToken = update.HomeAssistantToken is null ? current.HomeAssistantToken : update.HomeAssistantToken,
+                    DeviceToken = update.DeviceToken is null ? current.DeviceToken : update.DeviceToken,
                     update.InputSampleRate, update.OutputSampleRate,
                     RadioStations = update.RadioStations ?? current.RadioStations
                 }
@@ -83,6 +85,7 @@ public sealed class SettingsUpdate
     public string TtsLanguage { get; set; } = "Russian";
     public string HomeAssistantUrl { get; set; } = "";
     public string? HomeAssistantToken { get; set; }
+    public string? DeviceToken { get; set; }
     public int InputSampleRate { get; set; } = 16000;
     public int OutputSampleRate { get; set; } = 24000;
     public Dictionary<string, string>? RadioStations { get; set; }
