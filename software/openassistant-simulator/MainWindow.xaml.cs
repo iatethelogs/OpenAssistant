@@ -106,22 +106,20 @@ public partial class MainWindow : Window
             case "done":
                 if (_llmAnswer.Length > 0) Log("ответ: " + _llmAnswer.ToString());
                 _llmAnswer.Clear();
-                StateText.Text = "Ожидаю кодовое слово";
+                _ = FinishPlayingSpeechAsync();
                 break;
             case "error":
                 Log("ошибка сервера: " + (packet.TryGetProperty("message", out var error) ? error.GetString() : "неизвестно"));
                 StateText.Text = "Ошибка обработки";
                 break;
             case "play_media":
-                try
+                if (packet.TryGetProperty("url", out var urlNode))
                 {
-                    var url = packet.GetProperty("url").GetString() ?? "";
-                    _speaker.PlayUrl(url);
-                    var title = packet.TryGetProperty("title", out var caption) ? caption.GetString() ?? url : url;
-                    MusicText.Text = "Плеер: " + title;
-                    Log("воспроизведение: " + title);
+                    string url = urlNode.GetString() ?? "";
+                    string title = packet.TryGetProperty("title", out var caption)
+                        ? caption.GetString() ?? url : url;
+                    _ = StartMusicAsync(url, title);
                 }
-                catch (Exception ex) { Log("музыкальный поток: " + ex.Message); }
                 break;
             case "stop_media":
                 _speaker.StopMusic();
@@ -134,12 +132,38 @@ public partial class MainWindow : Window
                 StateText.Text = "Ожидаю кодовое слово";
                 break;
             case "listening":
+                _speaker.EndSpeech();
                 StateText.Text = "Слушаю команду";
                 break;
         }
         }
         catch (Exception ex) { Log("обработка события сервера: " + ex.Message); }
     });
+
+    /// <summary>открывает музыкальный поток асинхронно, не блокируя окно.</summary>
+    private async Task StartMusicAsync(string url, string title)
+    {
+        try
+        {
+            bool started = await _speaker.PlayUrlAsync(url);
+            if (!started || _closing) return;
+            MusicText.Text = "Плеер: " + title;
+            Log("воспроизведение: " + title);
+        }
+        catch (Exception ex) { if (!_closing) Log("ошибка воспроизведения: " + ex.Message); }
+    }
+
+    /// <summary>дожидается окончания локального PCM-буфера после server done.</summary>
+    private async Task FinishPlayingSpeechAsync()
+    {
+        try
+        {
+            await _speaker.FinishSpeechAsync();
+            if (!_closing && !_gate.Capturing)
+                StateText.Text = "Ожидаю кодовое слово";
+        }
+        catch (Exception ex) { if (!_closing) Log("ошибка звукового буфера: " + ex.Message); }
+    }
 
     /// <summary>передаёт PCM локальному детектору и шлюзу записи в правильном порядке.</summary>
     private void OnMicrophone(byte[] pcm)
