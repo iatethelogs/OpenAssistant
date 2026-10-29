@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenAssistant</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#101319;color:#e9edf7}
+body{margin:0 auto;max-width:900px;padding:32px 18px}
+h1{font-weight:650;letter-spacing:-.035em}p,.muted{color:#aeb6c6}
+.panel{background:#1b202a;border:1px solid #303746;border-radius:14px;padding:20px;margin:16px 0}
+.row{display:flex;gap:10px;flex-wrap:wrap}input,button{font:inherit;padding:11px;border-radius:9px;border:1px solid #424c61}
+input{background:#101319;color:#e9edf7;flex:1;min-width:140px}
+button{background:#384d84;color:white;cursor:pointer}button:disabled{opacity:.5}
+#log{white-space:pre-wrap;line-height:1.5;max-height:480px;overflow-y:auto}
+small{color:#aeb6c6}#state{font-weight:600}
+</style>
+</head>
+<body>
+<h1>OpenAssistant</h1>
+<p>Локальный голосовой ассистент</p>
+<div class="panel">
+<div class="row"><span id="state">Отключён</span><button id="connect">Подключиться</button><button id="stop" disabled>Прервать</button></div>
+</div>
+<div class="panel">
+<h2>Диалог</h2>
+<div class="row"><input id="question" placeholder="Напишите запрос…" aria-label="Запрос"><button id="send" disabled>Отправить</button></div>
+<p><small>Аудиоответ воспроизводится через браузер.</small></p>
+<div id="log" role="log" aria-live="polite"></div>
+</div>
+<script>
+let ws, audioContext, audioChunks=[], audioRate=24000, playing=Promise.resolve();
+const $=id=>document.getElementById(id);
+function status(s){$('state').textContent=s}
+function log(s){$('log').textContent+=s; $('log').scrollTop=$('log').scrollHeight}
+async function playback(bytes,rate){
+  const context=audioContext??=new AudioContext();
+  await context.resume();
+  const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+  const length=Math.floor(bytes.byteLength/2),samples=context.createBuffer(1,length,rate),data=samples.getChannelData(0);
+  for(let i=0;i<length;i++)data[i]=view.getInt16(i*2,true)/32768;
+  const src=context.createBufferSource(); src.buffer=samples;src.connect(context.destination);
+  await new Promise(resolve=>{src.onended=resolve;src.start()});
+}
+$('connect').onclick=()=>{
+  if(ws&&ws.readyState===1){ws.close();return}
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+  ws.binaryType='arraybuffer';status('Подключение…');
+  ws.onopen=()=>{status('Подключено');$('send').disabled=false;$('stop').disabled=false;$('connect').textContent='Отключиться'};
+  ws.onclose=()=>{status('Отключён');$('send').disabled=true;$('stop').disabled=true;$('connect').textContent='Подключиться'};
+  ws.onerror=()=>status('Ошибка соединения');
+  ws.onmessage=e=>{
+    if(e.data instanceof ArrayBuffer){audioChunks.push(new Uint8Array(e.data));return}
+    const m=JSON.parse(e.data);
+    if(m.type==='transcript')log('\nВы: '+m.text+'\nАссистент: ');
+    else if(m.type==='text')log(m.delta??'');
+    else if(m.type==='audio_start'){audioChunks=[];audioRate=m.sampleRate}
+    else if(m.type==='audio_end'){
+      const n=audioChunks.reduce((a,b)=>a+b.length,0),merged=new Uint8Array(n);let offset=0;
+      for(const chunk of audioChunks){merged.set(chunk,offset);offset+=chunk.length}
+      audioChunks=[];playing=playing.then(()=>playback(merged,audioRate)).catch(err=>log('\nЗвук: '+err.message));
+    }
+    else if(m.type==='error')log('\nОшибка: '+m.message+'\n');
+    else if(m.type==='done')log('\n');
+  };
+};
+function send(){const text=$('question').value.trim();if(!text||ws?.readyState!==1)return;
+  ws.send(JSON.stringify({type:'text',text}));$('question').value='';
+}
+$('send').onclick=send;
+$('question').onkeydown=e=>{if(e.key==='Enter')send()};
+$('stop').onclick=()=>{if(ws?.readyState===1)ws.send(JSON.stringify({type:'cancel'}))};
+</script>
+</body></html>
