@@ -6,12 +6,13 @@ using OpenAssistant.Server.Audio;
 using OpenAssistant.Server.Chat;
 using OpenAssistant.Server.Configuration;
 using OpenAssistant.Server.Integrations;
+using OpenAssistant.Server.Monitoring;
 
 namespace OpenAssistant.Server.Transport;
 
 /// <summary>одна сессия колонки: входящее аудио, диалог, tts и поток обратно.</summary>
 public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
-    ToolRegistry tools, IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
+    ToolRegistry tools, ConversationLog conversationLog, IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
 {
     /// <summary>обслуживает websocket до отключения; новый запрос отменяет предыдущий.</summary>
     public async Task RunAsync(WebSocket socket, CancellationToken disconnected)
@@ -64,6 +65,7 @@ public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
         async Task RespondAsync(string text, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(text)) { await SendJsonAsync(new { type = "done" }, ct); return; }
+            conversationLog.Add("stt", text);
             history.Add(new ChatMessage("user", text));
             await SendJsonAsync(new { type = "transcript", text }, ct);
             var segmenter = new SentenceSegmenter();
@@ -77,6 +79,7 @@ public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
             }
             var tail = segmenter.Flush();
             if (tail is not null) await SendAudioAsync(await speech.SynthesizeAsync(tail, selectedVoice, ct), ct);
+            conversationLog.Add("llm", complete.ToString());
             history.Add(new ChatMessage("assistant", complete.ToString()));
             await SendJsonAsync(new { type = "done" }, ct);
         }
