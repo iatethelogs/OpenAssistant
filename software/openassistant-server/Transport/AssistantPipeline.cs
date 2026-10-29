@@ -24,6 +24,7 @@ public sealed class AssistantPipeline(
         using var sendLock = new SemaphoreSlim(1, 1);
         using var input = new MemoryStream();
         bool rejectingOversizedAudio = false;
+        string? pendingWakeWord = null;
         var history = new List<ChatMessage> { new("system", settings.CurrentValue.SystemPrompt) };
         string voice = settings.CurrentValue.TtsVoice;
         CancellationTokenSource? active = null;
@@ -223,6 +224,19 @@ public sealed class AssistantPipeline(
                     if (!root.TryGetProperty("type", out var typeElement) || typeElement.ValueKind != JsonValueKind.String)
                         throw new JsonException("не указана команда type");
                     string? kind = typeElement.GetString();
+                    if (kind == "wake")
+                    {
+                        string activation = root.GetProperty("word").GetString() ?? "";
+                        if (activation.Length is < 1 or > 64 ||
+                            !System.Text.RegularExpressions.Regex.IsMatch(activation, @"^[\p{L}\p{N} _-]+$"))
+                            throw new JsonException("некорректное слово активации");
+                        await CancelAsync();
+                        input.SetLength(0);
+                        rejectingOversizedAudio = false;
+                        pendingWakeWord = activation.Trim();
+                        await JsonAsync(new { type = "listening" }, disconnected);
+                        continue;
+                    }
                     if (kind == "voice")
                     {
                         string chosen = root.GetProperty("voice").GetString() ?? "";
@@ -237,6 +251,7 @@ public sealed class AssistantPipeline(
                         await CancelAsync();
                         input.SetLength(0);
                         rejectingOversizedAudio = false;
+                        pendingWakeWord = null;
                         await JsonAsync(new { type = "cancelled" }, disconnected);
                         continue;
                     }
@@ -250,6 +265,7 @@ public sealed class AssistantPipeline(
                     var token = active.Token;
                     if (kind == "end")
                     {
+                        if (rejectingOversizedAudio) pendingWakeWord = null;
                         if (rejectingOversizedAudio)
                         {
                             rejectingOversizedAudio = false;
@@ -258,11 +274,13 @@ public sealed class AssistantPipeline(
                             continue;
                         }
                         byte[] pcm = input.ToArray();
+                        string? activation = pendingWakeWord;
+                        pendingWakeWord = null;
                         input.SetLength(0);
                         current = RunRequestAsync(async inner =>
-                            await RespondAsync(await speech.TranscribeAsync(pcm, inner), inner), token);
+                            await RespondAsync(RemoveActivationWord(await speech.TranscribeAsync(pcm, inner), activation), inner), token);
                     }
-                    else if (kind == "text") { input.SetLength(0); rejectingOversizedAudio = false; current = RunRequestAsync(inner => RespondAsync(text ?? "", inner), token); }
+                    else if (kind == "text") { input.SetLength(0); rejectingOversizedAudio = false; pendingWakeWord = null; current = RunRequestAsync(inner => RespondAsync(text ?? "", inner), token); }
                     else current = RunRequestAsync(async inner =>
                     {
                         object result = await tools.InvokeAsync(toolName ?? "", arguments, inner);
@@ -285,5 +303,16 @@ public sealed class AssistantPipeline(
             if (socket.State == WebSocketState.Open)
                 try { await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None); } catch { }
         }
+    }
+    /// <summary>убирает из серверной расшифровки только явно переданное слово активации.</summary>
+    private static string RemoveActivationWord(string transcription, string? word)
+    {
+        if (string.IsNullOrWhiteSpace(word)) return transcription;
+        string pattern = @"^\s*" + System.Text.RegularExpressions.Regex.Escape(word.Trim()) +
+            @"(?:\s*[,!?.;:]\s*|\s+|$)";
+        return System.Text.RegularExpressions.Regex.Replace(transcription, pattern, "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(100)).TrimStart();
     }
 }
