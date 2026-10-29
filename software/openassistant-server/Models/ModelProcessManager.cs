@@ -24,10 +24,14 @@ public sealed class ModelProcessManager(IWebHostEnvironment env, ILogger<ModelPr
         try {
             var all = await ProfilesAsync(ct);
             all[role] = profile;
-            string tmp = ConfigPath + ".tmp";
-            await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true }), ct);
-            if (OperatingSystem.IsLinux()) File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-            File.Move(tmp, ConfigPath, true);
+            string tmp = ConfigPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true }), ct);
+                if (OperatingSystem.IsLinux()) File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                File.Move(tmp, ConfigPath, true);
+            }
+            finally { if (File.Exists(tmp)) File.Delete(tmp); }
         } finally { _guard.Release(); }
     }
     /// <summary>запускает только явно настроенную модель, без shell и без скрытой подмены gpu.</summary>
@@ -80,8 +84,18 @@ public sealed class ModelProcessManager(IWebHostEnvironment env, ILogger<ModelPr
                 UseShellExecute = false, RedirectStandardOutput = true,
                 ArgumentList = { "--query-gpu=index,name,memory.total,memory.used", "--format=csv,noheader,nounits" }
             })!;
-            gpu = await process.StandardOutput.ReadToEndAsync(ct);
-            await process.WaitForExitAsync(ct);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(4));
+            try
+            {
+                gpu = await process.StandardOutput.ReadToEndAsync(timeout.Token);
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                if (!process.HasExited) process.Kill(entireProcessTree: true);
+                logger.LogWarning("nvidia-smi timed out");
+            }
         } catch (Exception ex) { logger.LogDebug(ex, "nvidia-smi unavailable"); }
         return new { running, gpus = gpu.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) };
     }
@@ -93,9 +107,9 @@ public sealed class ModelProcessManager(IWebHostEnvironment env, ILogger<ModelPr
             throw new ArgumentException("требуется абсолютный путь к существующему исполняемому файлу");
         if (!Path.IsPathFullyQualified(profile.WorkingDirectory) || !Directory.Exists(profile.WorkingDirectory))
             throw new ArgumentException("рабочая папка не найдена");
-        if (profile.Gpus.Length == 0 || profile.Gpus.Length > 16 || profile.Gpus.Any(g => g < 0 || g > 31) || profile.Gpus.Distinct().Count() != profile.Gpus.Length)
+        if (profile.Gpus is null || profile.Gpus.Length == 0 || profile.Gpus.Length > 16 || profile.Gpus.Any(g => g < 0 || g > 31) || profile.Gpus.Distinct().Count() != profile.Gpus.Length)
             throw new ArgumentException("неверный список gpu");
-        if (profile.Arguments.Length > 64 || profile.Arguments.Any(a => a.Length > 2048)) throw new ArgumentException("слишком длинные аргументы");
+        if (profile.Arguments is null || profile.Arguments.Length > 64 || profile.Arguments.Any(a => a.Length > 2048)) throw new ArgumentException("слишком длинные аргументы");
     }
     /// <summary>при завершении приложения освобождает дочерние процессы.</summary>
     public void Dispose()
