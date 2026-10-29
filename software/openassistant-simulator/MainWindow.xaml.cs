@@ -29,7 +29,7 @@ public partial class MainWindow : Window
         _socket.State += state => Ui(() => StateText.Text = state);
         _socket.AudioReceived += pcm => Ui(() => _speaker.AddSpeech(pcm));
         _socket.ControlReceived += OnControl;
-        _upload.Error += message => Ui(() => Log("передача: " + message));
+        _upload.Error += message => Ui(() => { _gate.Stop(); Log("передача: " + message); StateText.Text = "Ошибка передачи"; });
         _microphone.Data += OnMicrophone;
         _gate.SendAudio += pcm => _upload.QueueAudio(pcm);
         _gate.Finished += () =>
@@ -128,6 +128,7 @@ public partial class MainWindow : Window
                 MusicText.Text = "Плеер: остановлен";
                 break;
             case "cancelled":
+                _upload.Reset();
                 _llmAnswer.Clear();
                 _speaker.EndSpeech();
                 StateText.Text = "Ожидаю кодовое слово";
