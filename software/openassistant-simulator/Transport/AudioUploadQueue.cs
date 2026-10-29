@@ -90,7 +90,7 @@ public sealed class AudioUploadQueue : IAsyncDisposable
                         else await _socket.SendControlAsync(new { type = command });
                     }
                 }
-                catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or System.Net.WebSockets.WebSocketException)
+                catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException or ObjectDisposedException or System.Net.WebSockets.WebSocketException)
                 {
                     Error?.Invoke(ex.Message);
                 }
