@@ -73,7 +73,7 @@ public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (match.Success && (normalized.Contains("радио", StringComparison.OrdinalIgnoreCase)))
             {
-                string station = match.Groups[1].Value.Trim();
+                string station = System.Text.RegularExpressions.Regex.Replace(match.Groups[1].Value.Trim(), @"^радио\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 var stations = System.Text.Json.JsonSerializer.SerializeToElement(await radioBrowser.SearchAsync(station, ct));
                 if (stations.GetArrayLength() > 0)
                 {
