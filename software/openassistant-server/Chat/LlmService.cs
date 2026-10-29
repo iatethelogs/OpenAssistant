@@ -11,16 +11,16 @@ namespace OpenAssistant.Server.Chat;
 public sealed record ChatMessage(string Role, string Content);
 
 /// <summary>потоковый клиент OpenAI-совместимого llama-server.</summary>
-public sealed class LlmService(IHttpClientFactory http, IOptions<ServerOptions> settings)
+public sealed class LlmService(IHttpClientFactory http, IOptionsMonitor<ServerOptions> settings)
 {
     /// <summary>читает SSE по токенам. не ждём, пока модель выдаст всю простыню.</summary>
     public async IAsyncEnumerable<string> GenerateAsync(IReadOnlyList<ChatMessage> history,
         [EnumeratorCancellation] CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post,
-            settings.Value.LlmUrl.TrimEnd('/') + "/v1/chat/completions");
+            settings.CurrentValue.LlmUrl.TrimEnd('/') + "/v1/chat/completions");
         request.Content = JsonContent.Create(new {
-            model = settings.Value.LlmModel,
+            model = settings.CurrentValue.LlmModel,
             stream = true, temperature = 0.5, max_tokens = 512,
             messages = history.Select(m => new { role = m.Role, content = m.Content })
         });
