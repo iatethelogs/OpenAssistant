@@ -7,20 +7,20 @@ using OpenAssistant.Server.Configuration;
 namespace OpenAssistant.Server.Integrations;
 
 /// <summary>локальный API home assistant: чтение состояний и разрешённые вызовы сервисов.</summary>
-public sealed class HomeAssistantTool(IHttpClientFactory factory, IOptions<ServerOptions> options) : IAssistantTool
+public sealed class HomeAssistantTool(IHttpClientFactory factory, IOptionsMonitor<ServerOptions> options) : IAssistantTool
 {
     public string Name => "home_assistant";
 
     /// <summary>исполняет get_state либо call_service; параметры читаем строго из json.</summary>
     public async Task<object> ExecuteAsync(JsonElement args, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(options.Value.HomeAssistantUrl)
-            || string.IsNullOrWhiteSpace(options.Value.HomeAssistantToken))
+        if (string.IsNullOrWhiteSpace(options.CurrentValue.HomeAssistantUrl)
+            || string.IsNullOrWhiteSpace(options.CurrentValue.HomeAssistantToken))
             throw new InvalidOperationException("home assistant не настроен");
         using var client = factory.CreateClient("homeassistant");
         client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", options.Value.HomeAssistantToken);
-        string baseUrl = options.Value.HomeAssistantUrl.TrimEnd('/');
+            new AuthenticationHeaderValue("Bearer", options.CurrentValue.HomeAssistantToken);
+        string baseUrl = options.CurrentValue.HomeAssistantUrl.TrimEnd('/');
         string action = args.GetProperty("action").GetString() ?? "";
         if (action == "get_state")
         {
