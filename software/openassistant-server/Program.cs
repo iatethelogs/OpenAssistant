@@ -1,6 +1,7 @@
 using OpenAssistant.Server.Audio;
 using OpenAssistant.Server.ConsoleUi;
 using System.Net;
+using OpenAssistant.Server.Models;
 using OpenAssistant.Server.Chat;
 using OpenAssistant.Server.Configuration;
 using OpenAssistant.Server.Integrations;
@@ -9,6 +10,11 @@ using OpenAssistant.Server.Transport;
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("settings.local.json", optional: true, reloadOnChange: true);
 builder.Services.AddSingleton<SettingsStore>();
+builder.Services.AddSingleton<ModelProcessManager>();
+builder.Services.AddSingleton<RadioBrowserService>();
+builder.Services.AddSingleton<YandexMusicService>();
+builder.Services.AddHttpClient("radio-browser", c => c.DefaultRequestHeaders.UserAgent.ParseAdd("OpenAssistant/0.1"));
+builder.Services.AddHttpClient("yandex-music");
 builder.Services.Configure<ServerOptions>(builder.Configuration.GetSection("OpenAssistant"));
 builder.Services.AddHttpClient("llm");
 builder.Services.AddHttpClient("stt");
@@ -38,6 +44,40 @@ app.MapPost("/api/settings", async (HttpContext ctx, SettingsUpdate settings, Se
     try { await store.SaveAsync(settings, ct); return Results.Ok(new { saved = true }); }
     catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
+app.MapGet("/api/models", async (HttpContext ctx, ModelProcessManager manager, CancellationToken ct) =>
+    localOnly(ctx) ? Results.Ok(new { profiles = await manager.ProfilesAsync(ct), status = await manager.StatusAsync(ct) }) : Results.StatusCode(403));
+app.MapPut("/api/models/{role}", async (HttpContext ctx, string role, ModelLaunchProfile profile, ModelProcessManager manager, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { await manager.SaveAsync(role, profile, ct); return Results.Ok(new { saved = true }); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapPost("/api/models/{role}/start", async (HttpContext ctx, string role, ModelProcessManager manager, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await manager.StartAsync(role, ct)); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapPost("/api/models/{role}/stop", async (HttpContext ctx, string role, ModelProcessManager manager, CancellationToken ct) =>
+    localOnly(ctx) ? Results.Ok(await manager.StopAsync(role, ct)) : Results.StatusCode(403));
+app.MapGet("/api/radio/search", async (HttpContext ctx, string name, RadioBrowserService radio, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await radio.SearchAsync(name, ct)); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapGet("/api/yandex/search", async (HttpContext ctx, string query, YandexMusicService music, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await music.SearchAsync(query, ct)); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapPost("/api/yandex/token", async (HttpContext ctx, YandexTokenInput input, YandexMusicService music, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { await music.SaveTokenAsync(input.Token, ct); return Results.Ok(new { saved = true }); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
 app.MapGet("/tools", (ToolRegistry registry) => Results.Ok(registry.Names()));
 app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline) =>
 {
@@ -51,3 +91,5 @@ app.Lifetime.ApplicationStarted.Register(() =>
     StartupBanner.Print(url);
 });
 app.Run();
+
+public sealed record YandexTokenInput(string Token);
