@@ -49,6 +49,7 @@ public partial class MainWindow : Window
             {
                 _llmAnswer.Clear();
                 _speaker.EndSpeech();
+                _upload.QueueWake(word);
                 _gate.Activate();
                 StateText.Text = "Слушаю команду";
             }
