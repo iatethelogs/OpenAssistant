@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
@@ -7,7 +8,7 @@ using OpenAssistant.Simulator.Wake;
 
 namespace OpenAssistant.Simulator;
 
-/// <summary>интерфейс эмулятора: локальное слово активации, передача речи, серверная расшифровка и воспроизведение.</summary>
+/// <summary>интерфейс колонки: локальный wake-word, серверная stt и клиентский плеер.</summary>
 public partial class MainWindow : Window
 {
     private readonly DeviceSocket _socket = new();
@@ -15,139 +16,242 @@ public partial class MainWindow : Window
     private readonly SpeakerPlayer _speaker = new();
     private readonly ExternalWakeDetector _wake = new();
     private readonly VoiceActivityGate _gate = new();
-    private readonly SemaphoreSlim _audioQueueLock = new(1, 1);
-    private bool _running;
-    private bool _audioEnding;
+    private readonly AudioUploadQueue _upload;
+    private readonly StringBuilder _llmAnswer = new();
+    private volatile bool _running;
+    private bool _closing;
 
-    /// <summary>подключает события микрофона, сервера и детектора к элементам управления.</summary>
+    /// <summary>связывает микрофон, детектор, очередь сети и состояние интерфейса.</summary>
     public MainWindow()
     {
         InitializeComponent();
+        _upload = new AudioUploadQueue(_socket);
         _socket.State += state => Ui(() => StateText.Text = state);
         _socket.AudioReceived += pcm => Ui(() => _speaker.AddSpeech(pcm));
         _socket.ControlReceived += OnControl;
+        _upload.Error += message => Ui(() => Log("передача: " + message));
         _microphone.Data += OnMicrophone;
-        _gate.SendAudio += pcm => _ = ForwardAudioAsync(pcm);
-        _gate.Finished += () => _ = EndSpeechAsync();
-        _wake.Detected += (word, score) =>
+        _gate.SendAudio += pcm => _upload.QueueAudio(pcm);
+        _gate.Finished += () =>
         {
-            Ui(() => { Log($"кодовое слово: {word}, уверенность {score:F2}"); StateText.Text = "Слушаю команду"; });
-            Ui(() => { if (WakeEnabled.IsChecked == true && _socket.Connected && !_gate.Capturing) _gate.Activate(); });
-        };
-        _wake.Diagnostic += message => Ui(() => Log("детектор: " + message.Trim()));
-        Closed += async (_, _) =>
-        {
-            _running = false;
-            _microphone.Dispose(); _wake.Dispose(); _speaker.Dispose();
-            await _socket.DisposeAsync();
-        };
-    }
-    /// <summary>передаёт фреймы PCM в правильном порядке; никакой расшифровки на клиенте нет.</summary>
-    private async Task ForwardAudioAsync(byte[] data)
-    {
-        await _audioQueueLock.WaitAsync();
-        try { if (_socket.Connected) await _socket.SendPcmAsync(data); }
-        catch (Exception e) { Ui(() => Log(e.Message)); }
-        finally { _audioQueueLock.Release(); }
-    }
-    /// <summary>по окончании паузы завершает аудиозапрос после всех бинарных фреймов.</summary>
-    private async Task EndSpeechAsync()
-    {
-        if (_audioEnding) return;
-        _audioEnding = true;
-        await _audioQueueLock.WaitAsync();
-        try {
-            if (_socket.Connected) await _socket.SendControlAsync(new { type = "end" });
+            _upload.EndPhrase();
             Ui(() => StateText.Text = "Распознавание на сервере");
-        } catch (Exception e) { Ui(() => Log(e.Message)); }
-        finally { _audioQueueLock.Release(); _audioEnding = false; }
+        };
+        _gate.TimedOut += () =>
+        {
+            _upload.Cancel();
+            Ui(() => StateText.Text = "Речь не обнаружена");
+        };
+        _wake.Detected += (word, score) => Ui(() =>
+        {
+            Log($"кодовое слово: {word}, уверенность {score:F2}");
+            if (WakeEnabled.IsChecked == true && _socket.Connected && !_gate.Capturing)
+            {
+                _llmAnswer.Clear();
+                _speaker.EndSpeech();
+                _gate.Activate();
+                StateText.Text = "Слушаю команду";
+            }
+        });
+        _wake.Diagnostic += message => Ui(() => Log("детектор: " + message.Trim()));
+        Closed += async (_, _) => await ShutdownAsync();
     }
-    /// <summary>получает события серверной расшифровки, ответа LLM, звука и медиакоманд.</summary>
-    private void OnControl(JsonElement message) => Ui(() =>
+
+    /// <summary>обновляет окно на потоке WPF без блокировки фоновых событий.</summary>
+    private void Ui(Action action)
     {
-        if (!message.TryGetProperty("type", out var property)) return;
-        string type = property.GetString() ?? "";
+        if (!_closing && !Dispatcher.HasShutdownStarted)
+            Dispatcher.BeginInvoke(action);
+    }
+
+    /// <summary>выводит важные события с ограничением длины журнала.</summary>
+    private void Log(string message)
+    {
+        if (LogText.Text.Length > 64000) LogText.Text = LogText.Text[^32000..];
+        LogText.AppendText($"{DateTime.Now:HH:mm:ss} {message}\n");
+        LogText.ScrollToEnd();
+    }
+
+    /// <summary>обрабатывает результаты сервера и управляющие пакеты медиаплеера.</summary>
+    private void OnControl(JsonElement packet) => Ui(() =>
+    {
+        if (!packet.TryGetProperty("type", out var typeNode)) return;
+        var type = typeNode.GetString();
         switch (type)
         {
             case "transcript":
-                TranscriptText.Text = message.GetProperty("text").GetString() ?? "";
+                TranscriptText.Text = packet.TryGetProperty("text", out var transcription)
+                    ? transcription.GetString() ?? "" : "";
+                _llmAnswer.Clear();
                 Log("распознано: " + TranscriptText.Text);
-                StateText.Text = "Отвечает LLM"; break;
-            case "text": Log("LLM: " + message.GetProperty("delta").GetString()); break;
-            case "audio_start": _speaker.BeginSpeech(message.GetProperty("sampleRate").GetInt32()); StateText.Text = "Произносит ответ"; break;
-            case "audio_end": break; // очередь воспроизведения не останавливаем: в ней ещё есть звук
-            case "done": StateText.Text = "Ожидаю кодовое слово"; break;
-            case "error": Log("ошибка: " + message.GetProperty("message").GetString()); break;
-            case "play_media":
-                try {
-                    string url = message.GetProperty("url").GetString() ?? "";
-                    _speaker.PlayUrl(url);
-                    string title = message.TryGetProperty("title", out var t) ? t.GetString() ?? url : url;
-                    MusicText.Text = "Плеер: " + title;
-                    Log("медиа: " + title + " | " + url);
-                } catch (Exception e) { Log("плеер: " + e.Message); }
+                StateText.Text = "LLM формирует ответ";
                 break;
-            case "stop_media": _speaker.StopMusic(); MusicText.Text = "Плеер: остановлен"; break;
-            case "cancelled": StateText.Text = "Ожидаю кодовое слово"; break;
+            case "text":
+                if (packet.TryGetProperty("delta", out var delta))
+                    _llmAnswer.Append(delta.GetString());
+                break;
+            case "audio_start":
+                if (packet.TryGetProperty("sampleRate", out var rate))
+                {
+                    _speaker.BeginSpeech(rate.GetInt32());
+                    StateText.Text = "Произносит ответ";
+                }
+                break;
+            case "audio_end":
+                // не сбрасываем буфер: последние pcm-фреймы должны доиграть.
+                break;
+            case "done":
+                if (_llmAnswer.Length > 0) Log("ответ: " + _llmAnswer.ToString());
+                _llmAnswer.Clear();
+                StateText.Text = "Ожидаю кодовое слово";
+                break;
+            case "error":
+                Log("ошибка сервера: " + (packet.TryGetProperty("message", out var error) ? error.GetString() : "неизвестно"));
+                StateText.Text = "Ошибка обработки";
+                break;
+            case "play_media":
+                try
+                {
+                    var url = packet.GetProperty("url").GetString() ?? "";
+                    _speaker.PlayUrl(url);
+                    var title = packet.TryGetProperty("title", out var caption) ? caption.GetString() ?? url : url;
+                    MusicText.Text = "Плеер: " + title;
+                    Log("воспроизведение: " + title);
+                }
+                catch (Exception ex) { Log("музыкальный поток: " + ex.Message); }
+                break;
+            case "stop_media":
+                _speaker.StopMusic();
+                MusicText.Text = "Плеер: остановлен";
+                break;
+            case "cancelled":
+                _llmAnswer.Clear();
+                _speaker.EndSpeech();
+                StateText.Text = "Ожидаю кодовое слово";
+                break;
         }
     });
-    /// <summary>всегда передаёт звук детектору, а после активации ещё и серверу.</summary>
+
+    /// <summary>передаёт PCM локальному детектору и шлюзу записи в правильном порядке.</summary>
     private void OnMicrophone(byte[] pcm)
     {
         if (!_running) return;
-        _ = _wake.FeedAsync(pcm);
-        _gate.Push(pcm);
+        try
+        {
+            _wake.Feed(pcm);
+            _gate.Push(pcm);
+        }
+        catch (Exception ex) { Ui(() => Log("микрофон: " + ex.Message)); }
     }
-    /// <summary>соединяется с linux-сервером и включает микрофон.</summary>
+
+    /// <summary>подключается к linux-серверу и запускает локальный захват звука.</summary>
     private async void Connect_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            await _socket.ConnectAsync(ServerAddress.Text);
-            _microphone.Start(); _running = true;
+            _running = false;
+            _microphone.Stop();
+            _wake.Stop();
+            _gate.Stop();
+            _upload.Reset();
+            await _socket.ConnectAsync(ServerAddress.Text.Trim(), DeviceToken.Text.Trim());
             if (!string.IsNullOrWhiteSpace(DetectorExecutable.Text))
-                _wake.Start(DetectorExecutable.Text, DetectorArguments.Text);
+                _wake.Start(DetectorExecutable.Text.Trim(), DetectorArguments.Text);
+            else if (WakeEnabled.IsChecked == true)
+                Log("детектор не задан: доступна ручная запись");
+            _microphone.Start();
+            _running = true;
             StateText.Text = "Ожидаю кодовое слово";
-            Log("микрофон 16000 Гц PCM16; серверный STT");
-        } catch (Exception ex) { Log("подключение: " + ex.Message); }
+            Log("микрофон: 16 кГц / PCM16; распознавание: сервер GigaAM");
+        }
+        catch (Exception ex)
+        {
+            Log("подключение: " + ex.Message);
+            _running = false;
+            _microphone.Stop();
+            _wake.Stop();
+            await _socket.DisconnectAsync();
+        }
     }
-    /// <summary>отключает микрофон, детектор и websocket.</summary>
+
+    /// <summary>останавливает ввод и разрывает соединение с сервером.</summary>
     private async void Disconnect_Click(object sender, RoutedEventArgs e)
     {
-        _running = false; _gate.Stop(); _microphone.Stop(); _wake.Stop();
+        _running = false;
+        _microphone.Stop();
+        _gate.Stop();
+        _wake.Stop();
+        _upload.Reset();
+        _speaker.EndSpeech();
         await _socket.DisconnectAsync();
+        StateText.Text = "Не подключено";
     }
-    /// <summary>вручную включает передачу голоса даже без wake-word.</summary>
+
+    /// <summary>позволяет тестировать речь без модели слова активации.</summary>
     private void Talk_Click(object sender, RoutedEventArgs e)
     {
-        if (!_socket.Connected) return;
-        _gate.Activate(); StateText.Text = "Слушаю команду";
+        if (!_socket.Connected) { Log("сначала подключитесь к серверу"); return; }
+        _speaker.EndSpeech();
+        _llmAnswer.Clear();
+        _gate.Activate();
+        StateText.Text = "Слушаю команду";
     }
-    /// <summary>принудительно завершает фразу вместо ожидания паузы.</summary>
-    private async void End_Click(object sender, RoutedEventArgs e)
+
+    /// <summary>завершает передачу текущей фразы, сохраняя порядок аудиофреймов.</summary>
+    private void End_Click(object sender, RoutedEventArgs e)
     {
         if (!_gate.Capturing) return;
-        _gate.Stop(); await EndSpeechAsync();
+        _gate.Stop();
+        _upload.EndPhrase();
+        StateText.Text = "Распознавание на сервере";
     }
-    /// <summary>отправляет команду отмены генерации и останавливает голос.</summary>
-    private async void Cancel_Click(object sender, RoutedEventArgs e)
+
+    /// <summary>отменяет серверный ответ и очищает локальное воспроизведение.</summary>
+    private void Cancel_Click(object sender, RoutedEventArgs e)
     {
-        _gate.Stop();_speaker.EndSpeech();if (_socket.Connected) await _socket.SendControlAsync(new { type="cancel" });
+        _gate.Stop();
+        _speaker.EndSpeech();
+        _upload.Cancel();
+        StateText.Text = "Прерываю ответ";
     }
-    /// <summary>текстовый тест отправляется непосредственно в LLM без микрофона.</summary>
-    private async void Text_Click(object sender, RoutedEventArgs e)
+
+    /// <summary>передаёт текстовый запрос без локального распознавания.</summary>
+    private void Text_Click(object sender, RoutedEventArgs e)
     {
-        string value = RequestText.Text.Trim();
-        if (value.Length == 0 || !_socket.Connected) return;
+        var text = RequestText.Text.Trim();
+        if (text.Length == 0 || !_socket.Connected) return;
         RequestText.Clear();
-        await _socket.SendControlAsync(new { type = "text", text = value });
+        _gate.Stop();
+        _upload.QueueText(text);
+        StateText.Text = "LLM формирует ответ";
     }
-    /// <summary>отправляет тестовую строку по enter.</summary>
-    private void RequestText_KeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) Text_Click(sender, e); }
-    /// <summary>останавливает воспроизведение музыки в клиентском декодере.</summary>
-    private void StopMusic_Click(object sender, RoutedEventArgs e) { _speaker.StopMusic(); MusicText.Text="Плеер: остановлен"; }
-    /// <summary>выполняет обновление интерфейса из фоновых потоков.</summary>
-    private void Ui(Action callback) { if (!Dispatcher.HasShutdownStarted) Dispatcher.BeginInvoke(callback); }
-    /// <summary>выводит сообщение в окно журнала и прокручивает к последней строке.</summary>
-    private void Log(string message) { LogText.AppendText($"{DateTime.Now:HH:mm:ss} {message}\n"); LogText.ScrollToEnd(); }
+
+    /// <summary>enter отправляет текст, не вставляя перенос строки.</summary>
+    private void RequestText_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        Text_Click(sender, e);
+    }
+
+    /// <summary>останавливает только музыкальный плеер локального компьютера.</summary>
+    private void StopMusic_Click(object sender, RoutedEventArgs e)
+    {
+        _speaker.StopMusic();
+        MusicText.Text = "Плеер: остановлен";
+    }
+
+    /// <summary>управляемо освобождает микрофон, очередь, детектор и сеть.</summary>
+    private async Task ShutdownAsync()
+    {
+        if (_closing) return;
+        _closing = true;
+        _running = false;
+        _microphone.Dispose();
+        _gate.Stop();
+        _wake.Dispose();
+        await _upload.DisposeAsync();
+        await _socket.DisposeAsync();
+        _speaker.Dispose();
+    }
 }
