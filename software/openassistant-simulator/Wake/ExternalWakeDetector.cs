@@ -12,6 +12,7 @@ public sealed class ExternalWakeDetector : IDisposable
     private Process? _process;
     private CancellationTokenSource? _stop;
     private Channel<byte[]>? _audio;
+    private Task[]? _tasks;
     private int _drops;
 
     public event Action<string, double>? Detected;
@@ -42,9 +43,13 @@ public sealed class ExternalWakeDetector : IDisposable
             _audio = audio;
             _drops = 0;
         }
-        _ = WriteAudioAsync(process, audio.Reader, stop.Token);
-        _ = ReadEventsAsync(process, stop.Token);
-        _ = ReadErrorsAsync(process, stop.Token);
+        var tasks = new[]
+        {
+            WriteAudioAsync(process, audio.Reader, stop.Token),
+            ReadEventsAsync(process, stop.Token),
+            ReadErrorsAsync(process, stop.Token)
+        };
+        lock (_sync) _tasks = tasks;
     }
 
     /// <summary>помещает PCM в ограниченную очередь; никогда не блокирует микрофон.</summary>
@@ -119,11 +124,13 @@ public sealed class ExternalWakeDetector : IDisposable
         Process? process;
         CancellationTokenSource? stop;
         Channel<byte[]>? channel;
+        Task[]? tasks;
         lock (_sync)
         {
             process = _process; _process = null;
             stop = _stop; _stop = null;
             channel = _audio; _audio = null;
+            tasks = _tasks; _tasks = null;
         }
         channel?.Writer.TryComplete();
         stop?.Cancel();
@@ -132,8 +139,16 @@ public sealed class ExternalWakeDetector : IDisposable
             try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
             process.Dispose();
         }
-        // токен не освобождаем до завершения фоновых операций, чтобы не ломать их ожидание.
-        // отмена уже передана всем трём задачам.
+        // освобождаем источник отмены, когда фоновые читатели действительно закончили.
+        if (stop is not null)
+        {
+            if (tasks is null) stop.Dispose();
+            else _ = Task.WhenAll(tasks).ContinueWith(t =>
+            {
+                _ = t.Exception;
+                stop.Dispose();
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
     }
 
     /// <summary>разбирает пути и аргументы в кавычках без запуска командной оболочки.</summary>
