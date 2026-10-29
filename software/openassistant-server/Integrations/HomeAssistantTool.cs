@@ -27,7 +27,8 @@ public sealed class HomeAssistantTool(IHttpClientFactory factory, IOptionsMonito
             string entity = args.GetProperty("entity_id").GetString() ?? "";
             using var response = await client.GetAsync(baseUrl + "/api/states/" + Uri.EscapeDataString(entity), ct);
             response.EnsureSuccessStatusCode();
-            return JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct)).RootElement.Clone();
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            return document.RootElement.Clone();
         }
         if (action == "call_service")
         {
