@@ -7,6 +7,7 @@
 <StackPanel><TextBlock Text="OPENASSISTANT / SIMULATOR" FontWeight="Bold" FontSize="25" Foreground="#A4BEFF"/><TextBlock Text="Эмулятор голосовой колонки · Windows" Foreground="#99A9C2" Margin="0,5,0,18"/></StackPanel>
 <Border Grid.Row="1" Background="#1B2431" CornerRadius="12" Padding="16" Margin="0,0,0,18"><StackPanel>
 <TextBlock Text="Адрес сервера WebSocket"/><TextBox x:Name="ServerAddress" Text="ws://127.0.0.1:5055/ws" Margin="0,7,0,10"/>
+<TextBlock Text="Ключ устройства (для подключения по сети)"/><TextBox x:Name="DeviceToken" Margin="0,7,0,10"/>
 <WrapPanel><Button x:Name="ConnectButton" Content="Подключиться" Click="Connect_Click"/><Button Content="Отключиться" Click="Disconnect_Click"/><Button x:Name="TalkButton" Content="Говорить" Click="Talk_Click"/><Button Content="Закончить фразу" Click="End_Click"/><Button Content="Прервать" Click="Cancel_Click"/></WrapPanel>
 <TextBlock x:Name="StateText" Text="Не подключено" Foreground="#B5C8EC" Margin="0,12,0,0"/>
 </StackPanel></Border>
