@@ -97,10 +97,19 @@ app.MapPost("/api/yandex/token", async (HttpContext ctx, YandexTokenInput input,
 });
 app.MapGet("/api/events", (HttpContext ctx, long? after, ConversationLog log) =>
     localOnly(ctx) ? Results.Ok(log.Since(Math.Max(0, after ?? 0))) : Results.StatusCode(403));
-app.MapGet("/tools", (ToolRegistry registry) => Results.Ok(registry.Names()));
+app.MapGet("/tools", (HttpContext ctx, ToolRegistry registry) =>
+    localOnly(ctx) ? Results.Ok(registry.Names()) : Results.StatusCode(403));
 app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline) =>
 {
     if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
+    // браузерный websocket с чужого сайта не должен управлять колонкой в локальной сети.
+    if (ctx.Request.Headers.Origin.Count > 0)
+    {
+        if (!Uri.TryCreate(ctx.Request.Headers.Origin.ToString(), UriKind.Absolute, out var origin)
+            || !string.Equals(origin.Host, ctx.Request.Host.Host, StringComparison.OrdinalIgnoreCase)
+            || origin.Port != (ctx.Request.Host.Port ?? (ctx.Request.IsHttps ? 443 : 80)))
+        { ctx.Response.StatusCode = 403; return; }
+    }
     using var socket = await ctx.WebSockets.AcceptWebSocketAsync();
     await pipeline.RunAsync(socket, ctx.RequestAborted);
 });
