@@ -48,7 +48,11 @@ public sealed class AudioUploadQueue : IAsyncDisposable
     }
 
     /// <summary>отправляет отмену текущей операции после уже поставленных сообщений.</summary>
-    public void Cancel() => _pending.Writer.TryWrite(new Packet(null, "cancel", null, Volatile.Read(ref _generation)));
+    public void Cancel()
+    {
+        Reset();
+        _pending.Writer.TryWrite(new Packet(null, "cancel", null, Volatile.Read(ref _generation)));
+    }
 
     /// <summary>отправляет текст в том же порядке, что аудио и его завершение.</summary>
     public void QueueText(string text) => _pending.Writer.TryWrite(new Packet(null, "text", text, Volatile.Read(ref _generation)));
