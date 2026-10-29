@@ -53,6 +53,9 @@ public sealed class AudioUploadQueue : IAsyncDisposable
     /// <summary>отправляет текст в том же порядке, что аудио и его завершение.</summary>
     public void QueueText(string text) => _pending.Writer.TryWrite(new Packet(null, "text", text, Volatile.Read(ref _generation)));
 
+    /// <summary>передаёт слово активации перед фреймами текущей голосовой команды.</summary>
+    public void QueueWake(string word) => _pending.Writer.TryWrite(new Packet(null, "wake", word, Volatile.Read(ref _generation)));
+
     /// <summary>очищает очередь при отключении и разрешает новую запись.</summary>
     public void Reset()
     {
@@ -79,6 +82,7 @@ public sealed class AudioUploadQueue : IAsyncDisposable
                     else if (packet.Command is { } command && _socket.Connected)
                     {
                         if (command == "text") await _socket.SendControlAsync(new { type = "text", text = packet.Text });
+                        else if (command == "wake") await _socket.SendControlAsync(new { type = "wake", word = packet.Text });
                         else await _socket.SendControlAsync(new { type = command });
                     }
                 }
