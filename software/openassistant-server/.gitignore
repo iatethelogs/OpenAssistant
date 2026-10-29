@@ -3,3 +3,7 @@ settings.local.json
 settings.local.json.*.tmp
 bin/
 obj/
+
+models.local.json
+models.local.json.tmp
+yandex-music.local.json
