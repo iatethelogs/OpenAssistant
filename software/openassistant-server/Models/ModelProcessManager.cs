@@ -27,6 +27,7 @@ public sealed class ModelProcessManager(IWebHostEnvironment env, ILogger<ModelPr
             string tmp = ConfigPath + ".tmp";
             await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true }), ct);
             File.Move(tmp, ConfigPath, true);
+            if (OperatingSystem.IsLinux()) File.SetUnixFileMode(ConfigPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         } finally { _guard.Release(); }
     }
     /// <summary>запускает только явно настроенную модель, без shell и без скрытой подмены gpu.</summary>
@@ -37,8 +38,12 @@ public sealed class ModelProcessManager(IWebHostEnvironment env, ILogger<ModelPr
             var profiles = await ProfilesAsync(ct);
             if (!profiles.TryGetValue(role, out var profile)) throw new ArgumentException("профиль не задан");
             Validate(role, profile);
-            if (_running.TryGetValue(role, out var existing) && !existing.HasExited)
-                return new { role, running = true, pid = existing.Id };
+            if (_running.TryGetValue(role, out var existing))
+            {
+                if (!existing.HasExited) return new { role, running = true, pid = existing.Id };
+                existing.Dispose();
+                _running.Remove(role);
+            }
             var psi = new ProcessStartInfo(profile.Executable) {
                 UseShellExecute = false, RedirectStandardOutput = false, RedirectStandardError = false,
                 WorkingDirectory = profile.WorkingDirectory
@@ -65,7 +70,10 @@ public sealed class ModelProcessManager(IWebHostEnvironment env, ILogger<ModelPr
     /// <summary>показывает состояние процессов и список видеокарт из nvidia-smi.</summary>
     public async Task<object> StatusAsync(CancellationToken ct)
     {
-        var running = _running.ToDictionary(p => p.Key, p => new { running = !p.Value.HasExited, pid = p.Value.Id });
+        await _guard.WaitAsync(ct);
+        Dictionary<string, object> running;
+        try { running = _running.ToDictionary(p => p.Key, p => (object)new { running = !p.Value.HasExited, pid = p.Value.Id }); }
+        finally { _guard.Release(); }
         string gpu = "";
         try {
             using var process = Process.Start(new ProcessStartInfo("nvidia-smi") {
