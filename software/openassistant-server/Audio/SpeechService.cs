@@ -25,17 +25,17 @@ public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<Se
     }
 
     /// <summary>запрашивает у qwen синтез фразы выбранным голосом и возвращает pcm16 mono.</summary>
-    public async Task<byte[]> SynthesizeAsync(string phrase, string? voice, CancellationToken ct)
+    public async Task<byte[]> SynthesizeAsync(string phrase, string? voice, int outputRate, CancellationToken ct)
     {
         var cfg = settings.CurrentValue;
         // контракт локального tts-адаптера: POST /synthesize, json -> audio/wav pcm16 mono.
         using var response = await clients.CreateClient("tts").PostAsJsonAsync(
             cfg.TtsUrl.TrimEnd('/') + "/synthesize",
             new { text = phrase, model = cfg.TtsModel, voice = string.IsNullOrWhiteSpace(voice) ? cfg.TtsVoice : voice, language = cfg.TtsLanguage,
-                sample_rate = cfg.OutputSampleRate }, ct);
+                sample_rate = outputRate }, ct);
         response.EnsureSuccessStatusCode();
         byte[] wav = await response.Content.ReadAsByteArrayAsync(ct);
         if (wav.Length > 30 * 1024 * 1024) throw new InvalidDataException("tts вернул слишком много аудио");
-        return WavePcmReader.ReadPcm16(wav, cfg.OutputSampleRate);
+        return WavePcmReader.ReadPcm16(wav, outputRate);
     }
 }
