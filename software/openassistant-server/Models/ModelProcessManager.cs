@@ -26,8 +26,8 @@ public sealed class ModelProcessManager(IWebHostEnvironment env, ILogger<ModelPr
             all[role] = profile;
             string tmp = ConfigPath + ".tmp";
             await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true }), ct);
+            if (OperatingSystem.IsLinux()) File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             File.Move(tmp, ConfigPath, true);
-            if (OperatingSystem.IsLinux()) File.SetUnixFileMode(ConfigPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         } finally { _guard.Release(); }
     }
     /// <summary>запускает только явно настроенную модель, без shell и без скрытой подмены gpu.</summary>
