@@ -23,6 +23,7 @@ public sealed class AssistantPipeline(
         using var lifecycle = CancellationTokenSource.CreateLinkedTokenSource(disconnected);
         using var sendLock = new SemaphoreSlim(1, 1);
         using var input = new MemoryStream();
+        bool rejectingOversizedAudio = false;
         var history = new List<ChatMessage> { new("system", settings.CurrentValue.SystemPrompt) };
         string voice = settings.CurrentValue.TtsVoice;
         CancellationTokenSource? active = null;
@@ -107,6 +108,8 @@ public sealed class AssistantPipeline(
             var messages = history.Append(new ChatMessage("user", text)).ToArray();
             var segmenter = new SentenceSegmenter();
             var complete = new StringBuilder();
+            using var speechStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var speechToken = speechStop.Token;
             var phrases = Channel.CreateBounded<string>(new BoundedChannelOptions(5)
             {
                 SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait
@@ -115,10 +118,10 @@ public sealed class AssistantPipeline(
             /// <summary>отдельно синтезирует фразы и передаёт pcm, пока llm генерирует продолжение.</summary>
             async Task SpeakAsync()
             {
-                await foreach (string phrase in phrases.Reader.ReadAllAsync(ct))
+                await foreach (string phrase in phrases.Reader.ReadAllAsync(speechToken))
                 {
-                    byte[] pcm = await speech.SynthesizeAsync(phrase, voice, ct);
-                    await AudioAsync(pcm, ct);
+                    byte[] pcm = await speech.SynthesizeAsync(phrase, voice, speechToken);
+                    await AudioAsync(pcm, speechToken);
                 }
             }
 
@@ -153,13 +156,10 @@ public sealed class AssistantPipeline(
             finally
             {
                 phrases.Writer.TryComplete();
-                if (!speaker.IsCompleted)
-                {
-                    // при отмене канала дочерний синтез должен остановиться вместе с запросом.
-                    try { await speaker.WaitAsync(TimeSpan.FromSeconds(3), ct); }
-                    catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
-                    catch (TimeoutException) { logger.LogWarning("tts worker still stopping"); }
-                }
+                speechStop.Cancel();
+                try { await speaker; }
+                catch (OperationCanceledException) when (speechToken.IsCancellationRequested) { }
+                catch (Exception ex) { logger.LogDebug(ex, "tts task finished with error"); }
             }
         }
 
@@ -194,10 +194,12 @@ public sealed class AssistantPipeline(
 
                 if (message.MessageType == WebSocketMessageType.Binary)
                 {
+                    if (rejectingOversizedAudio) continue;
                     if (frame.Length % 2 != 0) { await JsonAsync(new { type = "error", message = "pcm16 требует чётного числа байт" }, disconnected); continue; }
                     if (input.Length + frame.Length > settings.CurrentValue.InputSampleRate * 2L * 60)
                     {
                         input.SetLength(0);
+                        rejectingOversizedAudio = true;
                         await JsonAsync(new { type = "error", message = "запись длиннее 60 секунд" }, disconnected);
                         continue;
                     }
@@ -227,6 +229,7 @@ public sealed class AssistantPipeline(
                     {
                         await CancelAsync();
                         input.SetLength(0);
+                        rejectingOversizedAudio = false;
                         await JsonAsync(new { type = "cancelled" }, disconnected);
                         continue;
                     }
@@ -240,12 +243,19 @@ public sealed class AssistantPipeline(
                     var token = active.Token;
                     if (kind == "end")
                     {
+                        if (rejectingOversizedAudio)
+                        {
+                            rejectingOversizedAudio = false;
+                            input.SetLength(0);
+                            await JsonAsync(new { type = "error", message = "запись отклонена, произнесите запрос заново" }, disconnected);
+                            continue;
+                        }
                         byte[] pcm = input.ToArray();
                         input.SetLength(0);
                         current = RunRequestAsync(async inner =>
                             await RespondAsync(await speech.TranscribeAsync(pcm, inner), inner), token);
                     }
-                    else if (kind == "text") current = RunRequestAsync(inner => RespondAsync(text ?? "", inner), token);
+                    else if (kind == "text") { input.SetLength(0); current = RunRequestAsync(inner => RespondAsync(text ?? "", inner), token); }
                     else current = RunRequestAsync(async inner =>
                     {
                         object result = await tools.InvokeAsync(toolName ?? "", arguments, inner);
