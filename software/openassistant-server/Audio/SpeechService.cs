@@ -35,6 +35,7 @@ public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<Se
                 sample_rate = cfg.OutputSampleRate }, ct);
         response.EnsureSuccessStatusCode();
         byte[] wav = await response.Content.ReadAsByteArrayAsync(ct);
+        if (wav.Length > 30 * 1024 * 1024) throw new InvalidDataException("tts вернул слишком много аудио");
         return WavePcmReader.ReadPcm16(wav, cfg.OutputSampleRate);
     }
 }
