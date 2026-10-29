@@ -12,7 +12,7 @@ namespace OpenAssistant.Server.Transport;
 
 /// <summary>одна сессия колонки: входящее аудио, диалог, tts и поток обратно.</summary>
 public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
-    ToolRegistry tools, ConversationLog conversationLog, IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
+    ToolRegistry tools, RadioBrowserService radioBrowser, ConversationLog conversationLog, IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
 {
     /// <summary>обслуживает websocket до отключения; новый запрос отменяет предыдущий.</summary>
     public async Task RunAsync(WebSocket socket, CancellationToken disconnected)
@@ -66,6 +66,28 @@ public sealed class AssistantPipeline(SpeechService speech, LlmService llm,
         {
             if (string.IsNullOrWhiteSpace(text)) { await SendJsonAsync(new { type = "done" }, ct); return; }
             conversationLog.Add("stt", text);
+            // музыкальные потоки не проходят через сервер. клиент получает ссылку и воспроизводит её сам.
+            var normalized = text.Trim();
+            var match = System.Text.RegularExpressions.Regex.Match(normalized,
+                @"^(?:включи|поставь|запусти)\s+(?:радио\s+)?(.+)$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success && (normalized.Contains("радио", StringComparison.OrdinalIgnoreCase)))
+            {
+                string station = match.Groups[1].Value.Trim();
+                var stations = System.Text.Json.JsonSerializer.SerializeToElement(await radioBrowser.SearchAsync(station, ct));
+                if (stations.GetArrayLength() > 0)
+                {
+                    var item = stations[0];
+                    string url = item.GetProperty("url").GetString() ?? "";
+                    string title = item.GetProperty("name").GetString() ?? station;
+                    await SendJsonAsync(new { type = "play_media", url, title, source = "radio_browser" }, ct);
+                    string answer = "Включаю радио " + title;
+                    conversationLog.Add("llm", answer);
+                    await SendJsonAsync(new { type = "text", delta = answer }, ct);
+                    await SendJsonAsync(new { type = "done" }, ct);
+                    return;
+                }
+            }
             history.Add(new ChatMessage("user", text));
             await SendJsonAsync(new { type = "transcript", text }, ct);
             var segmenter = new SentenceSegmenter();
