@@ -49,6 +49,7 @@ public partial class MainWindow : Window
             {
                 _llmAnswer.Clear();
                 _speaker.EndSpeech();
+                _upload.Reset();
                 _upload.QueueWake(word);
                 _gate.Activate();
                 StateText.Text = "Слушаю команду";
@@ -226,6 +227,8 @@ public partial class MainWindow : Window
         if (!_socket.Connected) { Log("сначала подключитесь к серверу"); return; }
         _speaker.EndSpeech();
         _llmAnswer.Clear();
+        _upload.Reset();
+        _upload.Cancel();
         _gate.Activate();
         StateText.Text = "Слушаю команду";
     }
@@ -255,6 +258,7 @@ public partial class MainWindow : Window
         if (text.Length == 0 || !_socket.Connected) return;
         RequestText.Clear();
         _gate.Stop();
+        _upload.Reset();
         _upload.QueueText(text);
         StateText.Text = "LLM формирует ответ";
     }
