@@ -107,11 +107,11 @@ class Handler(BaseHTTPRequestHandler):
             # Greedy sampling is the strictest available setting, but can affect naturalness.
             generate_options = {
                 "do_sample": generation_mode != "greedy",
-                "temperature": temperature,
-                "top_p": top_p,
-                "top_k": top_k,
                 "repetition_penalty": repetition_penalty,
             }
+            if generation_mode != "greedy":
+                generate_options.update(
+                    temperature=temperature, top_p=top_p, top_k=top_k)
             if "VoiceDesign" in name:
                 if len(instruction) < 8 or len(instruction) > 1200:
                     self.reply(400, {"error": "VoiceDesign requires a voice description"})
