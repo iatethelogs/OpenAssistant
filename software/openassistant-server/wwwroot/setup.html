@@ -8,52 +8,48 @@
   <link rel="stylesheet" href="/setup.css">
 </head>
 <body>
-  <div class="ambient" aria-hidden="true">
-    <div class="ambient-circle one"></div><div class="ambient-circle two"></div>
-    <div class="ambient-grid"></div><div class="ambient-glow"></div>
-  </div>
   <div class="shell">
     <header class="header">
-      <a class="logo" href="/"><span class="logo-mark">OA</span><span>OpenAssistant<small>Настройка сервера</small></span></a>
+      <a class="logo" href="/"><span class="logo-mark">OA</span><span>OpenAssistant<small>Настройка моделей</small></span></a>
       <div class="top-actions">
-        <span class="connection"><span class="dot" id="dot"></span><span id="serverState">Проверка соединения</span></span>
-        <a href="/logs.html">Журнал</a>
+        <span class="connection"><span class="dot" id="dot"></span><span id="serverState">Подключение…</span></span>
+        
         <a href="/" class="back-link">Закрыть <span>×</span></a>
       </div>
     </header>
 
     <div class="wizard-head">
-      <span class="section-label">НАСТРОЙКА OPENASSISTANT</span>
+      <span class="section-label">Настройка моделей</span>
       <div class="steps" aria-label="Этапы настройки">
-        <button class="step current" data-step="llm" type="button"><span class="step-num">1</span><b>Языковая модель</b></button>
-        <span class="connector"></span>
-        <button class="step" data-step="stt" type="button"><span class="step-num">2</span><b>Распознавание</b></button>
-        <span class="connector"></span>
-        <button class="step" data-step="tts" type="button"><span class="step-num">3</span><b>Синтез речи</b></button><span class="connector"></span><button class="step" data-step="music" type="button"><span class="step-num">4</span><b>Музыка</b></button>
+        <button class="step current" data-step="llm" type="button"><b>Языковая модель</b></button>
+        
+        <button class="step" data-step="stt" type="button"><b>Распознавание</b></button>
+        
+        <button class="step" data-step="tts" type="button"><b>Синтез речи</b></button><button class="step" data-step="music" type="button"><b>Музыка</b></button>
       </div>
     </div>
 
     <div class="workspace">
       <section class="section active" id="llm">
         <div class="intro">
-          <div class="eyebrow">01 / ЯЗЫКОВАЯ МОДЕЛЬ</div>
+          
           <h1>Выбор модели</h1>
-          <p>Выберите модель и параметры запуска. После установки проверьте её ответ и производительность.</p>
+          
         </div>
 
         <div class="panel">
           <div class="card">
-            <div class="card-heading"><div><h2 class="card-title">Модели</h2><p class="card-sub">Варианты для одного GPU с 8 ГБ памяти. Формат Q8_0.</p></div><span class="muted-tag">Локальный запуск</span></div>
+            <div class="card-heading"><div><h2 class="card-title">Языковые модели · Q8_0</h2></div></div>
             <div id="llmModels" class="models"></div>
-            <details class="custom-model"><summary>Использовать собственную модель</summary><label for="customModelUrl">Ссылка Hugging Face на репозиторий GGUF или отдельный файл</label><input id="customModelUrl" type="url" placeholder="https://huggingface.co/author/model-GGUF"><p>При выборе ссылки модель из списка игнорируется.</p></details>
-            <div class="options-heading"><h3>Параметры запуска</h3><span class="muted">Рекомендуемые значения выбраны</span></div>
+            <details class="custom-model"><summary>Использовать собственную модель</summary><label for="customModelUrl">Ссылка Hugging Face на репозиторий GGUF или отдельный файл</label><input id="customModelUrl" type="url" placeholder="https://huggingface.co/author/model-GGUF"></details>
+            <div class="options-heading"><h3>Параметры запуска</h3></div>
             <div class="guided-options">
               <div class="option"><label for="gpuSelect">Видеокарта</label><select id="gpuSelect"><option value="">Автоматический выбор</option></select></div>
               <div class="option"><label for="contextSelect">Контекст</label><select id="contextSelect"><option value="4096" selected>4096 токенов</option><option value="8192">8192 токенов</option><option value="16384">16384 токенов</option></select></div>
               <div class="option"><label for="temperatureSelect">Температура</label><select id="temperatureSelect"><option value="0.3">0.3</option><option value="0.5" selected>0.5</option><option value="0.7">0.7</option><option value="1">1.0</option></select></div>
             </div>
             <div class="buttonrow">
-              <p id="gpuInfo">Проверяем доступные GPU…</p>
+              <p id="gpuInfo">Загрузка GPU…</p>
               <button class="primary" id="startLlm" type="button">Установить и проверить <span>↗</span></button>
             </div>
           </div>
@@ -61,9 +57,9 @@
           <div class="progress-card" id="progressLlm">
             <div class="progress-main"><div class="ring" id="ringLlm"></div><div><h3 id="titleLlm">Подготовка</h3><p id="descLlm">Ожидаем ответ сервера</p></div><span class="progress-stage" id="stageLlm">—</span></div>
             <div class="bar"><div id="barLlm"></div></div>
-            <div class="progress-footer"><span>Ход установки</span><span id="bytesLlm">—</span></div>
+            <div class="progress-footer"><span>Прогресс</span><span id="bytesLlm">—</span></div>
             <div class="install-steps" id="stepsLlm"></div>
-            <details class="log-details" open><summary>Подробный журнал установки <span class="chevron">⌄</span></summary><pre id="logsLlm" class="install-log">Ожидание…</pre></details>
+            <details class="log-details" open><summary>Журнал <span class="chevron">⌄</span></summary><pre id="logsLlm" class="install-log">Ожидание…</pre></details>
           </div>
 
           <div class="result" id="resultLlm">
@@ -78,12 +74,12 @@
       </section>
 
       <section class="section" id="stt">
-        <div class="intro"><div class="eyebrow">02 / РАСПОЗНАВАНИЕ</div><h1>Распознавание речи</h1><p>Установите модель распознавания, затем сделайте короткую запись и проверьте результат.</p></div>
+        <div class="intro"><h1>Распознавание речи</h1></div>
         <div class="panel"><div class="card">
-          <div class="card-heading"><div><h2 class="card-title">Движок распознавания</h2><p class="card-sub">Обработка речи выполняется на вашем сервере.</p></div></div>
+          <div class="card-heading"><div><h2 class="card-title">Движок распознавания</h2></div></div>
           <div id="sttModels" class="models"></div>
           <div class="guided-options single"><div class="option"><label for="sttGpu">Видеокарта для распознавания</label><select id="sttGpu"><option value="">Автоматический выбор</option><option value="cpu">CPU</option></select></div></div>
-          <div class="buttonrow"><p>Микрофон доступен при открытии панели через localhost или HTTPS.</p><button class="primary" type="button" id="startStt">Установить и запустить <span>↗</span></button></div>
+          <div class="buttonrow"><p></p><button class="primary" type="button" id="startStt">Установить и запустить <span>↗</span></button></div>
         </div>
         <div class="progress-card" id="progressStt">
           <div class="progress-main"><div class="ring" id="ringStt"></div><div><h3 id="titleStt">Подготовка</h3><p id="descStt">Ожидаем ответ сервера</p></div><span class="progress-stage" id="stageStt">—</span></div>
@@ -99,13 +95,13 @@
       </section>
 
       <section class="section" id="tts">
-        <div class="intro"><div class="eyebrow">03 / СИНТЕЗ РЕЧИ</div><h1>Синтез речи</h1><p>Выберите движок, настройте голос, прослушайте результат и при необходимости измените настройки.</p></div>
+        <div class="intro"><h1>Синтез речи</h1></div>
         <div class="panel"><div class="card">
-          <div class="card-heading"><div><h2 class="card-title">Модель синтеза</h2><p class="card-sub">Готовые голоса или формирование голоса по описанию.</p></div></div>
+          <div class="card-heading"><div><h2 class="card-title">Модель синтеза</h2></div></div>
           <div id="ttsModels" class="models"></div>
           <div id="ttsChoiceHelp" class="tts-capabilities">Выберите вариант синтеза. Возможности настройки голоса зависят от модели.</div>
           <div class="guided-options single"><div class="option"><label for="ttsGpu">Видеокарта для синтеза</label><select id="ttsGpu"><option value="">Автоматический выбор</option><option value="cpu">CPU</option></select></div></div>
-          <div class="buttonrow"><p>VoiceDesign требует больше видеопамяти, чем CustomVoice.</p><button class="primary" id="startTts" type="button">Установить и запустить <span>↗</span></button></div>
+          <div class="buttonrow"><p></p><button class="primary" id="startTts" type="button">Установить и запустить <span>↗</span></button></div>
         </div>
         <div class="progress-card" id="progressTts">
           <div class="progress-main"><div class="ring" id="ringTts"></div><div><h3 id="titleTts">Подготовка</h3><p id="descTts">Ожидаем ответ сервера</p></div><span class="progress-stage" id="stageTts">—</span></div>
@@ -127,7 +123,7 @@
       </section>
 
       <section class="section" id="music">
-        <div class="intro"><div class="eyebrow">04 / МУЗЫКА</div><h1>Музыкальный сервис</h1><p>Подключите аккаунт Яндекс Музыки или пропустите этот шаг. Сделать это можно и позже.</p></div>
+        <div class="intro"><h1>Музыкальный сервис</h1></div>
         <div class="panel"><div class="card">
           <div class="card-heading"><div><h2 class="card-title">Яндекс Музыка</h2><p id="setupMusicState" class="card-sub">Проверка подключения…</p></div></div>
           <div class="button-row"><button id="setupMusicLogin" class="primary" type="button">Подключить аккаунт</button><button id="setupMusicSkip" class="secondary" type="button">Пропустить</button></div>
@@ -137,7 +133,7 @@
       </section>
 
       <section class="section" id="complete">
-        <div class="complete-panel"><div class="complete-symbol">✓</div><h1>Настройка завершена</h1><p>OpenAssistant подготовлен для работы. Подключение колонок выполняется отдельно в разделе устройств.</p>
+        <div class="complete-panel"><div class="complete-symbol">✓</div><h1>Настройка завершена</h1><p>Модели установлены. Устройства подключаются в разделе «Устройства».</p>
         <div class="inline-actions center"><a href="/" class="primary">Перейти на главную <span>→</span></a><a class="secondary" href="/chat.html">Проверить диалог</a></div></div>
       </section>
     </div>

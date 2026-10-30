@@ -322,6 +322,45 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { files = []; }
         return new { jobs, files, root = Root, hasToken = File.Exists(TokenPath) };
     }
+    /// <summary>Ограниченное удаление конкретного GGUF из управляемого хранилища.</summary>
+    public Task<object> DeleteWeightAsync(string path, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException("Файл не выбран");
+        string root = Path.GetFullPath(Root);
+        string full = Path.GetFullPath(path);
+        if (!full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+            !full.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
+            throw new ArgumentException("Можно удалить только загруженный файл GGUF");
+        // Защита от симлинков, в том числе промежуточных каталогов.
+        for (string? parent = full; parent is not null &&
+             parent.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+             parent = Path.GetDirectoryName(parent))
+        {
+            if ((File.GetAttributes(parent) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidOperationException("Символические ссылки недопустимы");
+        }
+        lock (_sync)
+        {
+            if (_jobs.Values.Any(job => (job.State is "queued" or "downloading") &&
+                full.StartsWith(Path.GetFullPath(job.Folder) + Path.DirectorySeparatorChar, StringComparison.Ordinal)))
+                throw new InvalidOperationException("Сначала дождитесь завершения загрузки");
+            long bytes = new FileInfo(full).Length;
+            File.Delete(full);
+            string? folder = Path.GetDirectoryName(full);
+            while (folder is not null &&
+                folder.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            {
+                if (Directory.EnumerateFileSystemEntries(folder).Any()) break;
+                Directory.Delete(folder);
+                folder = Path.GetDirectoryName(folder);
+            }
+            logger.LogInformation("Deleted downloaded GGUF {Name}", Path.GetFileName(full));
+            return Task.FromResult<object>(new { deleted = true, path = full, bytes });
+        }
+    }
+
     public void Dispose()
     {
         lock (_sync) foreach (var job in _jobs.Values)

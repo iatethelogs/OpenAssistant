@@ -7,45 +7,39 @@
 <body>
 <div class="layout">
 <aside class="sidebar">
- <a class="brand" href="/"><span class="brand-icon">OA</span><span><b>OpenAssistant</b><small>ЛОКАЛЬНЫЙ СЕРВЕР</small></span></a>
- <div class="nav-title">УПРАВЛЕНИЕ</div>
+ <a class="brand" href="/"><span class="brand-icon">OA</span><span><b>OpenAssistant</b><small>Сервер управления</small></span></a>
+ <div class="nav-title">РАЗДЕЛЫ</div>
  <nav id="navigation">
-  <button type="button" class="nav-item active" data-view="overview"><span class="symbol">◈</span>Обзор системы</button>
+  <button type="button" class="nav-item active" data-view="overview"><span class="symbol">◈</span>Обзор</button>
   <button type="button" class="nav-item" data-view="settings"><span class="symbol">☷</span>Настройки ассистента</button>
   <button type="button" class="nav-item" data-view="tests"><span class="symbol">◉</span>Проверка работы</button>
-  <button type="button" class="nav-item" data-view="devices"><span class="symbol">▣</span>Подключение устройства</button>
+  <button type="button" class="nav-item" data-view="devices"><span class="symbol">▣</span>Устройства</button>
   <button type="button" class="nav-item" data-view="integrations"><span class="symbol">⌘</span>Интеграции</button>
  </nav>
- <div class="nav-title secondary-title">ДОПОЛНИТЕЛЬНО</div>
+ <div class="nav-title secondary-title">ИНСТРУМЕНТЫ</div>
  <nav class="nav-links">
-  <button type="button" class="nav-item" data-view="models"><span class="symbol">▤</span>Модели и загрузки</button>
+  <button type="button" class="nav-item" data-view="models"><span class="symbol">▤</span>Модели</button>
   <button type="button" class="nav-item" data-view="chat"><span class="symbol">◌</span>Диалог</button>
   <button type="button" class="nav-item" data-view="media"><span class="symbol">♫</span>Музыка и радио</button>
   <button type="button" class="nav-item" data-view="events"><span class="symbol">◷</span>События</button>
-  <button type="button" class="nav-item" data-view="logs"><span class="symbol">≡</span>Журнал сервера</button>
+  <button type="button" class="nav-item" data-view="logs"><span class="symbol">≡</span>Журнал</button>
  </nav>
  <div class="sidebar-status"><span><strong>OpenAssistant</strong><small id="sideStatus">Соединение с сервером</small></span></div>
 </aside>
 <main class="main">
  <header class="topbar">
   <div class="breadcrumb"><span>OpenAssistant</span><span class="slash">/</span><strong id="pageName">Обзор системы</strong></div>
-  <div class="top-actions"><span id="serverChip" class="chip">Проверка соединения</span><a href="/setup.html" class="button primary">Мастер настройки <span>↗</span></a></div>
+  <div class="top-actions"><span id="serverChip" class="chip">Соединение…</span><a href="/setup.html" class="button primary">Настроить модели</a></div>
  </header>
 
  <section class="view active" id="overview">
-  <div class="hero">
-   <div class="hero-copy"><div class="eyebrow">ЛОКАЛЬНЫЙ СЕРВЕР</div>
-    <h1>OpenAssistant</h1>
-    <p>Панель управления моделями, голосом и устройствами.</p>
-    <div class="actions"><a href="/setup.html" class="button light">Первоначальная настройка <span>↗</span></a><button type="button" class="button ghost" data-view="tests">Проверить работу</button></div>
-   </div>
-  </div>
+  <div class="page-title overview-title"><div><h1>Обзор</h1><p>Состояние моделей и оборудования</p></div><div class="overview-tools"><button type="button" class="button secondary" data-view="models">Модели</button><button type="button" class="button secondary" data-view="tests">Диагностика</button></div></div>
   <div class="section-heading"><h2>Состояние компонентов</h2><span id="updatedAt" class="minor">Обновление…</span></div>
   <div class="service-grid">
-   <article class="service"><div class="service-head"><div class="service-icon">✦</div><span id="llmFlag" class="state-tag">Проверка</span></div><div class="service-type">LLM · Языковая модель</div><div id="llmStatus" class="service-value">—</div><div id="llmInfo" class="service-caption">Ожидаем API</div></article>
-   <article class="service"><div class="service-head"><div class="service-icon">◌</div><span id="sttFlag" class="state-tag">Проверка</span></div><div class="service-type">STT · Распознавание</div><div id="sttStatus" class="service-value">—</div><div id="sttInfo" class="service-caption">Ожидаем API</div></article>
-   <article class="service"><div class="service-head"><div class="service-icon">◖</div><span id="ttsFlag" class="state-tag">Проверка</span></div><div class="service-type">TTS · Синтез речи</div><div id="ttsStatus" class="service-value">—</div><div id="ttsInfo" class="service-caption">Ожидаем API</div></article>
-   <article class="service"><div class="service-head"><div class="service-icon">▣</div><span class="state-tag neutral">WebSocket</span></div><div class="service-type">Подключённые устройства</div><div id="devicesCount" class="service-value">—</div><div class="service-caption">Активные соединения</div></article>
+   <article class="service"><div class="service-head"><span id="llmFlag" class="state-tag">Проверка</span></div><div class="service-type">LLM · Языковая модель</div><div id="llmStatus" class="service-value">—</div><div id="llmInfo" class="service-caption">Ожидаем API</div></article>
+   <article class="service"><div class="service-head"><span id="sttFlag" class="state-tag">Проверка</span></div><div class="service-type">STT · Распознавание</div><div id="sttStatus" class="service-value">—</div><div id="sttInfo" class="service-caption">Ожидаем API</div></article>
+   <article class="service"><div class="service-head"><span id="ttsFlag" class="state-tag">Проверка</span></div><div class="service-type">TTS · Синтез речи</div><div id="ttsStatus" class="service-value">—</div><div id="ttsInfo" class="service-caption">Ожидаем API</div></article>
+   <article class="service"><div class="service-head"><span class="state-tag neutral">WebSocket</span></div><div class="service-type">Подключённые устройства</div><div id="devicesCount" class="service-value">—</div><div class="service-caption">Активные соединения</div></article>
   </div>
   <div class="overview-grid">
    <article class="panel">
@@ -53,12 +47,12 @@
     <div id="gpus" class="gpu-list"><p class="muted">Получаем данные NVIDIA…</p></div>
    </article>
    <article class="panel">
-    <div class="panel-heading"><div><h2>Быстрые действия</h2><p>Частые операции</p></div></div>
+    <div class="panel-heading"><div><h2>Действия</h2></div></div>
     <div class="quick-actions">
-      <button type="button" data-view="tests"><span class="quick-icon purple">✦</span><span><b>Проверить модель</b><small>Скорость ответа и синтез речи</small></span><span>↗</span></button>
-      <a href="/setup.html"><span class="quick-icon blue">↓</span><span><b>Установить модели</b><small>Пошаговый мастер настройки</small></span><span>↗</span></a>
-      <button type="button" data-view="devices"><span class="quick-icon teal">▣</span><span><b>Подключить устройство</b><small>Отдельно от настройки сервера</small></span><span>↗</span></button>
-      <button type="button" data-view="logs"><span class="quick-icon orange">≡</span><span><b>Журнал событий</b><small>Сообщения и диагностика</small></span><span>↗</span></button>
+      <button type="button" data-view="tests"><span><b>Проверить модель</b></span></button>
+      <a href="/setup.html"><span><b>Установить модели</b></span></a>
+      <button type="button" data-view="devices"><span><b>Подключить устройство</b></span></button>
+      <button type="button" data-view="logs"><span><b>Журнал событий</b></span></button>
     </div>
    </article>
   </div>
@@ -66,7 +60,7 @@
  </section>
 
  <section class="view" id="settings">
-   <div class="page-title"><div class="eyebrow">НАСТРОЙКИ</div><h1>Поведение ассистента</h1><p>Простые настройки OpenAssistant. Имя и параметры каждой колонки будут задаваться при её подключении.</p></div>
+   <div class="page-title"><h1>Поведение ассистента</h1></div>
    <form id="settingsForm" class="panel settings-panel">
     <div class="panel-heading"><div><h2>Системная инструкция</h2><p>Определяет поведение языковой модели</p></div></div>
     <label for="prompt">Промпт</label><textarea id="prompt" rows="9" maxlength="16000"></textarea>
@@ -82,7 +76,7 @@
  </section>
 
  <section class="view" id="tests">
-   <div class="page-title"><div class="eyebrow">ДИАГНОСТИКА</div><h1>Проверка работы</h1><p>Тесты обращаются к действительно запущенным моделям, а не имитируют их работу.</p></div>
+   <div class="page-title"><h1>Проверка работы</h1></div>
    <div class="test-grid">
      <article class="panel"><div class="panel-heading"><div><h2>Языковая модель</h2><p>Проверьте ответ и время первого токена</p></div></div>
       <label for="testPrompt">Ваш запрос</label><textarea id="testPrompt" rows="4">Кратко объясни, для чего нужен голосовой ассистент.</textarea>
@@ -102,7 +96,7 @@
 </section>
 
  <section class="view" id="devices">
-    <div class="page-title"><div class="eyebrow">УСТРОЙСТВА</div><h1>Подключение устройства</h1><p>Устройства добавляются отдельно, после настройки OpenAssistant. Никакая колонка, включая «Мартин», не создаётся автоматически.</p></div>
+    <div class="page-title"><h1>Подключение устройства</h1></div>
     <div class="device-grid">
      <article class="panel"><div class="panel-heading"><div><h2>Подключить новую колонку</h2><p>Адрес WebSocket и ключ доступа</p></div></div>
        <label for="serverHost">IP-адрес Linux-сервера в сети устройства</label><input id="serverHost" placeholder="192.168.1.10">
@@ -122,7 +116,7 @@
  </section>
 
  <section class="view" id="integrations">
-    <div class="page-title"><div class="eyebrow">ИНТЕГРАЦИИ</div><h1>Сервисы и навыки</h1><p>Подключайте музыкальные сервисы, умный дом и навыки LLM по мере необходимости.</p></div>
+    <div class="page-title"><h1>Сервисы и навыки</h1></div>
     <article class="panel"><div class="panel-heading"><div><h2>Разрешённые инструменты LLM</h2><p>Выберите, к каким действиям ассистент может обращаться</p></div></div>
       <div id="skillsList" class="skills-list"><p class="muted">Загружаем навыки…</p></div><div class="form-footer"><span class="minor">Изменяющие состояние устройства инструменты отключены по умолчанию.</span><button id="saveSkills" type="button" class="button primary">Сохранить разрешения</button></div>
     </article>
@@ -144,7 +138,7 @@
 
 
  <section class="view" id="models">
-  <div class="page-title"><div class="eyebrow">МОДЕЛИ</div><h1>Модели и загрузки</h1><p>Управление локальными движками и хранилищем моделей.</p></div>
+  <div class="page-title"><h1>Модели и загрузки</h1><p>Управление локальными движками и хранилищем моделей.</p></div>
   <div class="service-grid three" id="modelCards"></div>
   <div class="overview-grid wide">
     <article class="panel"><div class="panel-heading"><div><h2>Загрузка модели</h2><p>Hugging Face</p></div></div>
@@ -167,7 +161,7 @@
  </section>
 
  <section class="view" id="chat">
-  <div class="page-title"><div class="eyebrow">ДИАЛОГ</div><h1>Чат с ассистентом</h1></div>
+  <div class="page-title"><h1>Чат с ассистентом</h1></div>
   <div class="panel"><div class="button-row"><button id="chatConnect" class="button secondary" type="button">Подключиться</button><span id="chatStatus" class="minor">Отключено</span></div>
    <div id="chatHistory" class="chat-history" aria-live="polite"></div>
    <div class="chat-compose"><input id="chatInput" placeholder="Напишите сообщение"><button id="chatSend" type="button" class="button primary" disabled>Отправить</button><button id="chatCancel" type="button" class="button secondary" disabled>Стоп</button></div>
@@ -176,19 +170,19 @@
  </section>
 
  <section class="view" id="media">
-  <div class="page-title"><div class="eyebrow">МУЗЫКА</div><h1>Музыка и радио</h1></div>
+  <div class="page-title"><h1>Музыка и радио</h1></div>
   <div class="test-grid"><article class="panel"><h2>Поиск радио</h2><label for="radioQuery">Станция</label><div class="button-row"><input id="radioQuery" placeholder="Название станции"><button id="searchRadio" class="button secondary">Найти</button></div><div id="radioResults" class="search-results"></div></article>
   <article class="panel"><h2>Яндекс Музыка</h2><label for="musicQuery">Название или исполнитель</label><div class="button-row"><input id="musicQuery" placeholder="Поиск композиции"><button id="searchMusic" class="button secondary">Найти</button></div><div id="musicResults" class="search-results"></div></article></div>
   <div class="panel extra-panel"><h2>Прослушивание</h2><audio id="mediaPlayer" controls></audio></div>
  </section>
 
  <section class="view" id="events">
-  <div class="page-title"><div class="eyebrow">СОБЫТИЯ</div><h1>История запросов</h1></div>
+  <div class="page-title"><h1>История запросов</h1></div>
   <div class="panel"><div class="button-row"><button id="refreshEvents" class="button secondary">Обновить</button></div><pre id="eventsOutput" class="output-lines">Событий нет</pre></div>
  </section>
 
  <section class="view" id="logs">
-  <div class="page-title"><div class="eyebrow">ДИАГНОСТИКА</div><h1>Журнал сервера</h1></div>
+  <div class="page-title"><h1>Журнал сервера</h1></div>
   <div class="panel"><div class="button-row"><label for="logLevel">Уровень</label><select id="logLevel"><option value="">Все</option><option value="Information">Информация</option><option value="Warning">Предупреждения</option><option value="Error">Ошибки</option></select><button id="refreshLogs" class="button secondary">Обновить</button></div><pre id="serverLogs" class="output-lines">Загрузка…</pre></div>
  </section>
  <footer>OpenAssistant · <a href="/setup.html">Мастер установки</a></footer>

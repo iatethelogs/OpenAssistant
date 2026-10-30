@@ -67,7 +67,8 @@ class Handler(BaseHTTPRequestHandler):
                 path = file.name
                 file.write(audio)
             try:
-                text = model.transcribe(path)
+                result = model.transcribe(path)
+            text = result.text if hasattr(result, "text") else str(result)
             finally:
                 os.unlink(path)
             self.reply(200, {"text": text})

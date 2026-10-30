@@ -14,7 +14,7 @@ builder.Logging.ClearProviders();
 builder.Logging.AddProvider(webLogs);
 builder.Services.AddSingleton(webLogs);
 builder.Services.AddSingleton<GuidedSetupService>();
-builder.Services.AddHostedService<ModelAutoStartService>();
+// Models are started only explicitly by the operator or the setup job.
 builder.Configuration.AddJsonFile("settings.local.json", optional: true, reloadOnChange: true);
 builder.Services.AddSingleton<SettingsStore>();
 builder.Services.AddSingleton<ModelProcessManager>();
@@ -201,6 +201,16 @@ app.MapPost("/api/models/downloads", async (
     try { return Results.Ok(await downloads.StartAsync(request, ct)); }
     catch (Exception ex) when (ex is ArgumentException or InvalidDataException or
         InvalidOperationException or HttpRequestException or System.Text.Json.JsonException)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapPost("/api/models/weights/delete", async (
+    HttpContext ctx, ModelWeightDeleteInput input, ModelProcessManager processes,
+    ModelDownloadManager downloads, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await processes.DeleteDownloadedWeightAsync(input.Path, downloads, ct)); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
+        IOException or UnauthorizedAccessException)
     { return Results.BadRequest(new { error = ex.Message }); }
 });
 app.MapPost("/api/models/downloads/{id:guid}/cancel", (
@@ -398,3 +408,5 @@ public sealed record YandexAuthPollRequest(string Session);
 public sealed record HomeAssistantConnectRequest(string Url, string Token);
 
 public sealed record HfTokenInput(string Token);
+
+public sealed record ModelWeightDeleteInput(string Path);

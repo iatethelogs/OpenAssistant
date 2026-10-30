@@ -19,6 +19,7 @@ public sealed class ModelProcessManager(
     private sealed class Managed
     {
         public required Process Process { get; init; }
+        public required string ModelPath { get; init; }
         public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
         public Queue<string> Log { get; } = new();
     }
@@ -65,7 +66,15 @@ public sealed class ModelProcessManager(
             Validate(role, profile, true);
             if (_running.TryGetValue(role, out var old))
             {
-                if (!old.Process.HasExited) return new { role, running = true, pid = old.Process.Id };
+                if (!old.Process.HasExited)
+                {
+                    string expected = string.IsNullOrWhiteSpace(profile.ModelPath) ? "" : Path.GetFullPath(profile.ModelPath);
+                    if (string.Equals(expected, old.ModelPath, StringComparison.Ordinal))
+                        return new { role, running = true, pid = old.Process.Id };
+                    old.Process.Kill(entireProcessTree: true);
+                    await old.Process.WaitForExitAsync(ct);
+                    Append(old, "SYS", "Previous model stopped before switching weights");
+                }
                 old.Process.Dispose();
                 _running.Remove(role);
             }
@@ -84,7 +93,7 @@ public sealed class ModelProcessManager(
             foreach (var (key, value) in profile.Environment)
                 start.Environment[key] = Expand(value, model);
             var process = Process.Start(start) ?? throw new InvalidOperationException("Движок не запустился");
-            var managed = new Managed { Process = process };
+            var managed = new Managed { Process = process, ModelPath = model };
             _running[role] = managed;
             process.OutputDataReceived += (_, args) => Append(managed, "OUT", args.Data);
             process.ErrorDataReceived += (_, args) => Append(managed, "ERR", args.Data);
@@ -130,6 +139,48 @@ public sealed class ModelProcessManager(
         finally { _guard.Release(); }
     }
 
+    /// <summary>Удаляет завершённый GGUF, если он не используется запущенным процессом.</summary>
+    public async Task<object> DeleteDownloadedWeightAsync(
+        string file, ModelDownloadManager downloads, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(file)) throw new ArgumentException("Выберите файл");
+        string full = Path.GetFullPath(file);
+        await _guard.WaitAsync(ct);
+        try
+        {
+            if (_running.Values.Any(x => !x.Process.HasExited &&
+                    string.Equals(x.ModelPath, full, StringComparison.Ordinal)))
+                throw new InvalidOperationException("Остановите модель перед удалением весов");
+            var profiles = await ProfilesAsync(ct);
+            var result = await downloads.DeleteWeightAsync(full, ct);
+            bool changed = false;
+            foreach (var profile in profiles.Values)
+            {
+                if (!string.IsNullOrWhiteSpace(profile.ModelPath) &&
+                    string.Equals(Path.GetFullPath(profile.ModelPath), full, StringComparison.Ordinal))
+                {
+                    profile.ModelPath = "";
+                    changed = true;
+                }
+            }
+            if (changed)
+            {
+                string temp = ConfigPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(profiles,
+                        new JsonSerializerOptions { WriteIndented = true }), ct);
+                    if (OperatingSystem.IsLinux())
+                        File.SetUnixFileMode(temp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                    File.Move(temp, ConfigPath, true);
+                }
+                finally { if (File.Exists(temp)) File.Delete(temp); }
+            }
+            return result;
+        }
+        finally { _guard.Release(); }
+    }
+
     public async Task<object> RestartAsync(string role, CancellationToken ct)
     {
         await StopAsync(role, ct);
@@ -168,7 +219,7 @@ public sealed class ModelProcessManager(
                 string[] logs;
                 lock (managed.Log) logs = managed.Log.ToArray();
                 running[role] = new {
-                    running = live, pid = p.Id, exitCode = live ? (int?)null : p.ExitCode,
+                    running = live, pid = p.Id, modelPath = managed.ModelPath, exitCode = live ? (int?)null : p.ExitCode,
                     startedAt = managed.StartedAt, logs
                 };
             }
@@ -270,6 +321,8 @@ public sealed class ModelProcessManager(
     {
         ValidateRole(role);
         if (profile is null) throw new ArgumentException("Нет профиля");
+        if (role == "llm" && requireFiles && string.IsNullOrWhiteSpace(profile.ModelPath))
+            throw new ArgumentException("Сначала выберите модель для LLM");
         if (!Path.IsPathFullyQualified(profile.Executable) ||
             (requireFiles && !File.Exists(profile.Executable)))
             throw new ArgumentException("Не найден исполняемый файл Linux");

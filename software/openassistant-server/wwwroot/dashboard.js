@@ -38,13 +38,26 @@ const modelState={files:[],selected:new Set(),revision:"main"};
 function renderModelCards(){
  const box=el("modelCards");box.replaceChildren();
  for(const role of ["llm","stt","tts"]){
-  const current=state.models?.status?.running?.[role],apiState=state.models?.status?.api?.[role]?.state;
+  const current=state.models?.status?.running?.[role];
   const card=textNode("article","","service");const head=textNode("div",role.toUpperCase(),"service-type");
   const model=state.models?.profiles?.[role];
-  card.append(head,textNode("div",current?.running?"Запущен":"Остановлен","service-value"),textNode("div",model?.modelPath?.split("/").pop()||"Профиль не создан","service-caption"));
-  const b=textNode("button","Настроить","button secondary extra-gap");
-  b.onclick=()=>{el("profileRole").value=role;loadProfile()};
-  card.append(b);box.append(card);
+  const modelName=(current?.modelPath||model?.modelPath||"").split("/").pop();
+  card.append(head,textNode("div",current?.running?"Запущена":"Не запущена","service-value"),
+    textNode("div",modelName||"Модель не выбрана","service-caption"));
+  const actions=textNode("div","","model-card-actions");
+  const edit=textNode("button","Параметры","button secondary");
+  edit.onclick=()=>{el("profileRole").value=role;loadProfile();el("profileRole").scrollIntoView({behavior:"smooth",block:"center"})};
+  actions.append(edit);
+  if(current?.running){
+    const stop=textNode("button","Остановить","button secondary");
+    stop.onclick=busy(stop,async()=>{await api("/api/models/"+role+"/stop","POST");await refreshModels();toast("Процесс остановлен")});
+    actions.append(stop);
+  }else if(model?.modelPath){
+    const start=textNode("button","Запустить","button primary");
+    start.onclick=busy(start,async()=>{await api("/api/models/"+role+"/start","POST");await refreshModels()});
+    actions.append(start);
+  }
+  card.append(actions);box.append(card);
  }
 }
 function loadProfile(){
@@ -88,10 +101,21 @@ async function refreshModels(){
  }
  if(!box.children.length)box.textContent="Загрузок нет";
  const files=el("installedModels");files.replaceChildren();
- for(const item of (downloads.files||[]).slice(0,120)){
-  const row=textNode("button",item.split("/").slice(-3).join("/"),"file-select");
-  row.onclick=()=>{el("profileModel").value=item;toast("Файл выбран")};
-  files.append(row);
+ for(const item of (downloads.files||[]).filter(x=>x.toLowerCase().endsWith(".gguf")).slice(0,400)){
+  const row=textNode("div","","installed-row");
+  const name=textNode("span",item.split("/").slice(-3).join("/"),"installed-name");name.title=item;
+  const actions=textNode("div","","installed-actions");
+  const select=textNode("button","Выбрать","button secondary");
+  select.onclick=()=>{el("profileRole").value="llm";loadProfile();el("profileModel").value=item;
+    el("profileModel").scrollIntoView({behavior:"smooth",block:"center"});
+    toast("Модель выбрана. Сохраните профиль перед запуском.")};
+  const del=textNode("button","Удалить веса","button danger");
+  del.onclick=busy(del,async()=>{
+    if(!confirm("Удалить файл весов "+item.split("/").pop()+"? Это действие нельзя отменить."))return;
+    await api("/api/models/weights/delete","POST",{path:item});
+    await refreshModels();toast("Веса удалены")
+  });
+  actions.append(select,del);row.append(name,actions);files.append(row);
  }
  if(!files.children.length)files.textContent="Файлов пока нет";
 }

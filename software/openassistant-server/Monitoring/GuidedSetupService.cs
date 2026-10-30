@@ -229,21 +229,26 @@ public sealed class GuidedSetupService(
     }
     private async Task SetupLlmAsync(Job j, GuidedModelCatalog.Choice choice, string? gpu, int contextSize, double temperature, CancellationToken ct)
     {
-        Stage(j, "download", "Скачиваем " + choice.Name);
-        string selectedFile = choice.File;
-        if (string.IsNullOrWhiteSpace(selectedFile))
+        if (await processes.IsRunningAsync("llm", ct))
         {
-            var manifest = await downloads.InspectAsync(choice.Repo, "main", ct);
-            selectedFile = manifest.Files
-                .Where(x => x.Path.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)
-                    && x.Path.Contains("Q8_0", StringComparison.OrdinalIgnoreCase)
-                    && x.Size <= 10L * 1024 * 1024 * 1024)
-                .OrderByDescending(x => x.Path.Contains("Q8_0", StringComparison.OrdinalIgnoreCase))
-                .ThenByDescending(x => x.Size)
-                .Select(x => x.Path).FirstOrDefault()
-                ?? throw new InvalidOperationException("В репозитории не найден GGUF Q8_0 размером до 10 ГБ");
-            Output(j, "Выбран файл: " + selectedFile);
+            Stage(j, "prepare", "Останавливаем предыдущую LLM");
+            await processes.StopAsync("llm", ct);
         }
+        Stage(j, "download", "Скачиваем " + choice.Name);
+        // Каждую модель проверяем по текущему манифесту Hugging Face.
+        // Имя из каталога может измениться; никогда не скачиваем Q4 вместо Q8.
+        var manifest = await downloads.InspectAsync(choice.Repo, "main", ct);
+        var candidates = manifest.Files.Where(f =>
+            f.Path.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase) &&
+            f.Path.Contains("Q8_0", StringComparison.OrdinalIgnoreCase) &&
+            f.Size <= 10L * 1024 * 1024 * 1024).ToArray();
+        string selectedFile = candidates.FirstOrDefault(f =>
+            f.Path.Equals(choice.File, StringComparison.OrdinalIgnoreCase))?.Path
+            ?? candidates.OrderByDescending(f => f.Size).FirstOrDefault()?.Path
+            ?? throw new InvalidOperationException(
+                "В репозитории нет подходящего файла Q8_0. Выберите другую модель.");
+        Output(j, "Файл модели: " + selectedFile);
+
         var request = new ModelDownloadManager.DownloadRequest(choice.Repo, "main", [selectedFile]);
         using var result = JsonDocument.Parse(JsonSerializer.Serialize(await downloads.StartAsync(request, ct)));
         var id = result.RootElement.GetProperty("id").GetGuid();
@@ -385,6 +390,23 @@ public sealed class GuidedSetupService(
                 }
             }
         }
+        if (j.Role == "tts")
+        {
+            // Transformers 5.16+ изменил RoPE config, вызывая MimiConfig.rope_theta
+            // при загрузке весов Qwen3-TTS. Проверяем версию даже при наличии tts.ready.
+            Stage(j, "install", "Проверяем совместимость загрузчика Qwen3-TTS");
+            var check = "from importlib.metadata import version; assert version('transformers') == '5.15.1', version('transformers'); import qwen_tts, torch";
+            try { await RunCommandAsync(j, python, ["-c", check], env.ContentRootPath, ct, 45); }
+            catch (InvalidOperationException)
+            {
+                Output(j, "Устанавливаем совместимый transformers 5.15.1 без замены PyTorch");
+                await RunCommandAsync(j, python, ["-m", "pip", "install",
+                    "--break-system-packages", "--root-user-action=ignore", "--no-input",
+                    "--no-deps", "--force-reinstall", "transformers==5.15.1"],
+                    env.ContentRootPath, ct, 1200);
+                await RunCommandAsync(j, python, ["-c", check], env.ContentRootPath, ct, 60);
+            }
+        }
         Stage(j, "launch", "Запускаем сервис; веса будут загружены автоматически");
         string port = j.Role == "stt" ? "8016" : "8020";
         var profile = new ModelLaunchProfile {
@@ -470,7 +492,13 @@ public sealed class GuidedSetupService(
             catch (HttpRequestException) { }
             catch (TaskCanceledException) when (!ct.IsCancellationRequested) { }
             if (i > 3 && !await processes.IsRunningAsync(j.Role, ct))
-                throw new InvalidOperationException("Движок завершился при загрузке. Подробности в журнале процесса.");
+            {
+                var lines = await processes.ProcessLogsAsync(j.Role, ct);
+                var errors = lines.Where(x => x.Contains("] ERR:", StringComparison.Ordinal))
+                    .TakeLast(10).Select(x => x.Length > 600 ? x[..600] : x);
+                throw new InvalidOperationException("Движок завершился при загрузке: " +
+                    string.Join("\n", errors));
+            }
             await Task.Delay(2000, ct);
         }
         throw new TimeoutException("Модель не стала доступна по HTTP. Проверьте логи процесса в расширенных настройках.");
@@ -545,14 +573,22 @@ public sealed class GuidedSetupService(
     private async Task<bool> IsGpuFailureAsync(string role, CancellationToken ct)
     {
         string[] logs = await processes.ProcessLogsAsync(role, ct);
-        var tail = string.Join("\n", logs.TakeLast(45));
+        // SYS-строка "CUDA GPU" относится к метаданным и не означает ошибку GPU.
+        var tail = string.Join("\n", logs.Where(x => x.Contains("] ERR:", StringComparison.Ordinal))
+            .TakeLast(45));
         if (tail.Contains("ModuleNotFoundError", StringComparison.OrdinalIgnoreCase) ||
-            tail.Contains("ImportError", StringComparison.OrdinalIgnoreCase))
+            tail.Contains("ImportError", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("loading state_dict", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("Missing key(s)", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("Unexpected key(s)", StringComparison.OrdinalIgnoreCase))
             return false;
-        return tail.Contains("CUDA", StringComparison.OrdinalIgnoreCase) ||
-            tail.Contains("out of memory", StringComparison.OrdinalIgnoreCase) ||
+        return tail.Contains("CUDA error", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("CUDA out of memory", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("torch.OutOfMemoryError", StringComparison.OrdinalIgnoreCase) ||
             tail.Contains("no kernel image", StringComparison.OrdinalIgnoreCase) ||
-            tail.Contains("device-side assert", StringComparison.OrdinalIgnoreCase);
+            tail.Contains("device-side assert", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("CUDA driver", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("CUBLAS_STATUS", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<string?> ReadTorchVersionAsync(string python, CancellationToken ct)
