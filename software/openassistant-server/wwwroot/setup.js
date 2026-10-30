@@ -1,6 +1,6 @@
 "use strict";
 const el=id=>document.getElementById(id);
-const state={catalog:[],selected:{},jobs:{},step:"llm",pcm:null,voiceUrl:null,recordUrl:null,key:"",starting:{},shown:{},last:{}};
+const state={catalog:[],selected:{},jobs:{},step:"llm",pcm:null,voiceUrl:null,recordUrl:null,key:"",starting:{},shown:{},last:{},installed:[],voiceProfile:null};
 const captions={llm:"Интеллект",stt:"Слух",tts:"Голос"};
 const steps=["llm","stt","tts","music","complete"];
 function showError(message){alert(message)}
@@ -28,9 +28,17 @@ function modelCard(m){const b=document.createElement("button");b.type="button";b
  const foot=document.createElement("span");foot.className="foot";
  foot.textContent=m.quality;
  b.append(type,name,desc,foot);
+ if(state.installed.some(item=>item.role===m.role&&(
+   m.role==="stt" || (m.role==="tts"&&item.repo===m.repo) ||
+   (m.role==="llm"&&item.path?.includes("/"+m.repo+"/"))))){
+   const saved=document.createElement("span");saved.className="tag";saved.textContent="Уже скачана";b.append(saved);
+ }
  if(m.recommended){const label=document.createElement("span");label.className="tag";label.textContent="Рекомендуем";b.append(label)}
  b.onclick=()=>{state.selected[m.role]=m.id;renderCards(m.role);updateVoiceMode()};return b}
 function renderCards(role){const box=el(role+"Models");box.replaceChildren();for(const m of state.catalog.filter(x=>x.role===role)){const b=modelCard(m);if(state.selected[role]===m.id)b.classList.add("selected");box.append(b)}}
+async function refreshInstalled(){
+ try{const data=await api("/api/models/downloads");state.installed=data.installed||[];for(const role of ["llm","stt","tts"])renderCards(role)}catch{}
+}
 function updateButtons(){for(const role of ["llm","stt","tts"]){const b=el("start"+role.toUpperCase().slice(0,1)+role.slice(1));if(!b)continue;const status=state.jobs[role]?.status;b.disabled=status==="running";b.textContent=status==="ready"?"Установить другую модель":status==="running"?"Установка выполняется…":"Установить и проверить"}}
 async function start(role){if(state.starting[role]||state.jobs[role]?.status==="running")return;const modelId=state.selected[role];if(!modelId)throw Error("Сначала выберите модель");
  state.starting[role]=true;
@@ -94,6 +102,8 @@ function updateRole(role,job){
  if(job.status==="failed"){el("desc"+cap).textContent=job.error||"Проверьте технические подробности";updateButtons()}
  if(job.status==="ready"&&!state.shown[role]){state.shown[role]=true;el("result"+cap).classList.add("visible");if(role==="llm")llmResult(job);if(role==="stt")el("sttRecognized").textContent="Модель готова. Запишите тестовую фразу.";if(role==="tts")el("ttsMetrics").textContent="Первичная проверка завершена. Выберите голос и прослушайте результат.";}
  if(job.status==="ready")el("result"+cap).classList.add("visible");
+ if(job.status==="ready"&&!state.last[role+"cache"]){state.last[role+"cache"]=true;void refreshInstalled()}
+ if(job.status!=="ready")state.last[role+"cache"]=false;
 }
 function llmResult(job){let data={};try{data=JSON.parse(job.testResult||"{}")}catch{}
  el("answerLlm").textContent=data.text||"Модель успешно ответила на тестовый запрос";
@@ -180,10 +190,29 @@ el("transcribeStt").onclick=async()=>{
  }catch(e){el("sttRecognized").textContent="Ошибка: "+e.message}
  finally{btn.disabled=false}
 };
+function readVoiceProfile(){
+ const design=state.selected.tts?.includes("design")??false;
+ return {...state.voiceProfile,mode:design?"design":"custom",
+  speaker:el("voiceSelect").value,description:el("voiceDescription").value.trim(),
+  style:el("voiceStyle").value.trim(),generationMode:el("ttsGenerationMode").value,
+  seed:Number(el("ttsSeed").value),temperature:Number(el("ttsTemperature").value),
+  topP:Number(el("ttsTopP").value),topK:Number(el("ttsTopK").value),
+  repetitionPenalty:Number(el("ttsPenalty").value)};
+}
+async function saveVoiceProfile(){
+ state.voiceProfile=await api("/api/setup/voice","PUT",readVoiceProfile());
+ el("ttsSavedMessage").textContent="Настройки сохранены";
+ return state.voiceProfile;
+}
+el("ttsSaveVoice").onclick=async()=>{
+ const button=el("ttsSaveVoice");button.disabled=true;
+ try{await saveVoiceProfile()}catch(error){el("ttsSavedMessage").textContent=error.message}
+ finally{button.disabled=false}
+};
 el("testTts").onclick=async()=>{const b=el("testTts");b.disabled=true;el("ttsMetrics").textContent="Синтезируем выбранным голосом…";
  try{
  const design=state.selected.tts?.includes("design");
- await api("/api/setup/voice","PUT",{mode:design?"design":"custom",speaker:el("voiceSelect").value,description:el("voiceDescription").value.trim(),style:el("voiceStyle").value.trim()});
+ await saveVoiceProfile();
  const res=await fetch("/api/control/test/tts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:el("ttsPhrase").value,voice:state.selected.tts?.includes("design")?null:el("voiceSelect").value,model:null})});
  if(!res.ok){const d=await res.json().catch(()=>({}));throw Error(d.error||"Ошибка TTS")}
  const blob=await res.blob();if(state.voiceUrl)URL.revokeObjectURL(state.voiceUrl);state.voiceUrl=URL.createObjectURL(blob);
@@ -195,7 +224,20 @@ async function init(){try{
  state.catalog=await api("/api/setup/catalog");
  for(const role of ["llm","stt","tts"]){state.selected[role]=state.catalog.find(m=>m.role===role&&m.default)?.id;renderCards(role)}
  const profile=await api("/api/setup/voice").catch(()=>null);
- if(profile){el("voiceSelect").value=profile.speaker||"Ryan";el("voiceDescription").value=profile.description||el("voiceDescription").value;el("voiceStyle").value=profile.style||"";if(profile.mode==="design"){state.selected.tts="qwen-tts-fast-design";renderCards("tts")}}
+ if(profile){
+  state.voiceProfile=profile;
+  el("voiceSelect").value=profile.speaker||"Ryan";
+  el("voiceDescription").value=profile.description||el("voiceDescription").value;
+  el("voiceStyle").value=profile.style||"";
+  el("ttsGenerationMode").value=profile.generationMode||"seeded";
+  el("ttsSeed").value=profile.seed??42;
+  el("ttsTemperature").value=profile.temperature??0.75;
+  el("ttsTopP").value=profile.topP??0.9;
+  el("ttsTopK").value=profile.topK??40;
+  el("ttsPenalty").value=profile.repetitionPenalty??1.05;
+  if(profile.mode==="design"){state.selected.tts="qwen-tts-fast-design";renderCards("tts")}
+ }
+ await refreshInstalled();
  await poll();
  const gpu=await api("/api/models").catch(()=>null);const cards=gpu?.status?.gpus||[];
  const best=cards.slice().sort((a,b)=>(b.totalMiB-b.usedMiB)-(a.totalMiB-a.usedMiB))[0];
