@@ -9,14 +9,14 @@ namespace OpenAssistant.Server.Audio;
 public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<ServerOptions> settings)
 {
     /// <summary>отдаёт русскую речь gigaam через совместимый endpoint распознавания.</summary>
-    public async Task<string> TranscribeAsync(byte[] pcm, CancellationToken ct)
+    public async Task<string> TranscribeAsync(byte[] pcm, CancellationToken ct, string? modelOverride = null)
     {
         if (pcm.Length == 0) return "";
         using var form = new MultipartFormDataContent();
         using var wave = new ByteArrayContent(WaveWriter.Wrap(pcm, settings.CurrentValue.InputSampleRate));
         wave.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/wav");
         form.Add(wave, "file", "speech.wav");
-        form.Add(new StringContent(settings.CurrentValue.SttModel), "model");
+        form.Add(new StringContent(string.IsNullOrWhiteSpace(modelOverride) ? settings.CurrentValue.SttModel : modelOverride), "model");
         using var response = await clients.CreateClient("stt").PostAsync(
             settings.CurrentValue.SttUrl.TrimEnd('/') + "/v1/audio/transcriptions", form, ct);
         response.EnsureSuccessStatusCode();
@@ -25,13 +25,13 @@ public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<Se
     }
 
     /// <summary>запрашивает у qwen синтез фразы выбранным голосом и возвращает pcm16 mono.</summary>
-    public async Task<byte[]> SynthesizeAsync(string phrase, string? voice, int outputRate, CancellationToken ct)
+    public async Task<byte[]> SynthesizeAsync(string phrase, string? voice, int outputRate, CancellationToken ct, string? modelOverride = null)
     {
         var cfg = settings.CurrentValue;
         // контракт локального tts-адаптера: POST /synthesize, json -> audio/wav pcm16 mono.
         using var response = await clients.CreateClient("tts").PostAsJsonAsync(
             cfg.TtsUrl.TrimEnd('/') + "/synthesize",
-            new { text = phrase, model = cfg.TtsModel, voice = string.IsNullOrWhiteSpace(voice) ? cfg.TtsVoice : voice, language = cfg.TtsLanguage,
+            new { text = phrase, model = string.IsNullOrWhiteSpace(modelOverride) ? cfg.TtsModel : modelOverride, voice = string.IsNullOrWhiteSpace(voice) ? cfg.TtsVoice : voice, language = cfg.TtsLanguage,
                 sample_rate = outputRate }, ct);
         response.EnsureSuccessStatusCode();
         byte[] wav = await response.Content.ReadAsByteArrayAsync(ct);

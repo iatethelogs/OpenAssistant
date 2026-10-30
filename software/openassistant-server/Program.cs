@@ -13,6 +13,11 @@ builder.Configuration.AddJsonFile("settings.local.json", optional: true, reloadO
 builder.Services.AddSingleton<SettingsStore>();
 builder.Services.AddSingleton<ModelProcessManager>();
 builder.Services.AddSingleton<ModelDownloadManager>();
+builder.Services.AddSingleton<AgentToolService>();
+builder.Services.AddSingleton<AgentRunner>();
+builder.Services.AddSingleton<DiagnosticService>();
+builder.Services.AddSingleton<DeviceRegistry>();
+builder.Services.AddSingleton<SetupService>();
 builder.Services.AddHttpClient("model-health", c => c.Timeout = TimeSpan.FromSeconds(4));
 builder.Services.AddHttpClient("hf-metadata", c => c.Timeout = TimeSpan.FromSeconds(65));
 builder.Services.AddHttpClient("hf-download", c => c.Timeout = System.Threading.Timeout.InfiniteTimeSpan);
@@ -69,6 +74,84 @@ app.MapPost("/api/settings", async (HttpContext ctx, SettingsUpdate settings, Se
     catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 // Hugging Face: запуск задач скачивания не блокирует веб-запрос, весь прогресс доступен через polling.
+// Единая панель: skills, настройка оборудования и прямые benchmark-запросы к runtime.
+app.MapGet("/api/control/skills", async (HttpContext ctx, AgentToolService skills, CancellationToken ct) =>
+    localOnly(ctx) ? Results.Ok(await skills.ListAsync(ct)) : Results.StatusCode(403));
+app.MapPut("/api/control/skills", async (
+    HttpContext ctx, Dictionary<string, bool> enabled, AgentToolService skills, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await skills.SaveAsync(enabled, ct)); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapGet("/api/control/catalog", (HttpContext ctx) =>
+    localOnly(ctx) ? Results.Ok(new object[] {
+        new { id = "gemma3-4b", role = "llm", name = "Gemma 3 4B · GGUF", repo = "unsloth/gemma-3-4b-it-GGUF", hint = "Выберите один GGUF, предпочтительно Q8_0 либо F16 при достаточной VRAM." },
+        new { id = "gemma3-12b", role = "llm", name = "Gemma 3 12B · GGUF", repo = "unsloth/gemma-3-12b-it-GGUF", hint = "Для нескольких GPU; скачивайте нужную квантизацию и все части, если файл разделён." },
+        new { id = "qwen25-3b", role = "llm", name = "Qwen 2.5 3B · GGUF", repo = "bartowski/Qwen2.5-3B-Instruct-GGUF", hint = "Для теста скорости; доступны Q8_0 и F16." },
+        new { id = "gigaam", role = "stt", name = "GigaAM v3 · ASR", repo = "ai-sage/GigaAM-v3", hint = "Нужен полный комплект весов и отдельный HTTP runtime." },
+        new { id = "gigaam-onnx", role = "stt", name = "GigaAM v3 · ONNX", repo = "istupakov/gigaam-v3-onnx", hint = "Нужен совместимый ONNX STT HTTP runtime." },
+        new { id = "qwen3tts-base", role = "tts", name = "Qwen3-TTS 0.6B · Base", repo = "Qwen/Qwen3-TTS-12Hz-0.6B-Base", hint = "Для клонирования голоса, загрузите весь репозиторий и подключите TTS runtime." },
+        new { id = "qwen3tts-voice", role = "tts", name = "Qwen3-TTS 0.6B · CustomVoice", repo = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", hint = "Встроенные голоса; скачайте весь репозиторий." }
+    }) : Results.StatusCode(403));
+app.MapGet("/api/control/llama/scan", (HttpContext ctx, SetupService setup) =>
+    localOnly(ctx) ? Results.Ok(setup.LlamaExecutables()) : Results.StatusCode(403));
+app.MapPost("/api/control/llama/start", async (
+    HttpContext ctx, LlamaSetupInput input, SetupService setup, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await setup.ConfigureLlamaAsync(input, ct)); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapGet("/api/control/system", (HttpContext ctx, IWebHostEnvironment env) =>
+    localOnly(ctx) ? Results.Ok(SystemMetrics.Snapshot(env)) : Results.StatusCode(403));
+app.MapGet("/api/control/devices", (HttpContext ctx, DeviceRegistry devices) =>
+    localOnly(ctx) ? Results.Ok(devices.Overview()) : Results.StatusCode(403));
+app.MapPost("/api/control/device/key", async (HttpContext ctx, SetupService setup, CancellationToken ct) =>
+    localOnly(ctx) ? Results.Ok(await setup.GenerateDeviceKeyAsync(ct)) : Results.StatusCode(403));
+app.MapPost("/api/control/test/llm", async (
+    HttpContext ctx, DiagnosticService.LlmTestInput input, DiagnosticService diagnostic, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await diagnostic.TestLlmAsync(input.Prompt, input.Model, ct)); }
+    catch (Exception ex) when (ex is ArgumentException or HttpRequestException or
+        InvalidOperationException or OperationCanceledException)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapPost("/api/control/test/tts", async (
+    HttpContext ctx, DiagnosticService.TtsTestInput input, DiagnosticService diagnostic, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try
+    {
+        var test = await diagnostic.TestTtsAsync(input.Text, input.Voice, input.Model, ct);
+        ctx.Response.Headers["X-Synthesis-Ms"] = test.Milliseconds.ToString();
+        ctx.Response.Headers["X-Audio-Seconds"] = test.DurationSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        ctx.Response.Headers["X-RTF"] = test.Rtf.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return Results.File(test.Wave, "audio/wav");
+    }
+    catch (Exception ex) when (ex is ArgumentException or HttpRequestException or
+        InvalidDataException or InvalidOperationException or OperationCanceledException)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapPost("/api/control/test/stt", async (
+    HttpContext ctx, string? model, DiagnosticService diagnostic, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    if (ctx.Request.ContentLength is null or < 3200 or > 1048576)
+        return Results.BadRequest(new { error = "Ожидается 16-bit mono PCM, максимум 1 МБ" });
+    try
+    {
+        await using var buffer = new MemoryStream();
+        await ctx.Request.Body.CopyToAsync(buffer, ct);
+        if (buffer.Length > 1024 * 1024) return Results.BadRequest(new { error = "Запись слишком длинная" });
+        return Results.Ok(await diagnostic.TestSttAsync(buffer.ToArray(), model, ct));
+    }
+    catch (Exception ex) when (ex is ArgumentException or HttpRequestException or
+        InvalidDataException or InvalidOperationException or OperationCanceledException)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
 app.MapGet("/api/models/downloads", (HttpContext ctx, ModelDownloadManager downloads) =>
     localOnly(ctx) ? Results.Ok(downloads.Status()) : Results.StatusCode(403));
 app.MapGet("/api/models/hub", async (
@@ -269,7 +352,7 @@ app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline, Microsoft.Ext
         { ctx.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
     }
     using var socket = await ctx.WebSockets.AcceptWebSocketAsync();
-    await pipeline.RunAsync(socket, ctx.RequestAborted);
+    await pipeline.RunAsync(socket, ctx.RequestAborted, ctx.Connection.RemoteIpAddress?.ToString());
 });
 app.Lifetime.ApplicationStarted.Register(() =>
 {

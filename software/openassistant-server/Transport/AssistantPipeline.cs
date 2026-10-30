@@ -13,13 +13,14 @@ namespace OpenAssistant.Server.Transport;
 
 /// <summary>независимый сеанс устройства: речь, llm, tts и музыкальные команды.</summary>
 public sealed class AssistantPipeline(
-    SpeechService speech, LlmService llm, ToolRegistry tools,
-    RadioBrowserService radioBrowser, YandexMusicService yandexMusic, ConversationLog conversationLog,
+    SpeechService speech, AgentRunner agent, ToolRegistry tools,
+    ConversationLog conversationLog, DeviceRegistry devices,
     IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
 {
     /// <summary>принимает аудио и команды клиента до отключения websocket.</summary>
-    public async Task RunAsync(WebSocket socket, CancellationToken disconnected)
+    public async Task RunAsync(WebSocket socket, CancellationToken disconnected, string? remoteAddress = null)
     {
+        string sessionId = devices.Connect(remoteAddress);
         using var lifecycle = CancellationTokenSource.CreateLinkedTokenSource(disconnected);
         using var sendLock = new SemaphoreSlim(1, 1);
         using var input = new MemoryStream();
@@ -91,57 +92,8 @@ public sealed class AssistantPipeline(
             await JsonAsync(new { type = "transcript", text }, ct);
             conversationLog.Add(fromAudio ? "stt" : "user", text);
 
-            // для радио клиенту нужен URL, а не гигабайты музыки через сервер.
-            var radio = System.Text.RegularExpressions.Regex.Match(text,
-                @"^(?:включи|поставь|запусти)\s+радио\s+(.+)$",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (radio.Success)
-            {
-                string station = radio.Groups[1].Value.Trim();
-                var stations = JsonSerializer.SerializeToElement(await radioBrowser.SearchAsync(station, ct));
-                if (stations.GetArrayLength() > 0)
-                {
-                    var first = stations[0];
-                    string url = first.GetProperty("url").GetString() ?? "";
-                    string title = first.GetProperty("name").GetString() ?? station;
-                    await JsonAsync(new { type = "play_media", url, title, source = "radio_browser" }, ct);
-                    string answer = "Включаю радио " + title;
-                    await JsonAsync(new { type = "text", delta = answer }, ct);
-                    conversationLog.Add("action", answer);
-                    history.Add(new ChatMessage("user", text));
-                    history.Add(new ChatMessage("assistant", answer));
-                    await JsonAsync(new { type = "done" }, ct);
-                    return;
-                }
-            }
-
-            // яндекс музыка: формируем поисковый запрос, получаем одноразовую ссылку и отдаём клиенту.
-            // сервер не читает аудиопоток и не меняет его дискретизацию.
-            var song = System.Text.RegularExpressions.Regex.Match(text,
-                @"^(?:включи|поставь|запусти)\s+(?:песню|трек|музыку)\s+(.+)$",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (song.Success)
-            {
-                string request = song.Groups[1].Value.Trim();
-                YandexTrack[] found = await yandexMusic.SearchAsync(request, ct);
-                if (found.Length == 0) throw new InvalidOperationException("яндекс музыка не нашла подходящий трек");
-                YandexTrack first = found[0];
-                YandexPlayback link = await yandexMusic.ResolveAsync(first.Id, ct);
-                string title = string.Join(", ", first.Artists) + " — " + first.Title;
-                await JsonAsync(new {
-                    type = "play_media", url = link.Url, title, source = "yandex_music",
-                    codec = link.Codec, bitrateKbps = link.BitrateKbps, expiresAt = link.ExpiresAt
-                }, ct);
-                string answer = "Включаю " + title;
-                await JsonAsync(new { type = "text", delta = answer }, ct);
-                conversationLog.Add("action", answer);
-                history.Add(new ChatMessage("user", text));
-                history.Add(new ChatMessage("assistant", answer));
-                await JsonAsync(new { type = "done" }, ct);
-                return;
-            }
-
-            var messages = history.Append(new ChatMessage("user", text)).ToArray();
+            history[0] = new ChatMessage("system", settings.CurrentValue.SystemPrompt);
+            var messages = history.Skip(1).TakeLast(30).Prepend(history[0]).Append(new ChatMessage("user", text)).ToArray();
             var segmenter = new SentenceSegmenter();
             var complete = new StringBuilder();
             int outputRate = settings.CurrentValue.OutputSampleRate;
@@ -172,12 +124,19 @@ public sealed class AssistantPipeline(
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             try
             {
-                await foreach (string token in llm.GenerateAsync(messages, ct))
+                await foreach (var delta in agent.GenerateAsync(messages, ct))
                 {
                     if (speaker.IsCompleted && !speaker.IsCompletedSuccessfully) await speaker;
-                    complete.Append(token);
-                    await JsonAsync(new { type = "text", delta = token }, ct);
-                    string? sentence = segmenter.Push(token);
+                    if (delta.Media is not null) await JsonAsync(delta.Media, ct);
+                    if (delta.Tool is not null)
+                    {
+                        conversationLog.Add("action", "tool: " + delta.Tool);
+                        await JsonAsync(new { type = "tool_result", name = delta.Tool, result = delta.Result }, ct);
+                    }
+                    if (string.IsNullOrEmpty(delta.Text)) continue;
+                    complete.Append(delta.Text);
+                    await JsonAsync(new { type = "text", delta = delta.Text }, ct);
+                    string? sentence = segmenter.Push(delta.Text);
                     if (sentence is not null) await phrases.Writer.WriteAsync(sentence, ct);
                 }
                 string? tail = segmenter.Flush();
@@ -228,6 +187,7 @@ public sealed class AssistantPipeline(
                     frame.Write(receiveBuffer, 0, message.Count);
                 } while (!message.EndOfMessage);
                 if (message.MessageType == WebSocketMessageType.Close) break;
+                devices.Activity(sessionId);
 
                 if (message.MessageType == WebSocketMessageType.Binary)
                 {
@@ -327,6 +287,7 @@ public sealed class AssistantPipeline(
         catch (OperationCanceledException) when (disconnected.IsCancellationRequested) { }
         finally
         {
+            devices.Disconnect(sessionId);
             lifecycle.Cancel();
             await CancelAsync();
             if (socket.State == WebSocketState.Open)

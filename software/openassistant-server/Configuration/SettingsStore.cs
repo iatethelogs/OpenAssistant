@@ -50,6 +50,26 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
         }, ct);
     }
 
+    /// <summary>Сохраняет точечные изменения, не сбрасывая остальные параметры ассистента.</summary>
+    public Task UpdateLlmUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(url, null, ct);
+    public Task UpdateDeviceTokenAsync(string token, CancellationToken ct) => UpdatePartialAsync(null, token, ct);
+    private Task UpdatePartialAsync(string? llmUrl, string? deviceToken, CancellationToken ct)
+    {
+        var s = options.CurrentValue;
+        return SaveAsync(new SettingsUpdate {
+            LlmUrl = llmUrl ?? s.LlmUrl, LlmModel = s.LlmModel, SystemPrompt = s.SystemPrompt,
+            SttUrl = s.SttUrl, SttModel = s.SttModel,
+            TtsUrl = s.TtsUrl, TtsModel = s.TtsModel, TtsVoice = s.TtsVoice,
+            TtsLanguage = s.TtsLanguage, HomeAssistantUrl = s.HomeAssistantUrl,
+            HomeAssistantToken = s.HomeAssistantToken, DeviceToken = deviceToken ?? s.DeviceToken,
+            LlmTemperature = s.LlmTemperature, LlmTopP = s.LlmTopP,
+            LlmTopK = s.LlmTopK, LlmRepeatPenalty = s.LlmRepeatPenalty,
+            LlmMaxTokens = s.LlmMaxTokens,
+            InputSampleRate = s.InputSampleRate, OutputSampleRate = s.OutputSampleRate,
+            RadioStations = new Dictionary<string, string>(s.RadioStations)
+        }, ct);
+    }
+
     /// <summary>валидирует настройки и атомарно сохраняет их в settings.local.json.</summary>
     public async Task SaveAsync(SettingsUpdate update, CancellationToken ct)
     {

@@ -15,13 +15,13 @@ public sealed class LlmService(IHttpClientFactory http, IOptionsMonitor<ServerOp
 {
     /// <summary>читает SSE по токенам. не ждём, пока модель выдаст всю простыню.</summary>
     public async IAsyncEnumerable<string> GenerateAsync(IReadOnlyList<ChatMessage> history,
-        [EnumeratorCancellation] CancellationToken ct)
+        [EnumeratorCancellation] CancellationToken ct, string? modelOverride = null)
     {
         var options = settings.CurrentValue;
         using var request = new HttpRequestMessage(HttpMethod.Post,
             options.LlmUrl.TrimEnd('/') + "/v1/chat/completions");
         request.Content = JsonContent.Create(new {
-            model = options.LlmModel,
+            model = string.IsNullOrWhiteSpace(modelOverride) ? options.LlmModel : modelOverride,
             stream = true, temperature = options.LlmTemperature, top_p = options.LlmTopP,
             top_k = options.LlmTopK, repeat_penalty = options.LlmRepeatPenalty,
             max_tokens = options.LlmMaxTokens,

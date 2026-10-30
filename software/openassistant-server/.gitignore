@@ -13,3 +13,6 @@ hf-token.local.json
 hf-token.local.json.*.tmp
 models/
 models.local.json.*.tmp
+
+agent-tools.local.json
+agent-tools.local.json.*.tmp
