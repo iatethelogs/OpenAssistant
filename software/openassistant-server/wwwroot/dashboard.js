@@ -160,7 +160,7 @@ async function refreshModels(){
     });
     actions.append(del);
    }
-  }else actions.append(textNode("span",item.role==="tts"?"Кеш Hugging Face":"Кеш GigaAM","minor"));
+  }else actions.append(textNode("span",item.source==="manual-download"?"Файлы в каталоге":item.role==="tts"?"Кеш Hugging Face":"Кеш GigaAM","minor"));
   row.append(name,actions);files.append(row);
  }
  if(!files.children.length)files.textContent="Файлов пока нет";
