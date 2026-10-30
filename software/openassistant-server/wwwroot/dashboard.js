@@ -252,6 +252,7 @@ el("chatProfile").value=localStorage.getItem("openassistant-chat-profile")||"О�
 el("chatProfileSet").onclick=()=>{
  const name=activeProfile();if(!/^[\\p{L}\\p{N} _.-]{1,48}$/u.test(name)){toast("Некорректное имя профиля",true);return}
  localStorage.setItem("openassistant-chat-profile",name);
+ el("chatHistory").textContent="";
  if(chatSocket?.readyState===1)chatSocket.send(JSON.stringify({type:"profile",name}));
  refreshMemoryCount().catch(e=>toast(e.message,true));
 };
@@ -289,7 +290,7 @@ el("chatConnect").onclick=()=>{
    if(el("chatAudio").dataset.url)URL.revokeObjectURL(el("chatAudio").dataset.url);
    const url=URL.createObjectURL(new Blob([wav],{type:"audio/wav"}));el("chatAudio").dataset.url=url;el("chatAudio").src=url;el("chatAudio").play().catch(()=>{});chatBuffer=[];
   }else if(msg.type==="error")chatAppend("\nОшибка: "+msg.message+"\n");
-  else if(msg.type==="done")chatAppend("\n");
+  else if(msg.type==="done"){chatAppend("\n");refreshMemoryCount().catch(()=>{})}
  };
 };
 function sendChat(){const s=el("chatInput").value.trim();if(!s||chatSocket?.readyState!==1)return;chatSocket.send(JSON.stringify({type:"text",text:s}));el("chatInput").value=""}
