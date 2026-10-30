@@ -96,7 +96,7 @@ const stageNums={starting:0,prepare:2,download:18,install:18,runtime:45,launch:6
 function fmt(n){if(!n)return"0 МБ";if(n>1073741824)return(n/1073741824).toFixed(2)+" ГБ";return(n/1048576).toFixed(0)+" МБ"}
 function updateRole(role,job){
  const cap=role[0].toUpperCase()+role.slice(1);
- el("progress"+cap).classList.add("visible");
+ el("progress"+cap).classList.toggle("visible",job.status!=="ready");
  el("title"+cap).textContent=titles[job.step]||"Настраиваем";
  el("desc"+cap).textContent=job.error||job.description||"Подготовка";
  const steps=stageSets[role],done=new Set(job.completedSteps||[]);
@@ -124,7 +124,7 @@ function updateRole(role,job){
  el("progress"+cap).classList.toggle("error",job.status==="failed");
  if(job.status==="failed"){el("desc"+cap).textContent=job.error||"Проверьте технические подробности";updateButtons()}
  if(job.status==="ready"&&!state.shown[role]){state.shown[role]=true;el("result"+cap).classList.add("visible");if(role==="llm")llmResult(job);if(role==="stt")el("sttRecognized").textContent="Модель готова. Запишите тестовую фразу.";if(role==="tts")el("ttsMetrics").textContent="Первичная проверка завершена. Выберите голос и прослушайте результат.";}
- if(job.status==="ready")el("result"+cap).classList.add("visible");
+ el("result"+cap).classList.toggle("visible",job.status==="ready");
  if(job.status==="ready"&&!state.last[role+"cache"]){state.last[role+"cache"]=true;void refreshInstalled()}
  if(job.status!=="ready")state.last[role+"cache"]=false;
 }
