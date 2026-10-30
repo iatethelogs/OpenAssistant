@@ -1,8 +1,8 @@
 "use strict";
 const el=id=>document.getElementById(id);
-const state={catalog:[],selected:{},jobs:{},step:"llm",pcm:null,voiceUrl:null,recordUrl:null,key:"",starting:{},shown:{},last:{},installed:[],voiceProfile:null};
+const state={catalog:[],selected:{},jobs:{},step:"welcome",pcm:null,voiceUrl:null,recordUrl:null,key:"",starting:{},shown:{},last:{},installed:[],voiceProfile:null};
 const captions={llm:"Интеллект",stt:"Слух",tts:"Голос"};
-const steps=["llm","stt","tts","music","complete"];
+const steps=["welcome","llm","stt","tts","music","complete"];
 function showError(message){alert(message)}
 async function api(url,method="GET",data){const init={method,cache:"no-store"};if(data!==undefined){init.headers={"Content-Type":"application/json"};init.body=JSON.stringify(data)}
  const r=await fetch(url,init);const body=await r.json().catch(()=>({}));if(!r.ok)throw Error(body.error||body.message||"HTTP "+r.status);return body}
@@ -19,7 +19,13 @@ function show(step){
  incoming.classList.add("active");
  state.step=step;
  for(const elem of document.querySelectorAll(".step")){const ix=steps.indexOf(elem.dataset.step),now=steps.indexOf(step);elem.classList.toggle("current",ix===now);elem.classList.toggle("done",ix<now)}
- history.replaceState(null,"","#"+step);window.scrollTo({top:0,behavior:"smooth"})}
+ const position=steps.indexOf(step);
+ const progress=el("journeyFill");
+ if(progress)progress.style.width=Math.max(0,Math.min(100,position/4*100))+"%";
+ document.body.dataset.chapter=step;
+ history.replaceState(null,"","#"+step);
+ window.scrollTo({top:0,behavior:window.matchMedia("(prefers-reduced-motion:reduce)").matches?"instant":"smooth"});
+}
 for(const btn of document.querySelectorAll("[data-next]"))btn.onclick=()=>show(btn.dataset.next);
 for(const btn of document.querySelectorAll(".step[data-step]"))btn.onclick=()=>show(btn.dataset.step);
 function modelCard(m){const b=document.createElement("button");b.type="button";b.className="model";b.dataset.model=m.id;
@@ -276,7 +282,7 @@ async function init(){try{
  }
  updateVoiceMode();
  }catch(e){el("serverState").textContent="Ошибка подключения";showError(e.message)}
- const hash=location.hash.slice(1);if(steps.includes(hash))show(hash);
+ const hash=location.hash.slice(1);show(steps.includes(hash)?hash:"welcome");
 }
 init();setInterval(poll,2000);
 
