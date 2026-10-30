@@ -145,7 +145,7 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
             case "ha_call_service":
             {
                 if (string.IsNullOrWhiteSpace(userRequest) ||
-                    !Regex.IsMatch(userRequest, @"включи|выключи|открой|закрой|зажги|погаси|останови|поставь на паузу",
+                    !Regex.IsMatch(userRequest, @"\b(?:включи(?:те)?|выключи(?:те)?|открой(?:те)?|закрой(?:те)?|зажги(?:те)?|погаси(?:те)?|останови(?:те)?)\b|\bпоставь на паузу\b",
                         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
                     throw new InvalidOperationException("Нет явной просьбы пользователя на управление устройством");
                 string domain = Arg(args, "domain"), service = Arg(args, "service"), entity = Arg(args, "entity_id");
