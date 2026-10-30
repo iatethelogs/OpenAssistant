@@ -28,9 +28,11 @@ function modelCard(m){const b=document.createElement("button");b.type="button";b
  const foot=document.createElement("span");foot.className="foot";
  if(m.role==="llm"){
   const meta=state.modelSizes[m.id];
-  foot.textContent=meta?.size>0
-   ? m.quality+" · "+(meta.size/1e9).toLocaleString("ru-RU",{maximumFractionDigits:2,minimumFractionDigits:1})+" ГБ"
-   :meta?.error?"Q8_0 · Размер недоступен":"Q8_0 · Проверяем размер…";
+  const job=state.jobs.llm;
+  const used=job?.status==="ready"&&job.modelId===m.id?job.vramMiB:null;
+  const file=meta?.size>0?"GGUF на диске: "+(meta.size/1e9).toLocaleString("ru-RU",{minimumFractionDigits:2,maximumFractionDigits:2})+" ГБ":
+   meta?.error?"Размер GGUF недоступен":"Проверяем размер GGUF…";
+  foot.textContent=m.quality+" · "+file+(used!=null?" · VRAM: "+(used/1024).toLocaleString("ru-RU",{maximumFractionDigits:2})+" ГиБ":" · VRAM измеряется после запуска");
  }else foot.textContent=m.quality;
  b.append(type,name,desc,foot);
  if(m.recommended){const label=document.createElement("span");label.className="tag";label.textContent="Рекомендуем";b.append(label)}
@@ -122,12 +124,17 @@ function updateRole(role,job){
 function llmResult(job){let data={};try{data=JSON.parse(job.testResult||"{}")}catch{}
  el("answerLlm").textContent=data.text||"Модель успешно ответила на тестовый запрос";
  const metrics=el("metricsLlm");metrics.replaceChildren();
- for(const [label,value] of [["Первый фрагмент",data.firstTokenMs!=null?data.firstTokenMs+" мс":"—"],["Весь ответ",data.totalMs!=null?data.totalMs+" мс":"—"],[data.tokensExact?"Скорость":"Оценка скорости",data.tokensPerSecond!=null?data.tokensPerSecond+" ток/с":"—"]]){const x=document.createElement("span");x.className="pill";x.textContent=label+" · "+value;metrics.append(x)}
+ const dataItems=[["Первый фрагмент",data.firstTokenMs!=null?data.firstTokenMs+" мс":"—"],["Весь ответ",data.totalMs!=null?data.totalMs+" мс":"—"],[data.tokensExact?"Скорость":"Оценка скорости",data.tokensPerSecond!=null?data.tokensPerSecond+" ток/с":"—"]];
+ if(job.vramMiB!=null)dataItems.push(["VRAM процесса", (job.vramMiB/1024).toLocaleString("ru-RU",{maximumFractionDigits:2})+" ГиБ"]);
+ for(const [label,value] of dataItems){const x=document.createElement("span");x.className="pill";x.textContent=label+" · "+value;metrics.append(x)}
 }
 async function poll(){try{
  const result=await api("/api/setup/status");
  el("dot").classList.add("on");el("serverState").textContent="Сервер на связи";
+ const oldLlm=state.jobs.llm,oldVersion=oldLlm?.status+"|"+oldLlm?.modelId+"|"+oldLlm?.vramMiB;
  for(const job of result.jobs||[]){state.jobs[job.role]=job;updateRole(job.role,job)}
+ const newLlm=state.jobs.llm;
+ if(state.catalog.length&&oldVersion!==newLlm?.status+"|"+newLlm?.modelId+"|"+newLlm?.vramMiB)renderCards("llm");
  if(state.step==="llm"&&state.jobs.llm?.status==="ready")sampleGpu();
  updateButtons();
  }catch(e){el("dot").classList.remove("on");el("serverState").textContent="Связь с сервером потеряна"}}
