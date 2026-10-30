@@ -1,6 +1,6 @@
 "use strict";
 const el=id=>document.getElementById(id);
-const state={catalog:[],selected:{},jobs:{},step:"llm",pcm:null,voiceUrl:null,recordUrl:null,key:"",starting:{},shown:{},last:{},modelSizes:{}};
+const state={catalog:[],selected:{},jobs:{},step:"llm",pcm:null,voiceUrl:null,recordUrl:null,key:"",starting:{},shown:{},last:{}};
 const captions={llm:"Интеллект",stt:"Слух",tts:"Голос"};
 const steps=["llm","stt","tts","music","complete"];
 function showError(message){alert(message)}
@@ -26,37 +26,11 @@ function modelCard(m){const b=document.createElement("button");b.type="button";b
  const type=document.createElement("span");type.className="type";type.textContent=m.role==="llm"?"Языковая модель":m.role==="stt"?"Распознавание речи":"Синтез речи";
  const name=document.createElement("strong");name.textContent=m.name;const desc=document.createElement("small");desc.textContent=m.summary;
  const foot=document.createElement("span");foot.className="foot";
- if(m.role==="llm"){
-  const meta=state.modelSizes[m.id];
-  const job=state.jobs.llm;
-  const used=job?.status==="ready"&&job.modelId===m.id?job.vramMiB:null;
-  const file=meta?.size>0?"GGUF на диске: "+(meta.size/1e9).toLocaleString("ru-RU",{minimumFractionDigits:2,maximumFractionDigits:2})+" ГБ":
-   meta?.error?"Размер GGUF недоступен":"Проверяем размер GGUF…";
-  foot.textContent=m.quality+" · "+file+(used!=null?" · VRAM: "+(used/1024).toLocaleString("ru-RU",{maximumFractionDigits:2})+" ГиБ":" · VRAM измеряется после запуска");
- }else foot.textContent=m.quality;
+ foot.textContent=m.quality;
  b.append(type,name,desc,foot);
  if(m.recommended){const label=document.createElement("span");label.className="tag";label.textContent="Рекомендуем";b.append(label)}
  b.onclick=()=>{state.selected[m.role]=m.id;renderCards(m.role);updateVoiceMode()};return b}
 function renderCards(role){const box=el(role+"Models");box.replaceChildren();for(const m of state.catalog.filter(x=>x.role===role)){const b=modelCard(m);if(state.selected[role]===m.id)b.classList.add("selected");box.append(b)}}
-async function loadModelSizes(){
- const entries=state.catalog.filter(m=>m.role==="llm");let cursor=0;
- async function worker(){
-  while(cursor<entries.length){
-   const model=entries[cursor++];
-   try{
-    const repo=encodeURIComponent(model.repo);
-    const manifest=await api("/api/models/hub?repo="+repo+"&revision=main");
-    const options=(manifest.files||[]).filter(f=>f.path.toLowerCase().endsWith(".gguf") &&
-      f.path.toUpperCase().includes("Q8_0") && f.size>0 && f.size<=10*1024**3);
-    const selected=options.find(f=>f.path.toLowerCase()===(model.file||"").toLowerCase()) ||
-      options.sort((a,b)=>b.size-a.size)[0];
-    state.modelSizes[model.id]=selected?{size:selected.size,path:selected.path}:{error:true};
-   }catch(error){state.modelSizes[model.id]={error:true}}
-   renderCards("llm");
-  }
- }
- await Promise.all([worker(),worker(),worker()]);
-}
 function updateButtons(){for(const role of ["llm","stt","tts"]){const b=el("start"+role.toUpperCase().slice(0,1)+role.slice(1));if(!b)continue;const status=state.jobs[role]?.status;b.disabled=status==="running";b.textContent=status==="ready"?"Установить другую модель":status==="running"?"Установка выполняется…":"Установить и проверить"}}
 async function start(role){if(state.starting[role]||state.jobs[role]?.status==="running")return;const modelId=state.selected[role];if(!modelId)throw Error("Сначала выберите модель");
  state.starting[role]=true;
@@ -125,16 +99,12 @@ function llmResult(job){let data={};try{data=JSON.parse(job.testResult||"{}")}ca
  el("answerLlm").textContent=data.text||"Модель успешно ответила на тестовый запрос";
  const metrics=el("metricsLlm");metrics.replaceChildren();
  const dataItems=[["Первый фрагмент",data.firstTokenMs!=null?data.firstTokenMs+" мс":"—"],["Весь ответ",data.totalMs!=null?data.totalMs+" мс":"—"],[data.tokensExact?"Скорость":"Оценка скорости",data.tokensPerSecond!=null?data.tokensPerSecond+" ток/с":"—"]];
- if(job.vramMiB!=null)dataItems.push(["VRAM процесса", (job.vramMiB/1024).toLocaleString("ru-RU",{maximumFractionDigits:2})+" ГиБ"]);
  for(const [label,value] of dataItems){const x=document.createElement("span");x.className="pill";x.textContent=label+" · "+value;metrics.append(x)}
 }
 async function poll(){try{
  const result=await api("/api/setup/status");
  el("dot").classList.add("on");el("serverState").textContent="Сервер на связи";
- const oldLlm=state.jobs.llm,oldVersion=oldLlm?.status+"|"+oldLlm?.modelId+"|"+oldLlm?.vramMiB;
  for(const job of result.jobs||[]){state.jobs[job.role]=job;updateRole(job.role,job)}
- const newLlm=state.jobs.llm;
- if(state.catalog.length&&oldVersion!==newLlm?.status+"|"+newLlm?.modelId+"|"+newLlm?.vramMiB)renderCards("llm");
  if(state.step==="llm"&&state.jobs.llm?.status==="ready")sampleGpu();
  updateButtons();
  }catch(e){el("dot").classList.remove("on");el("serverState").textContent="Связь с сервером потеряна"}}
@@ -224,8 +194,6 @@ el("testTts").onclick=async()=>{const b=el("testTts");b.disabled=true;el("ttsMet
 async function init(){try{
  state.catalog=await api("/api/setup/catalog");
  for(const role of ["llm","stt","tts"]){state.selected[role]=state.catalog.find(m=>m.role===role&&m.default)?.id;renderCards(role)}
- // Размеры берутся из текущего манифеста Hugging Face, а не из оценок каталога.
- void loadModelSizes();
  const profile=await api("/api/setup/voice").catch(()=>null);
  if(profile){el("voiceSelect").value=profile.speaker||"Ryan";el("voiceDescription").value=profile.description||el("voiceDescription").value;el("voiceStyle").value=profile.style||"";if(profile.mode==="design"){state.selected.tts="qwen-tts-fast-design";renderCards("tts")}}
  await poll();
