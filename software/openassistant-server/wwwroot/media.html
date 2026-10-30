@@ -41,7 +41,8 @@ small{color:#a1aec6}pre{white-space:pre-wrap;overflow-wrap:anywhere;color:#ccd7e
 <div class="buttons"><button id="saveToken">Подключить</button></div>
 <label>Поиск музыки</label><input id="musicQuery" placeholder="Исполнитель или композиция">
 <div class="buttons"><button id="musicSearch">Найти треки</button></div><ul id="musicResults"></ul>
-<small>Здесь реализован поиск каталога. Воспроизведение защищённых потоков Яндекс Музыки ещё не поддерживается.</small>
+<audio id="musicPlayer" controls preload="none" style="width:100%;margin-top:12px"></audio>
+<small>Для доступных MP3/AAC-треков используется временная ссылка из аккаунта. Воспроизведение выполняет браузер напрямую, без изменения частоты дискретизации сервером. Доступность форматов определяется Яндекс Музыкой и аудиодекодером.</small>
 </article>
 </div>
 <script>
@@ -60,6 +61,20 @@ $('save').onclick=async()=>{try{const role=$('role').value;const p={executable:$
 for(const action of ['start','stop'])$(action).onclick=async()=>{try{await request('/api/models/'+$('role').value+'/'+action,{method:'POST'});await refresh()}catch(e){notify('Ошибка: '+e.message)}};
 $('radioSearch').onclick=async()=>{try{const stations=await request('/api/radio/search?name='+encodeURIComponent($('radioQuery').value));$('radioResults').replaceChildren();for(const s of stations){const li=document.createElement('li'),b=document.createElement('button');b.className='secondary';b.textContent='Слушать: '+s.name+' ('+s.codec+')';b.onclick=()=>{const audio=$('radioPlayer');audio.src=s.url;audio.play().catch(e=>notify(e.message))};li.append(b);$('radioResults').append(li)}notify('Станций найдено: '+stations.length)}catch(e){notify(e.message)}};
 $('saveToken').onclick=async()=>{try{await request('/api/yandex/token',body({token:$('token').value}));$('token').value='';notify('Аккаунт подключён')}catch(e){notify(e.message)}};
-$('musicSearch').onclick=async()=>{try{const songs=await request('/api/yandex/search?query='+encodeURIComponent($('musicQuery').value));$('musicResults').replaceChildren();for(const s of songs){const li=document.createElement('li');li.textContent=(s.artists||[]).join(', ')+' — '+s.title;$('musicResults').append(li)}notify('Треков найдено: '+songs.length)}catch(e){notify(e.message)}};
+$('musicSearch').onclick=async()=>{try{const songs=await request('/api/yandex/search?query='+encodeURIComponent($('musicQuery').value));$('musicResults').replaceChildren();for(const s of songs){
+  const li=document.createElement('li'), btn=document.createElement('button');
+  const name=(s.artists||[]).join(', ')+' — '+s.title;
+  btn.className='secondary';btn.textContent='Слушать: '+name;
+  btn.onclick=async()=>{
+    try{
+      notify('Получение ссылки на '+name);
+      const info=await request('/api/yandex/tracks/'+encodeURIComponent(s.id)+'/playback');
+      const audio=$('musicPlayer');audio.src=info.url;
+      await audio.play();
+      notify('Играет '+name+' · '+info.codec+' '+info.bitrateKbps+' кбит/с');
+    }catch(e){notify('Не удалось запустить трек: '+e.message)}
+  };
+  li.append(btn);$('musicResults').append(li);
+}notify('Треков найдено: '+songs.length)}catch(e){notify(e.message)}};
 refresh();
 </script></body></html>

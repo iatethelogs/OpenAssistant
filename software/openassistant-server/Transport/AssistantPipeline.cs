@@ -14,7 +14,7 @@ namespace OpenAssistant.Server.Transport;
 /// <summary>независимый сеанс устройства: речь, llm, tts и музыкальные команды.</summary>
 public sealed class AssistantPipeline(
     SpeechService speech, LlmService llm, ToolRegistry tools,
-    RadioBrowserService radioBrowser, ConversationLog conversationLog,
+    RadioBrowserService radioBrowser, YandexMusicService yandexMusic, ConversationLog conversationLog,
     IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
 {
     /// <summary>принимает аудио и команды клиента до отключения websocket.</summary>
@@ -113,6 +113,32 @@ public sealed class AssistantPipeline(
                     await JsonAsync(new { type = "done" }, ct);
                     return;
                 }
+            }
+
+            // яндекс музыка: формируем поисковый запрос, получаем одноразовую ссылку и отдаём клиенту.
+            // сервер не читает аудиопоток и не меняет его дискретизацию.
+            var song = System.Text.RegularExpressions.Regex.Match(text,
+                @"^(?:включи|поставь|запусти)\s+(?:песню|трек|музыку)\s+(.+)$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (song.Success)
+            {
+                string request = song.Groups[1].Value.Trim();
+                YandexTrack[] found = await yandexMusic.SearchAsync(request, ct);
+                if (found.Length == 0) throw new InvalidOperationException("яндекс музыка не нашла подходящий трек");
+                YandexTrack first = found[0];
+                YandexPlayback link = await yandexMusic.ResolveAsync(first.Id, ct);
+                string title = string.Join(", ", first.Artists) + " — " + first.Title;
+                await JsonAsync(new {
+                    type = "play_media", url = link.Url, title, source = "yandex_music",
+                    codec = link.Codec, bitrateKbps = link.BitrateKbps, expiresAt = link.ExpiresAt
+                }, ct);
+                string answer = "Включаю " + title;
+                await JsonAsync(new { type = "text", delta = answer }, ct);
+                conversationLog.Add("action", answer);
+                history.Add(new ChatMessage("user", text));
+                history.Add(new ChatMessage("assistant", answer));
+                await JsonAsync(new { type = "done" }, ct);
+                return;
             }
 
             var messages = history.Append(new ChatMessage("user", text)).ToArray();

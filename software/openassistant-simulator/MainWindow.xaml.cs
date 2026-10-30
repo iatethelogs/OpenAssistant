@@ -145,10 +145,11 @@ public partial class MainWindow : Window
     {
         try
         {
-            bool started = await _speaker.PlayUrlAsync(url);
-            if (!started || _closing) return;
-            MusicText.Text = "Плеер: " + title;
-            Log("воспроизведение: " + title);
+            MusicStreamInfo? stream = await _speaker.PlayUrlAsync(url);
+            if (stream is null || _closing) return;
+            // это реальная частота декодированного медиа, а не частота микрофона/stt.
+            MusicText.Text = $"Плеер: {title} · {stream.SampleRate} Гц · {stream.Channels} канал(а)";
+            Log($"воспроизведение: {title}; поток {stream.SampleRate} Гц, {stream.Channels} канал(а), {stream.BitsPerSample} бит");
         }
         catch (Exception ex) { if (!_closing) Log("ошибка воспроизведения: " + ex.Message); }
     }

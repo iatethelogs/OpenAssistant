@@ -68,7 +68,7 @@ public sealed class SpeakerPlayer : IDisposable
     }
 
     /// <summary>открывает музыкальный URL в фоновом потоке, чтобы интерфейс не зависал на сети.</summary>
-    public async Task<bool> PlayUrlAsync(string url, CancellationToken ct = default)
+    public async Task<MusicStreamInfo?> PlayUrlAsync(string url, CancellationToken ct = default)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var address) ||
             address.Scheme is not ("http" or "https"))
@@ -81,7 +81,7 @@ public sealed class SpeakerPlayer : IDisposable
             if (version != Volatile.Read(ref _musicVersion) || ct.IsCancellationRequested)
             {
                 reader.Dispose();
-                return false;
+                return null;
             }
             StopMusicCore();
             try
@@ -91,7 +91,7 @@ public sealed class SpeakerPlayer : IDisposable
                 _mediaReader = reader;
                 _musicOutput = output;
                 output.Play();
-                return true;
+                return new MusicStreamInfo(reader.WaveFormat.SampleRate, reader.WaveFormat.Channels, reader.WaveFormat.BitsPerSample);
             }
             catch
             {
@@ -128,3 +128,6 @@ public sealed class SpeakerPlayer : IDisposable
         StopMusic();
     }
 }
+
+/// <summary>фактический формат декодированного музыкального потока Windows.</summary>
+public sealed record MusicStreamInfo(int SampleRate, int Channels, int BitsPerSample);
