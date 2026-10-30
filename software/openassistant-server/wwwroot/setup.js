@@ -34,7 +34,7 @@ function modelCard(m){const b=document.createElement("button");b.type="button";b
    (m.role==="llm"&&item.path?.includes("/"+m.repo+"/"))));
  if(installed.length){
    const cached=installed.some(item=>item.source!=="manual-download");
-   const saved=document.createElement("span");saved.className="tag";
+   const saved=document.createElement("span");saved.className="cache-tag";
    saved.textContent=cached?"Уже скачана":"Файлы на диске";
    saved.title=cached?"Модель найдена в рабочем кеше движка":"Файлы скачаны вручную; движок может потребовать собственный кеш";
    b.append(saved);
