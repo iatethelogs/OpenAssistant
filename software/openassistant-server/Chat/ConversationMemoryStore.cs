@@ -31,7 +31,7 @@ public sealed class ConversationMemoryStore(IWebHostEnvironment env)
         try
         {
             var turns = JsonSerializer.Deserialize<List<Turn>>(await File.ReadAllTextAsync(path, ct)) ?? [];
-            return turns.Where(t => t.Role is "user" or "assistant" && t.Text.Length <= 4000)
+            return turns.Where(t => (t.Role is "user" or "assistant") && t.Text.Length <= 4000)
                 .TakeLast(1500).ToList();
         }
         catch (JsonException) { throw new InvalidDataException("Не удалось прочесть историю профиля"); }
