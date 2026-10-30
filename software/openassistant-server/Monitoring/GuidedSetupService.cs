@@ -12,14 +12,14 @@ public static class GuidedModelCatalog
     public sealed record Choice(string Id, string Role, string Name, string Summary,
         string Repo, string File, double DiskGb, string Quality, bool Default, bool Recommended);
     public static readonly Choice[] All = [
-        new("gemma-4b-abl", "llm", "Gemma 3 4B · Abliterated", "4.2 ГБ · Q8_0", "mradermacher/gemma-3-4b-abliterated-GGUF", "gemma-3-4b-abliterated.Q8_0.gguf", 4.13, "Q8_0", false, false),
-        new("phi-mini-abl", "llm", "Phi-4 Mini · Abliterated", "4.1 ГБ · Q8_0", "tensorblock/Phi-4-mini-instruct-abliterated-GGUF", "Phi-4-mini-instruct-abliterated-Q8_0.gguf", 4.08, "Q8_0", false, true),
-        new("llama-3b-heretic", "llm", "Llama 3.2 3B · Heretic", "3.4 ГБ · Q8_0", "tinyopsec/Llama-3.2-3B-Instruct-heretic-ablitered-uncensored-GGUF", "model_q8_0.gguf", 3.42, "Q8_0", false, true),
-        new("llama-3b-abl", "llm", "Llama 3.2 3B · Abliterated", "3.4 ГБ · Q8_0", "QuantFactory/Llama-3.2-3B-Instruct-abliterated-GGUF", "Llama-3.2-3B-Instruct-abliterated.Q8_0.gguf", 3.42, "Q8_0", false, false),
-        new("gemma3n-e4b-abl", "llm", "Gemma 3n E4B · Abliterated", "7.5 ГБ Q8_0; более крупная модель, для 8 ГБ GPU может потребоваться частичная выгрузка в RAM", "mradermacher/Huihui-gemma-3n-E4B-it-abliterated-GGUF", "", 7.5, "Q8_0", true, true),
-        new("gemma3n-e2b-abl", "llm", "Gemma 3n E2B · Abliterated", "Компактная мультимодальная модель · Q8_0", "mradermacher/Huihui-gemma-3n-E2B-it-abliterated-GGUF", "", 4.9, "Q8_0", false, true),
-        new("gemma4-e4b-abl", "llm", "Gemma 4 E4B · Abliterated", "Более сильная модель · Q8_0; 8.1 ГБ весов, лучше использовать GPU 10 ГБ", "mradermacher/Gemma-4-E4B-Abliterated-GGUF", "", 8.1, "Q8_0", false, true),
-        new("qwen2-7b-abl", "llm", "Qwen 2.5 7B · Abliterated", "7.5 ГБ Q8_0; на GPU 8 ГБ может потребоваться частичная выгрузка в RAM", "tensorblock/Qwen2.5-7B-Instruct-abliterated-v2-GGUF", "Qwen2.5-7B-Instruct-abliterated-v2-Q8_0.gguf", 7.54, "Q8_0", false, false),
+        new("gemma-4b-abl", "llm", "Gemma 3 4B · Abliterated", "Q8_0", "mradermacher/gemma-3-4b-abliterated-GGUF", "gemma-3-4b-abliterated.Q8_0.gguf", 0, "Q8_0", false, false),
+        new("phi-mini-abl", "llm", "Phi-4 Mini · Abliterated", "Q8_0", "tensorblock/Phi-4-mini-instruct-abliterated-GGUF", "Phi-4-mini-instruct-abliterated-Q8_0.gguf", 0, "Q8_0", false, true),
+        new("llama-3b-heretic", "llm", "Llama 3.2 3B · Heretic", "Q8_0", "tinyopsec/Llama-3.2-3B-Instruct-heretic-ablitered-uncensored-GGUF", "model_q8_0.gguf", 0, "Q8_0", false, true),
+        new("llama-3b-abl", "llm", "Llama 3.2 3B · Abliterated", "Q8_0", "QuantFactory/Llama-3.2-3B-Instruct-abliterated-GGUF", "Llama-3.2-3B-Instruct-abliterated.Q8_0.gguf", 0, "Q8_0", false, false),
+        new("gemma3n-e4b-abl", "llm", "Gemma 3n E4B · Abliterated", "Q8_0 · усиленная конфигурация", "mradermacher/Huihui-gemma-3n-E4B-it-abliterated-GGUF", "", 0, "Q8_0", true, true),
+        new("gemma3n-e2b-abl", "llm", "Gemma 3n E2B · Abliterated", "Компактная мультимодальная модель · Q8_0", "mradermacher/Huihui-gemma-3n-E2B-it-abliterated-GGUF", "", 0, "Q8_0", false, true),
+        new("gemma4-e4b-abl", "llm", "Gemma 4 E4B · Abliterated", "Q8_0 · увеличенная модель", "mradermacher/Gemma-4-E4B-Abliterated-GGUF", "", 0, "Q8_0", false, true),
+        new("qwen2-7b-abl", "llm", "Qwen 2.5 7B · Abliterated", "Q8_0 · увеличенный объём весов", "tensorblock/Qwen2.5-7B-Instruct-abliterated-v2-GGUF", "Qwen2.5-7B-Instruct-abliterated-v2-Q8_0.gguf", 0, "Q8_0", false, false),
         new("gigaam-rnnt", "stt", "GigaAM v3 · RNNT", "Распознавание русской речи", "salute-developers/GigaAM", "", 1.2, "FP32 / FP16", true, true),
         new("qwen-tts-fast-06", "tts", "Faster Qwen3-TTS · 0.6B", "Быстрый синтез · выбор готового голоса · CUDA Graphs", "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", "", 2.5, "FP16", true, true),
         new("qwen-tts-fast-17", "tts", "Faster Qwen3-TTS · 1.7B", "Более качественная речь · готовые голоса и управление манерой", "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", "", 4.5, "FP16", false, true),
@@ -247,7 +247,10 @@ public sealed class GuidedSetupService(
             ?? candidates.OrderByDescending(f => f.Size).FirstOrDefault()?.Path
             ?? throw new InvalidOperationException(
                 "В репозитории нет подходящего файла Q8_0. Выберите другую модель.");
+        var selectedMetadata = manifest.Files.First(f => f.Path == selectedFile);
+        lock (_gate) { j.Total = selectedMetadata.Size; j.Bytes = 0; }
         Output(j, "Файл модели: " + selectedFile);
+        Output(j, "Размер по Hugging Face LFS: " + selectedMetadata.Size.ToString("N0") + " байт");
 
         var request = new ModelDownloadManager.DownloadRequest(choice.Repo, "main", [selectedFile]);
         using var result = JsonDocument.Parse(JsonSerializer.Serialize(await downloads.StartAsync(request, ct)));
@@ -310,6 +313,11 @@ public sealed class GuidedSetupService(
         }
         string adapter = Path.Combine(env.ContentRootPath, "Runtimes", j.Role == "stt" ? "gigaam_adapter.py" : "qwen_tts_adapter.py");
         if (!File.Exists(adapter)) throw new FileNotFoundException("Нет адаптера нейросети", adapter);
+        Stage(j, "install", "Проверяем синтаксис адаптера");
+        var syntaxFiles = j.Role == "stt"
+            ? new[] { adapter, Path.Combine(env.ContentRootPath, "Runtimes", "gigaam_torchaudio_fallback.py") }
+            : new[] { adapter };
+        await RunCommandAsync(j, python, ["-m", "py_compile", ..syntaxFiles], env.ContentRootPath, ct, 30);
         Stage(j, "install", "Проверяем Python и устанавливаем зависимости");
         if (j.Role == "stt" && !await CommandExistsAsync("git", "--version", ct))
             await InstallAptAsync(j, ["git"], ct);
@@ -395,16 +403,25 @@ public sealed class GuidedSetupService(
             // Transformers 5.16+ изменил RoPE config, вызывая MimiConfig.rope_theta
             // при загрузке весов Qwen3-TTS. Проверяем версию даже при наличии tts.ready.
             Stage(j, "install", "Проверяем совместимость загрузчика Qwen3-TTS");
-            var check = "from importlib.metadata import version; assert version('transformers') == '5.15.1', version('transformers'); import qwen_tts, torch";
-            try { await RunCommandAsync(j, python, ["-c", check], env.ContentRootPath, ct, 45); }
+            // Две связанные версии проверяются вместе. transformers 5.15.1
+            // требует tokenizers >= 0.22.0, <= 0.23.0; 0.23.2 не поддерживается.
+            // Существующая CUDA-сборка torch не меняется.
+            var check = "from importlib.metadata import version; "
+                + "assert version('transformers') == '5.15.1', 'transformers=' + version('transformers'); "
+                + "assert version('tokenizers') == '0.22.2', 'tokenizers=' + version('tokenizers'); "
+                + "import torch, tokenizers, transformers, qwen_tts; "
+                + "print('Qwen runtime OK:', version('transformers'), version('tokenizers'), torch.__version__)";
+            try { await RunCommandAsync(j, python, ["-c", check], env.ContentRootPath, ct, 90); }
             catch (InvalidOperationException)
             {
-                Output(j, "Устанавливаем совместимый transformers 5.15.1 без замены PyTorch");
+                Output(j, "Восстанавливаем совместимую пару transformers/tokenizers, сохраняя текущий torch");
+                // pip устанавливает обе версии вместе; прежний --no-deps был причиной
+                // несовместимого tokenizers 0.23.2 и последующего ImportError.
                 await RunCommandAsync(j, python, ["-m", "pip", "install",
                     "--break-system-packages", "--root-user-action=ignore", "--no-input",
-                    "--no-deps", "--force-reinstall", "transformers==5.15.1"],
+                    "--upgrade", "transformers==5.15.1", "tokenizers==0.22.2"],
                     env.ContentRootPath, ct, 1200);
-                await RunCommandAsync(j, python, ["-c", check], env.ContentRootPath, ct, 60);
+                await RunCommandAsync(j, python, ["-c", check], env.ContentRootPath, ct, 90);
             }
         }
         Stage(j, "launch", "Запускаем сервис; веса будут загружены автоматически");

@@ -58,6 +58,13 @@
             <div class="progress-main"><div class="ring" id="ringLlm"></div><div><h3 id="titleLlm">Подготовка</h3><p id="descLlm">Ожидаем ответ сервера</p></div><span class="progress-stage" id="stageLlm">—</span></div>
             <div class="bar"><div id="barLlm"></div></div>
             <div class="progress-footer"><span>Прогресс</span><span id="bytesLlm">—</span></div>
+            <div class="transfer-progress" id="transferPanelLlm" aria-label="Скачивание GGUF">
+              <div class="transfer-caption"><span>Скачивание файла</span><strong id="transferPctLlm">—</strong></div>
+              <div class="transfer-track" role="progressbar" aria-label="Процент скачивания модели"
+                aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="transferTrackLlm">
+                <span id="transferBarLlm"></span>
+              </div>
+            </div>
             <div class="install-steps" id="stepsLlm"></div>
             <details class="log-details" open><summary>Журнал <span class="chevron">⌄</span></summary><pre id="logsLlm" class="install-log">Ожидание…</pre></details>
           </div>
