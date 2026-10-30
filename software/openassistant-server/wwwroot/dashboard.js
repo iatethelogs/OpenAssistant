@@ -242,17 +242,39 @@ el("searchMusic").onclick=busy(el("searchMusic"),async()=>{const r=await api("/a
 /* Chat directly via the device websocket */
 let chatSocket=null,chatBuffer=[],chatSampleRate=24000;
 function chatAppend(s){const box=el("chatHistory");box.textContent+=s;box.scrollTop=box.scrollHeight}
+function activeProfile(){return el("chatProfile").value.trim()||"Общий"}
+async function refreshMemoryCount(){
+ const profile=activeProfile();
+ const r=await api("/api/memory/"+encodeURIComponent(profile));
+ el("chatMemoryCount").textContent=r.exchanges+" разговоров сохранено";
+}
+el("chatProfile").value=localStorage.getItem("openassistant-chat-profile")||"Общий";
+el("chatProfileSet").onclick=()=>{
+ const name=activeProfile();if(!/^[\\p{L}\\p{N} _.-]{1,48}$/u.test(name)){toast("Некорректное имя профиля",true);return}
+ localStorage.setItem("openassistant-chat-profile",name);
+ if(chatSocket?.readyState===1)chatSocket.send(JSON.stringify({type:"profile",name}));
+ refreshMemoryCount().catch(e=>toast(e.message,true));
+};
+el("chatMemoryClear").onclick=busy(el("chatMemoryClear"),async()=>{
+ if(!confirm("Удалить сохранённые разговоры профиля «"+activeProfile()+"»?"))return;
+ await api("/api/memory/"+encodeURIComponent(activeProfile()),"DELETE");
+ el("chatHistory").textContent="";
+ await refreshMemoryCount();
+ toast("История профиля удалена");
+});
+refreshMemoryCount().catch(()=>{});
 el("chatConnect").onclick=()=>{
  if(chatSocket?.readyState===1){chatSocket.close();return}
  const uri=(location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws";
  chatSocket=new WebSocket(uri);chatSocket.binaryType="arraybuffer";el("chatStatus").textContent="Подключение";
- chatSocket.onopen=()=>{el("chatStatus").textContent="Подключено";el("chatConnect").textContent="Отключиться";el("chatSend").disabled=false;el("chatCancel").disabled=false};
+ chatSocket.onopen=()=>{chatSocket.send(JSON.stringify({type:"profile",name:activeProfile()}));el("chatStatus").textContent="Подключено";el("chatConnect").textContent="Отключиться";el("chatSend").disabled=false;el("chatCancel").disabled=false};
  chatSocket.onclose=()=>{el("chatStatus").textContent="Отключено";el("chatConnect").textContent="Подключиться";el("chatSend").disabled=true;el("chatCancel").disabled=true};
  chatSocket.onerror=()=>el("chatStatus").textContent="Ошибка соединения";
  chatSocket.onmessage=event=>{
   if(event.data instanceof ArrayBuffer){chatBuffer.push(new Uint8Array(event.data));return}
   const msg=JSON.parse(event.data);
-  if(msg.type==="transcript")chatAppend("\nВы: "+msg.text+"\n");
+  if(msg.type==="transcript")chatAppend("\nВы: "+msg.text+"\nАссистент: ");
+  else if(msg.type==="profile"){el("chatStatus").textContent="Подключено · "+msg.name;refreshMemoryCount().catch(()=>{})}
   else if(msg.type==="text")chatAppend(msg.delta||"");
   else if(msg.type==="audio_start"){chatBuffer=[];chatSampleRate=msg.sampleRate||24000}
   else if(msg.type==="audio_end"){
@@ -270,8 +292,23 @@ el("chatConnect").onclick=()=>{
   else if(msg.type==="done")chatAppend("\n");
  };
 };
-function sendChat(){const s=el("chatInput").value.trim();if(!s||chatSocket?.readyState!==1)return;chatAppend("\nВы: "+s+"\nАссистент: ");chatSocket.send(JSON.stringify({type:"text",text:s}));el("chatInput").value=""}
+function sendChat(){const s=el("chatInput").value.trim();if(!s||chatSocket?.readyState!==1)return;chatSocket.send(JSON.stringify({type:"text",text:s}));el("chatInput").value=""}
 el("chatSend").onclick=sendChat;el("chatInput").onkeydown=e=>{if(e.key==="Enter")sendChat()};el("chatCancel").onclick=()=>{if(chatSocket?.readyState===1)chatSocket.send(JSON.stringify({type:"cancel"}))};
+el("assistantDefaults").onclick=busy(el("assistantDefaults"),async()=>{
+ const p=await api("/api/control/assistant-defaults");
+ el("prompt").value=p.systemPrompt;el("temperature").value=p.llmTemperature;el("maxTokens").value=p.llmMaxTokens;
+ toast("Параметры выставлены. Нажмите «Сохранить настройки».");
+});
+el("haRefreshEntities").onclick=busy(el("haRefreshEntities"),async()=>{
+ const list=await api("/api/integrations/homeassistant/entities");
+ const box=el("haEntities");box.replaceChildren();
+ for(const item of list.slice(0,80)){
+  const row=textNode("div","","ha-entity");
+  row.append(textNode("span",item.name||item.id),textNode("small",(item.state||"—")+(item.unit?" "+item.unit:"")));
+  box.append(row);
+ }
+ if(!list.length)box.textContent="Устройств нет";
+});
 /* Control navigation event hooks */
 for(const btn of document.querySelectorAll('[data-view="models"],[data-view="integrations"],[data-view="logs"],[data-view="events"]')){
  btn.addEventListener("click",()=>{const v=btn.dataset.view;if(v==="models")refreshModels().catch(e=>toast(e.message,true));if(v==="integrations")refreshConnections().catch(e=>toast(e.message,true));if(v==="logs")refreshServerLogs().catch(e=>toast(e.message,true));if(v==="events")refreshEvents().catch(e=>toast(e.message,true))})
