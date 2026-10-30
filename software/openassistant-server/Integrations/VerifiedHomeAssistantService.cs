@@ -20,7 +20,7 @@ public sealed class VerifiedHomeAssistantService(IHttpClientFactory factory,
     private static readonly Regex EntityId = new(@"\b[a-z_]+\.[a-z0-9_]+\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex HomeTopic = new(
-        @"свет|ламп|люстр|розет|выключател|штор|жалюзи|вентилятор|датчик|термостат|температур|градус|влажност|отоплен|кондиц|увлажнит|двер|замок|гараж|движен|устройств|дома|квартир|комнат|home assistant|умн.{0,5}дом|\b(?:light|switch|sensor|binary_sensor|fan|cover|climate|lock)\.",
+        @"свет|ламп|люстр|розет|выключател|штор|жалюзи|вентилятор|датчик|термостат|температур|градус|влажност|отоплен|кондиц|увлажнит|двер|замок|гараж|движен|устройств|освещен|реле|home assistant|умн.{0,5}дом|\b(?:light|switch|sensor|binary_sensor|fan|cover|climate|lock)\.",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex QueryIntent = new(
         @"включ|выключ|откро|откры|закро|закры|состояни|статус|горит|работает|температур|градус|какие|сколько|покажи|проверь|открыт|закрыт|влажност|движени|\b(on|off)\b|включ[её]н|выключ[её]н|управ",
