@@ -15,13 +15,7 @@ function renderDevices(){el("devicesCount").textContent=state.devices?.count??"�
 for(const entry of list){const row=textNode("div","","connection-entry");row.append(textNode("strong",entry.remote+" · "+entry.id),textNode("small","Подключение: "+new Date(entry.connectedAt).toLocaleString("ru-RU")+" · последний пакет: "+new Date(entry.lastPacketAt).toLocaleTimeString("ru-RU")));box.append(row)}}
 function render(){for(const role of ["llm","stt","tts"])setService(role);renderGpus();renderDevices();el("updatedAt").textContent="Обновлено "+new Date().toLocaleTimeString("ru-RU");
 const sys=state.system||{};el("cpuValue").textContent=sys.cpuThreads??"—";el("memoryValue").textContent=sys.serverMemoryMiB==null?"—":sys.serverMemoryMiB+" МиБ";el("storageValue").textContent=sys.diskFreeGiB==null?"—":sys.diskFreeGiB+" ГиБ";el("downloadsValue").textContent=(state.downloads?.jobs||[]).filter(j=>["queued","downloading"].includes(j.state)).length;
-const health=state.models?.status?.api||{};
- const live=["llm","stt","tts"].filter(role=>health[role]?.state==="ready").length;
- const reactor=document.querySelector(".bridge-core");
- if(reactor)reactor.dataset.health=live===3?"ready":live?"partial":"offline";
- const label=document.querySelector(".reactor-label small");
- if(label)label.textContent=live+"/3 ПОДСИСТЕМЫ АКТИВНЫ";
- el("serverChip").textContent="Подключено";el("sideStatus").textContent="Сервер доступен"}
+el("serverChip").textContent="Подключено";el("sideStatus").textContent="Сервер доступен"}
 async function poll(){if(state.loading)return;state.loading=true;try{const [models,system,devices,downloads]=await Promise.all([api("/api/models"),api("/api/control/system"),api("/api/control/devices"),api("/api/models/downloads")]);Object.assign(state,{models,system,devices,downloads});render()}catch(e){el("serverChip").textContent="Нет соединения";el("sideStatus").textContent="Нет подключения";}finally{state.loading=false}}
 function updateVoiceSamplingInputs(){
  const mode=el("voiceGenerationMode").value;
