@@ -28,10 +28,16 @@ function modelCard(m){const b=document.createElement("button");b.type="button";b
  const foot=document.createElement("span");foot.className="foot";
  foot.textContent=m.quality;
  b.append(type,name,desc,foot);
- if(state.installed.some(item=>item.role===m.role&&(
-   m.role==="stt" || (m.role==="tts"&&item.repo===m.repo) ||
-   (m.role==="llm"&&item.path?.includes("/"+m.repo+"/"))))){
-   const saved=document.createElement("span");saved.className="tag";saved.textContent="Уже скачана";b.append(saved);
+ const installed=state.installed.filter(item=>item.role===m.role&&(
+   (m.role==="stt"&&item.repo==="salute-developers/GigaAM") ||
+   (m.role==="tts"&&item.repo===m.repo) ||
+   (m.role==="llm"&&item.path?.includes("/"+m.repo+"/"))));
+ if(installed.length){
+   const cached=installed.some(item=>item.source!=="manual-download");
+   const saved=document.createElement("span");saved.className="tag";
+   saved.textContent=cached?"Уже скачана":"Файлы на диске";
+   saved.title=cached?"Модель найдена в рабочем кеше движка":"Файлы скачаны вручную; движок может потребовать собственный кеш";
+   b.append(saved);
  }
  if(m.recommended){const label=document.createElement("span");label.className="tag";label.textContent="Рекомендуем";b.append(label)}
  b.onclick=()=>{state.selected[m.role]=m.id;renderCards(m.role);updateVoiceMode()};return b}
