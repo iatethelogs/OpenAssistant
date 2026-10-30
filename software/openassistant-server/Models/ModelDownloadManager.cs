@@ -271,6 +271,31 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
         return Convert.ToHexString(await SHA256.HashDataAsync(file, ct))
             .Equals(hash, StringComparison.OrdinalIgnoreCase);
     }
+    /// <summary>Ожидает завершения задания, не блокируя HTTP-запрос мастера.</summary>
+    public async Task<string> WaitAsync(Guid id, Action<long,long,string> progress, CancellationToken ct)
+    {
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            string state, file;
+            long received, total;
+            lock (_sync)
+            {
+                if (!_jobs.TryGetValue(id, out var job))
+                    throw new InvalidOperationException("Задание загрузки не найдено");
+                state = job.State;
+                file = job.Error ?? job.Current;
+                received = job.Received;
+                total = job.Total;
+            }
+            progress(received, total, file);
+            if (state == "completed") return state;
+            if (state is "cancelled" or "failed")
+                throw new InvalidOperationException("Скачивание модели: " + state + ": " + file);
+            await Task.Delay(900, ct);
+        }
+    }
+
     public bool Cancel(Guid id)
     {
         lock (_sync)

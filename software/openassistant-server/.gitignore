@@ -16,3 +16,7 @@ models.local.json.*.tmp
 
 agent-tools.local.json
 agent-tools.local.json.*.tmp
+
+# Автоматическая загрузка исходников движка и локальные отметки установки
+runtimes/
+Runtimes/*.ready

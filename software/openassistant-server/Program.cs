@@ -9,6 +9,12 @@ using OpenAssistant.Server.Transport;
 using OpenAssistant.Server.Monitoring;
 
 var builder = WebApplication.CreateBuilder(args);
+var webLogs = new DashboardLogProvider();
+builder.Logging.ClearProviders();
+builder.Logging.AddProvider(webLogs);
+builder.Services.AddSingleton(webLogs);
+builder.Services.AddSingleton<GuidedSetupService>();
+builder.Services.AddHostedService<ModelAutoStartService>();
 builder.Configuration.AddJsonFile("settings.local.json", optional: true, reloadOnChange: true);
 builder.Services.AddSingleton<SettingsStore>();
 builder.Services.AddSingleton<ModelProcessManager>();
@@ -75,6 +81,21 @@ app.MapPost("/api/settings", async (HttpContext ctx, SettingsUpdate settings, Se
 });
 // Hugging Face: запуск задач скачивания не блокирует веб-запрос, весь прогресс доступен через polling.
 // Единая панель: skills, настройка оборудования и прямые benchmark-запросы к runtime.
+// Пошаговая настройка: каждый этап выполняется сервером и возвращает наблюдаемый статус.
+app.MapGet("/api/setup/status", async (HttpContext ctx, GuidedSetupService guided, CancellationToken ct) =>
+    localOnly(ctx) ? Results.Ok(await guided.StatusAsync(ct)) : Results.StatusCode(403));
+app.MapGet("/api/setup/catalog", (HttpContext ctx) =>
+    localOnly(ctx) ? Results.Ok(GuidedModelCatalog.All) : Results.StatusCode(403));
+app.MapPost("/api/setup/{role}", (HttpContext ctx, string role,
+    GuidedSetupService.BeginRequest input, GuidedSetupService guided) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(guided.Begin(role, input)); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapGet("/api/setup/logs", (HttpContext ctx, DashboardLogProvider logs, int? take) =>
+    localOnly(ctx) ? Results.Ok(logs.Recent(take ?? 300)) : Results.StatusCode(403));
 app.MapGet("/api/control/skills", async (HttpContext ctx, AgentToolService skills, CancellationToken ct) =>
     localOnly(ctx) ? Results.Ok(await skills.ListAsync(ct)) : Results.StatusCode(403));
 app.MapPut("/api/control/skills", async (

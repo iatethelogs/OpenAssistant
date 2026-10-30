@@ -51,15 +51,17 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
     }
 
     /// <summary>Сохраняет точечные изменения, не сбрасывая остальные параметры ассистента.</summary>
-    public Task UpdateLlmUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(url, null, ct);
-    public Task UpdateDeviceTokenAsync(string token, CancellationToken ct) => UpdatePartialAsync(null, token, ct);
-    private Task UpdatePartialAsync(string? llmUrl, string? deviceToken, CancellationToken ct)
+    public Task UpdateLlmUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(url, null, null, null, ct);
+    public Task UpdateSttUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(null, url, null, null, ct);
+    public Task UpdateTtsUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(null, null, url, null, ct);
+    public Task UpdateDeviceTokenAsync(string token, CancellationToken ct) => UpdatePartialAsync(null, null, null, token, ct);
+    private Task UpdatePartialAsync(string? llmUrl, string? sttUrl, string? ttsUrl, string? deviceToken, CancellationToken ct)
     {
         var s = options.CurrentValue;
         return SaveAsync(new SettingsUpdate {
             LlmUrl = llmUrl ?? s.LlmUrl, LlmModel = s.LlmModel, SystemPrompt = s.SystemPrompt,
-            SttUrl = s.SttUrl, SttModel = s.SttModel,
-            TtsUrl = s.TtsUrl, TtsModel = s.TtsModel, TtsVoice = s.TtsVoice,
+            SttUrl = sttUrl ?? s.SttUrl, SttModel = s.SttModel,
+            TtsUrl = ttsUrl ?? s.TtsUrl, TtsModel = s.TtsModel, TtsVoice = s.TtsVoice,
             TtsLanguage = s.TtsLanguage, HomeAssistantUrl = s.HomeAssistantUrl,
             HomeAssistantToken = s.HomeAssistantToken, DeviceToken = deviceToken ?? s.DeviceToken,
             LlmTemperature = s.LlmTemperature, LlmTopP = s.LlmTopP,

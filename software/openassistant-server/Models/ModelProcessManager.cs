@@ -136,6 +136,24 @@ public sealed class ModelProcessManager(
         return await StartAsync(role, ct);
     }
 
+    public async Task<string[]> ProcessLogsAsync(string role, CancellationToken ct)
+    {
+        await _guard.WaitAsync(ct);
+        try {
+            if (!_running.TryGetValue(role, out var process)) return [];
+            lock (process.Log) return process.Log.ToArray();
+        }
+        finally { _guard.Release(); }
+    }
+
+    /// <summary>Используется мастером: обнаруживает раннее завершение runtime без ожидания таймаута.</summary>
+    public async Task<bool> IsRunningAsync(string role, CancellationToken ct)
+    {
+        await _guard.WaitAsync(ct);
+        try { return _running.TryGetValue(role, out var process) && !process.Process.HasExited; }
+        finally { _guard.Release(); }
+    }
+
     /// <summary>Возвращает PID и exit code, последние строки логов, health API и телеметрию каждой карты.</summary>
     public async Task<object> StatusAsync(CancellationToken ct)
     {

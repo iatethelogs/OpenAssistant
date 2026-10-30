@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text;
 using OpenAssistant.Server.Audio;
 using OpenAssistant.Server.Chat;
@@ -8,7 +10,7 @@ using OpenAssistant.Server.Configuration;
 namespace OpenAssistant.Server.Monitoring;
 
 /// <summary>Реальные замеры HTTP-моделей без сохранения аудио и истории тестов.</summary>
-public sealed class DiagnosticService(LlmService llm, SpeechService speech, IOptionsMonitor<ServerOptions> options)
+public sealed class DiagnosticService(IHttpClientFactory http, SpeechService speech, IOptionsMonitor<ServerOptions> options)
 {
     public sealed record LlmTestInput(string Prompt, string? Model);
     public sealed record TtsTestInput(string Text, string? Voice, string? Model);
@@ -19,28 +21,67 @@ public sealed class DiagnosticService(LlmService llm, SpeechService speech, IOpt
             throw new ArgumentException("Длина запроса: 1–1500 символов");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(90));
+        var cfg = options.CurrentValue;
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            cfg.LlmUrl.TrimEnd('/') + "/v1/chat/completions");
+        request.Content = JsonContent.Create(new {
+            model = string.IsNullOrWhiteSpace(model) ? cfg.LlmModel : model,
+            stream = true,
+            stream_options = new { include_usage = true },
+            temperature = cfg.LlmTemperature,
+            top_p = cfg.LlmTopP, top_k = cfg.LlmTopK, repeat_penalty = cfg.LlmRepeatPenalty,
+            max_tokens = cfg.LlmMaxTokens,
+            messages = new object[] {
+                new { role = "system", content = "Отвечай кратко и по-русски. Это тест скорости." },
+                new { role = "user", content = prompt }
+            }
+        });
         var sw = Stopwatch.StartNew();
+        using var response = await http.CreateClient("llm").SendAsync(request,
+            HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
+        using var reader = new StreamReader(stream, Encoding.UTF8);
         long? first = null;
-        int segments = 0;
+        int fragments = 0;
+        int? exactTokens = null;
         var answer = new StringBuilder();
-        await foreach (string chunk in llm.GenerateAsync([
-            new ChatMessage("system", "Отвечай кратко и по-русски. Это тест скорости."),
-            new ChatMessage("user", prompt)
-        ], timeout.Token, model))
+        while (await reader.ReadLineAsync(timeout.Token) is { } line)
         {
-            if (first is null) first = sw.ElapsedMilliseconds;
-            answer.Append(chunk);
-            segments++;
-            if (answer.Length > 16000) break;
+            if (!line.StartsWith("data: ", StringComparison.Ordinal)) continue;
+            string payload = line[6..];
+            if (payload == "[DONE]") break;
+            using var json = JsonDocument.Parse(payload);
+            var root = json.RootElement;
+            if (root.TryGetProperty("usage", out var usage) &&
+                usage.ValueKind == JsonValueKind.Object &&
+                usage.TryGetProperty("completion_tokens", out var count) &&
+                count.TryGetInt32(out int value))
+                exactTokens = value;
+            if (!root.TryGetProperty("choices", out var choices) ||
+                choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0) continue;
+            if (!choices[0].TryGetProperty("delta", out var delta) ||
+                delta.ValueKind != JsonValueKind.Object ||
+                !delta.TryGetProperty("content", out var text) || text.ValueKind != JsonValueKind.String)
+                continue;
+            string part = text.GetString() ?? "";
+            if (part.Length == 0) continue;
+            first ??= sw.ElapsedMilliseconds;
+            fragments++;
+            if (answer.Length < 16000) answer.Append(part);
         }
         sw.Stop();
         double seconds = Math.Max(0.001, (sw.ElapsedMilliseconds - (first ?? 0)) / 1000.0);
-        double estimatedTokens = answer.Length / 4.0;
+        double countTokens = exactTokens ?? (answer.Length / 4.0);
+        double speed = Math.Round(countTokens / seconds, 1);
         return new {
             text = answer.ToString(), firstTokenMs = first, totalMs = sw.ElapsedMilliseconds,
-            chunks = segments, estimatedTokens = Math.Round(estimatedTokens, 1),
-            estimatedTokensPerSecond = Math.Round(estimatedTokens / seconds, 1),
-            note = "Токены/с оценены приблизительно по длине ответа. Время первого фрагмента измерено точно."
+            chunks = fragments, completionTokens = exactTokens,
+            tokensExact = exactTokens is not null,
+            tokensPerSecond = speed, estimatedTokensPerSecond = speed,
+            note = exactTokens is not null
+                ? "Точное число токенов получено из usage.completion_tokens."
+                : "Сервер не вернул usage. Скорость приблизительная (оценка по символам)."
         };
     }
 
