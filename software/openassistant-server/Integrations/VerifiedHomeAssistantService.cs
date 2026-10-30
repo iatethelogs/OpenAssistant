@@ -20,10 +20,10 @@ public sealed class VerifiedHomeAssistantService(IHttpClientFactory factory,
     private static readonly Regex EntityId = new(@"\b[a-z_]+\.[a-z0-9_]+\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex HomeTopic = new(
-        @"свет|ламп|люстр|розет|выключател|штор|жалюзи|вентилятор|датчик|термостат|температур|градус|home assistant|умн.{0,5}дом|\b(?:light|switch|sensor|fan|cover)\.",
+        @"свет|ламп|люстр|розет|выключател|штор|жалюзи|вентилятор|датчик|термостат|температур|градус|влажност|отоплен|кондиц|увлажнит|двер|замок|гараж|движен|устройств|дома|квартир|комнат|home assistant|умн.{0,5}дом|\b(?:light|switch|sensor|binary_sensor|fan|cover|climate|lock)\.",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex QueryIntent = new(
-        @"включ|выключ|откро|откры|закро|закры|состояни|статус|горит|работает|температур|градус|какие|сколько|покажи|проверь|\b(on|off)\b|включ[её]н|выключ[её]н|управ",
+        @"включ|выключ|откро|откры|закро|закры|состояни|статус|горит|работает|температур|градус|какие|сколько|покажи|проверь|открыт|закрыт|влажност|движени|\b(on|off)\b|включ[её]н|выключ[её]н|управ",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex CommandOn = new(@"\bвключи(?:те)?\b|\bзажги(?:те)?\b|\bоткрой(?:те)?\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -167,9 +167,12 @@ public sealed class VerifiedHomeAssistantService(IHttpClientFactory factory,
     /// <summary>Перехватывает вопросы о состоянии и прямые команды; модель не формирует фактический ответ.</summary>
     public async Task<string?> TryHandleAsync(string text, bool canRead, bool canWrite, CancellationToken ct)
     {
-        if (!HomeTopic.IsMatch(text) || !QueryIntent.IsMatch(text)) return null;
+        if ((!HomeTopic.IsMatch(text) && !EntityId.IsMatch(text)) || !QueryIntent.IsMatch(text)) return null;
         if (!canRead) return "Чтение состояний Home Assistant отключено в настройках инструментов.";
         if (!Connected) return "Home Assistant не подключён. Добавьте адрес и токен в разделе интеграций.";
+        if (Regex.IsMatch(text, @"вчера|прошл|позавчера|неделю назад|в понедельник",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            return "История изменений устройств не загружается. Могу проверить только текущее состояние.";
         try
         {
             var entities = await EntitiesAsync(ct);
