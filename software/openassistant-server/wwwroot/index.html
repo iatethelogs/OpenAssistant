@@ -1,28 +1,25 @@
 <!doctype html>
 <html lang="ru"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#090e17">
+<meta name="theme-color" content="#131313">
 <title>OpenAssistant — Панель управления</title>
-<link rel="stylesheet" href="/dashboard.css?v=bridge-2"></head>
-<body class="mission-control"><canvas id="orbitCanvas" aria-hidden="true"></canvas><div class="ambient-waves" aria-hidden="true"></div>
+<link rel="stylesheet" href="/dashboard.css?v=mono-1"></head>
+<body>
 <div class="layout">
 <aside class="sidebar">
  <a class="brand" href="/"><span class="brand-icon">OA</span><span><b>OpenAssistant</b><small>Сервер управления</small></span></a>
- <div class="nav-title">РАЗДЕЛЫ</div>
- <nav id="navigation">
-  <button type="button" class="nav-item active" data-view="overview"><span class="symbol">◈</span>Обзор</button>
-  <button type="button" class="nav-item" data-view="settings"><span class="symbol">☷</span>Настройки ассистента</button>
-  <button type="button" class="nav-item" data-view="tests"><span class="symbol">◉</span>Проверка работы</button>
-  <button type="button" class="nav-item" data-view="devices"><span class="symbol">▣</span>Устройства</button>
-  <button type="button" class="nav-item" data-view="integrations"><span class="symbol">⌘</span>Интеграции</button>
- </nav>
- <div class="nav-title secondary-title">ИНСТРУМЕНТЫ</div>
- <nav class="nav-links">
-  <button type="button" class="nav-item" data-view="models"><span class="symbol">▤</span>Модели</button>
-  <button type="button" class="nav-item" data-view="chat"><span class="symbol">◌</span>Диалог</button>
-  <button type="button" class="nav-item" data-view="media"><span class="symbol">♫</span>Музыка и радио</button>
-  <button type="button" class="nav-item" data-view="events"><span class="symbol">◷</span>События</button>
-  <button type="button" class="nav-item" data-view="logs"><span class="symbol">≡</span>Журнал</button>
+ <nav id="navigation" aria-label="Навигация">
+ <button type="button" class="nav-item active" data-view="overview"><span class="symbol">⌂</span>Обзор</button>
+ <button type="button" class="nav-item" data-view="models"><span class="symbol">≡</span>Модели</button>
+ <button type="button" class="nav-item" data-view="tests"><span class="symbol">◉</span>Диагностика</button>
+ <button type="button" class="nav-item" data-view="settings"><span class="symbol">☷</span>Настройки</button>
+ <button type="button" class="nav-item" data-view="devices"><span class="symbol">▣</span>Устройства</button>
+ <button type="button" class="nav-item" data-view="integrations"><span class="symbol">⌘</span>Интеграции</button>
+ <div class="nav-divider"></div>
+ <button type="button" class="nav-item" data-view="chat"><span class="symbol">◌</span>Диалог</button>
+ <button type="button" class="nav-item" data-view="media"><span class="symbol">♫</span>Музыка</button>
+ <button type="button" class="nav-item" data-view="events"><span class="symbol">◷</span>События</button>
+ <button type="button" class="nav-item" data-view="logs"><span class="symbol">≡</span>Журнал</button>
  </nav>
  <div class="sidebar-status"><span><strong>OpenAssistant</strong><small id="sideStatus">Соединение с сервером</small></span></div>
 </aside>
@@ -33,52 +30,42 @@
  </header>
 
  <section class="view active" id="overview">
-  <header class="bridge-intro">
-    <div class="bridge-heading"><span class="eyebrow">MARTIN / AUTONOMOUS SYSTEM / LIVE</span><h1>Центр<br><em>управления.</em></h1><p>Вся система на одной орбите. Каждая модель, устройство и процесс — часть единого организма.</p>
-      <div class="bridge-cta"><a href="/setup.html" class="button primary">Настроить систему <span aria-hidden="true">↗</span></a><button class="button secondary" data-view="tests" type="button">Проверить связь</button></div>
-    </div>
-    <div class="bridge-index"><span class="bridge-index-label">SYSTEM / MISSION 001</span><span class="bridge-index-mark">M<span class="accent-star">✳</span></span><span class="bridge-index-bottom">OFFLINE-FIRST · OPEN SOURCE</span></div>
+  <header class="overview-heading">
+    <div><span class="eyebrow">Состояние системы</span><h1>Обзор</h1><p>Модели, вычислительные ресурсы и устройства.</p></div>
+    <div class="overview-heading-actions"><span id="updatedAt" class="minor">Обновление…</span><a href="/setup.html" class="button primary">Мастер настройки</a></div>
   </header>
-  <div class="bridge-layout">
-    <article class="bridge-core">
-      <div class="core-topline"><div><span class="eyebrow">01 / CORE TOPOLOGY</span><h2>Живая архитектура</h2></div><span class="live-marker"><i></i> ОБНОВЛЕНИЕ В РЕАЛЬНОМ ВРЕМЕНИ</span></div>
-      <div class="core-stage" aria-label="Интерактивная схема компонентов">
-        <div class="radar-grid"></div><div class="radar-sweep"></div>
-        <svg class="core-connections" viewBox="0 0 800 510" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-          <defs><linearGradient id="orbitWire"><stop stop-color="#74b8ff" stop-opacity=".06"/><stop offset=".5" stop-color="#a5ceff" stop-opacity=".8"/><stop offset="1" stop-color="#93acff" stop-opacity=".08"/></linearGradient></defs>
-          <path d="M400 252 L165 136 M400 252 L631 136 M400 252 L400 451" stroke="url(#orbitWire)" stroke-width="1.7" fill="none" stroke-dasharray="5 8"/>
-          <ellipse cx="400" cy="251" rx="302" ry="186" stroke="#9eb8f5" opacity=".09" stroke-width="1" fill="none"/>
-          <ellipse cx="400" cy="251" rx="230" ry="230" stroke="#9eb8f5" opacity=".09" stroke-width="1" fill="none"/>
-          <circle r="3" fill="#c8e4ff"><animateMotion dur="4s" repeatCount="indefinite" path="M165 136 L400 252 L631 136"/></circle>
-          <circle r="3" fill="#83dddb"><animateMotion dur="5s" repeatCount="indefinite" path="M400 451 L400 252 L165 136"/></circle>
-        </svg>
-        <div class="reactor-halo halo-one"></div><div class="reactor-halo halo-two"></div>
-        <div class="reactor-center" aria-label="Центральное ядро Мартин"><span class="reactor-shine"></span><span class="reactor-letter">M</span><span class="reactor-ring"></span></div>
-        <div class="reactor-label"><span>МАРТИН</span><small>ГОЛОСОВОЙ АССИСТЕНТ</small></div>
-        <button class="engine-pod pod-llm" data-view="models" type="button"><span class="pod-index">01 — ИНТЕЛЛЕКТ</span><span class="pod-name">LLM <i class="pod-light"></i></span><strong id="llmStatus">—</strong><span id="llmFlag" class="state-tag">Проверка</span><small id="llmInfo">Ожидаем API</small></button>
-        <button class="engine-pod pod-stt" data-view="tests" type="button"><span class="pod-index">02 — СЛУХ</span><span class="pod-name">STT <i class="pod-light"></i></span><strong id="sttStatus">—</strong><span id="sttFlag" class="state-tag">Проверка</span><small id="sttInfo">Ожидаем API</small></button>
-        <button class="engine-pod pod-tts" data-view="settings" type="button"><span class="pod-index">03 — ГОЛОС</span><span class="pod-name">TTS <i class="pod-light"></i></span><strong id="ttsStatus">—</strong><span id="ttsFlag" class="state-tag">Проверка</span><small id="ttsInfo">Ожидаем API</small></button>
+  <div class="overview-workspace">
+    <section class="engine-workspace" aria-label="Сервисы">
+      <header class="workspace-header"><h2>Сервисы</h2><button data-view="models" class="subtle-action" type="button">Управление моделями ↗</button></header>
+      <div class="engine-list">
+        <button type="button" data-view="models" class="engine-row">
+          <span class="engine-ordinal">LLM</span><span class="engine-title"><strong>Языковая модель</strong><small>Обработка запросов</small></span>
+          <span class="engine-state" id="llmStatus">—</span><span class="state-tag" id="llmFlag">Проверка</span><span class="engine-detail" id="llmInfo">Ожидаем ответ</span><span class="engine-arrow">↗</span>
+        </button>
+        <button type="button" data-view="tests" class="engine-row">
+          <span class="engine-ordinal">STT</span><span class="engine-title"><strong>Распознавание</strong><small>Преобразование речи в текст</small></span>
+          <span class="engine-state" id="sttStatus">—</span><span class="state-tag" id="sttFlag">Проверка</span><span class="engine-detail" id="sttInfo">Ожидаем ответ</span><span class="engine-arrow">↗</span>
+        </button>
+        <button type="button" data-view="settings" class="engine-row">
+          <span class="engine-ordinal">TTS</span><span class="engine-title"><strong>Синтез речи</strong><small>Генерация голоса</small></span>
+          <span class="engine-state" id="ttsStatus">—</span><span class="state-tag" id="ttsFlag">Проверка</span><span class="engine-detail" id="ttsInfo">Ожидаем ответ</span><span class="engine-arrow">↗</span>
+        </button>
       </div>
-      <div class="core-bottom"><span><span class="signal-spark"></span> Локальная обработка</span><span id="updatedAt">Ожидание телеметрии</span><button data-view="models" type="button">Управлять движками <span>↗</span></button></div>
-    </article>
-    <aside class="bridge-telemetry">
-      <div class="telemetry-top"><span class="eyebrow">02 / HARDWARE</span><h2>Вычислительный<br>контур.</h2><p>Ресурсы в реальном времени.</p></div>
-      <div id="gpus" class="gpu-list"><p class="muted">Подключение к NVIDIA…</p></div>
-      <div class="telemetry-end"><span>ACTIVE CONNECTIONS</span><strong id="devicesCount">—</strong><small>Подключённые устройства</small></div>
-    </aside>
+      <div class="system-foot">
+        <span>Подключённые устройства</span><strong id="devicesCount">—</strong><button type="button" data-view="devices" class="subtle-action">Перейти к устройствам ↗</button>
+      </div>
+    </section>
+    <section class="hardware-workspace" aria-label="Аппаратные ресурсы">
+      <header class="workspace-header"><h2>Видеокарты</h2><button data-view="models" class="subtle-action" type="button">Параметры ↗</button></header>
+      <div id="gpus" class="gpu-list"><p class="muted">Получение данных NVIDIA…</p></div>
+    </section>
   </div>
-  <div class="bridge-metrics">
-    <div><span class="eyebrow">03 / HOST</span><small>Потоки CPU</small><strong id="cpuValue">—</strong></div>
-    <div><span class="eyebrow">04 / MEMORY</span><small>Память сервера</small><strong id="memoryValue">—</strong></div>
-    <div><span class="eyebrow">05 / STORAGE</span><small>Свободное место</small><strong id="storageValue">—</strong></div>
-    <div><span class="eyebrow">06 / TRANSFER</span><small>Активные загрузки</small><strong id="downloadsValue">—</strong></div>
+  <div class="resource-strip">
+    <div><span>Потоки CPU</span><strong id="cpuValue">—</strong></div>
+    <div><span>Память сервера</span><strong id="memoryValue">—</strong></div>
+    <div><span>Свободно на диске</span><strong id="storageValue">—</strong></div>
+    <div><span>Активные загрузки</span><strong id="downloadsValue">—</strong></div>
   </div>
-  <div class="bridge-actions"><span class="eyebrow">QUICK ACCESS / 04</span><div>
-    <button data-view="devices" type="button"><span>↗</span>Подключить колонку</button>
-    <button data-view="integrations" type="button"><span>↗</span>Интеграции</button>
-    <button data-view="media" type="button"><span>↗</span>Музыка и радио</button>
-    <button data-view="logs" type="button"><span>↗</span>Журнал</button>
-  </div></div>
 </section>
 
 <section class="view" id="settings">
@@ -232,5 +219,5 @@
 </main></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/audio-test.js" defer></script>
-<script src="/scene.js" defer></script><script src="/dashboard.js?v=bridge-2" defer></script>
+<script src="/dashboard.js?v=mono-1" defer></script>
 </body></html>
