@@ -58,9 +58,20 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(404, {"error": "not found"})
             return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if not 1 <= length <= 20000:
-                self.reply(413, {"error": "request too large"})
+            header = self.headers.get("Content-Length")
+            if header is None:
+                self.reply(411, {"error": "Content-Length is required for /synthesize"})
+                return
+            try:
+                length = int(header)
+            except ValueError:
+                self.reply(400, {"error": "invalid Content-Length"})
+                return
+            if length <= 0:
+                self.reply(400, {"error": "empty request body"})
+                return
+            if length > 20000:
+                self.reply(413, {"error": "JSON request exceeds 20000 bytes"})
                 return
             args = json.loads(self.rfile.read(length))
             text = str(args.get("text", ""))
