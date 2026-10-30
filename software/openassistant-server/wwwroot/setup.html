@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#050814">
+  <meta name="theme-color" content="#131313">
   <title>Первоначальная настройка · OpenAssistant</title>
-  <link rel="stylesheet" href="/setup.css?v=bridge-2">
+  <link rel="stylesheet" href="/setup.css?v=mono-1">
 </head>
-<body class="first-flight"><canvas id="orbitCanvas" aria-hidden="true"></canvas><div class="ambient-waves" aria-hidden="true"></div>
+<body>
   <div class="shell">
     <header class="header">
       <a class="logo" href="/"><span class="logo-mark">OA</span><span>OpenAssistant<small>Настройка моделей</small></span></a>
@@ -19,46 +19,43 @@
     </header>
 
     <div class="wizard-head">
-      <span class="section-label">ПЕРВЫЙ ЗАПУСК / 2026</span>
+      <span class="section-label">Настройка</span>
       <div class="steps" aria-label="Этапы настройки">
-        <button class="step" data-index="00" data-step="welcome" type="button"><b>Начало</b></button>
-        <button class="step" data-index="01" data-step="llm" type="button"><b>Интеллект</b></button>
-        <button class="step" data-index="02" data-step="stt" type="button"><b>Слух</b></button>
-        <button class="step" data-index="03" data-step="tts" type="button"><b>Голос</b></button>
-        <button class="step" data-index="04" data-step="music" type="button"><b>Музыка</b></button>
+        <button class="step" data-step="welcome" type="button"><b>Начало</b></button>
+        <button class="step" data-step="llm" type="button"><b>Интеллект</b></button>
+        <button class="step" data-step="stt" type="button"><b>Слух</b></button>
+        <button class="step" data-step="tts" type="button"><b>Голос</b></button>
+        <button class="step" data-step="music" type="button"><b>Музыка</b></button>
       </div>
       <div class="journey-track"><span id="journeyFill"></span></div>
     </div>
 
     <div class="workspace">
       <section class="section active" id="welcome">
-        <div class="welcome-hero">
-          <div class="welcome-copy">
-            <span class="orbit-kicker">OPENASSISTANT / FIRST CONTACT</span>
-            <h1>Вдохни жизнь<br>в <span class="gradient-text">Мартина.</span></h1>
-            <p>Твой голосовой ассистент. Твои модели. Твой сервер. Никакой обязательной облачной инфраструктуры. Настроим интеллект, слух, голос и источники музыки — шаг за шагом.</p>
-            <div class="welcome-actions"><button class="primary welcome-action" data-next="llm" type="button">Начать настройку <span>↗</span></button><a href="/" class="secondary">Перейти к панели</a></div>
-            <div class="welcome-stats"><span>ЛОКАЛЬНЫЙ СЕРВЕР</span><span>СОБСТВЕННЫЙ ГОЛОС</span><span>OPEN SOURCE</span></div>
-          </div>
-          <div class="welcome-visual" aria-hidden="true">
-            <div class="welcome-label label-a"><b>01 / THINK</b><small>Модели языка</small></div>
-            <div class="welcome-label label-b"><b>02 / LISTEN</b><small>Распознавание речи</small></div>
-            <div class="welcome-label label-c"><b>03 / SPEAK</b><small>Синтез голоса</small></div>
-            <div class="orbit-globe"><div class="orbit-ring"></div><div class="orbit-ring second"></div><div class="orbit-core"></div></div>
-            <span class="welcome-caption">YOUR OWN UNIVERSE</span>
-          </div>
-        </div>
-        <div class="first-flight-footer"><span>СИСТЕМА НЕ ПЕРЕДАЁТ АУДИО В ОБЛАКО БЕЗ ПОДКЛЮЧЕННЫХ СЕРВИСОВ</span><span>SCROLL TO EXPLORE • 01</span></div>
-      </section>
+  <div class="welcome-layout">
+    <div class="welcome-copy">
+      <span class="welcome-eyebrow">Мастер настройки</span>
+      <h1>OpenAssistant</h1>
+      <p>Выберите модели и настройте подключение сервисов.</p>
+      <button class="primary welcome-action" data-next="llm" type="button">Начать <span>→</span></button>
+    </div>
+    <div class="welcome-index">
+      <div><span>LLM</span><strong>Языковая модель</strong></div>
+      <div><span>STT</span><strong>Распознавание речи</strong></div>
+      <div><span>TTS</span><strong>Синтез речи</strong></div>
+      <div><span>MEDIA</span><strong>Музыка</strong></div>
+    </div>
+  </div>
+</section>
 
-      <section class="section" id="llm">
+<section class="section" id="llm">
         <div class="intro">
           
           <h1>Выбор модели</h1>
           
         </div>
 
-        <aside class="stage-scene" aria-hidden="true"><span class="scene-index">CHAPTER 01 / MIND</span><div class="scene-image neural-image"><i></i><i></i><i></i><i></i><i></i></div><strong>Мозг<br>системы.</strong><p>Выбери языковую модель. Она будет понимать запросы, рассуждать и управлять навыками.</p><span class="scene-footnote">INTELLIGENCE / LOCAL INFERENCE</span></aside>
+        
         <div class="panel">
           <div class="card">
             <div class="card-heading"><div><h2 class="card-title">Языковые модели · Q8_0</h2></div></div>
@@ -104,7 +101,7 @@
 
       <section class="section" id="stt">
         <div class="intro"><h1>Распознавание речи</h1></div>
-        <aside class="stage-scene" aria-hidden="true"><span class="scene-index">CHAPTER 02 / PERCEPTION</span><div class="scene-image sound-image"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div><strong>Слышать<br>мир.</strong><p>Речь превращается в текст без обязательного обращения в облако. Проверь микрофон и скорость распознавания.</p><span class="scene-footnote">SPEECH TO TEXT / GIGAAM</span></aside>
+        
         <div class="panel"><div class="card">
           <div class="card-heading"><div><h2 class="card-title">Движок распознавания</h2></div></div>
           <div id="sttModels" class="models"></div>
@@ -127,7 +124,7 @@
 
       <section class="section" id="tts">
         <div class="intro"><h1>Синтез речи</h1></div>
-        <aside class="stage-scene" aria-hidden="true"><span class="scene-index">CHAPTER 03 / IDENTITY</span><div class="scene-image voice-image"><div class="voice-disc"></div><span class="voice-breath"></span></div><strong>Узнаваемый<br>голос.</strong><p>Выбирай готовый тембр или создай свой. Настрой интонации и повторяемость речи.</p><span class="scene-footnote">TEXT TO SPEECH / QWEN</span></aside>
+        
         <div class="panel"><div class="card">
           <div class="card-heading"><div><h2 class="card-title">Модель синтеза</h2></div></div>
           <div id="ttsModels" class="models"></div>
@@ -168,11 +165,11 @@
 
       <section class="section" id="music">
         <div class="intro"><h1>Музыкальный сервис</h1></div>
-        <aside class="stage-scene" aria-hidden="true"><span class="scene-index">CHAPTER 04 / FREQUENCY</span><div class="scene-image music-image"><span>♪</span><span>♫</span><span>♬</span></div><strong>Твоя музыка.<br>Твои правила.</strong><p>Привязывай музыкальные сервисы к своему аккаунту. Другие источники появятся в следующих обновлениях.</p><span class="scene-footnote">STREAMING / LOCAL LIBRARY / RADIO</span></aside>
+        
         <div class="panel"><div class="card">
           <div class="service-stubs">
-  <div class="service-stub future"><span class="stub-icon">VK</span><strong>VK Музыка</strong><small>Интеграция в разработке</small><span class="stub-status">СКОРО</span></div>
-  <div class="service-stub future"><span class="stub-icon">◉</span><strong>Spotify</strong><small>Интеграция в разработке</small><span class="stub-status">СКОРО</span></div>
+  <div class="service-stub future"><span class="stub-icon">VK</span><strong>VK Музыка</strong><small>Пока не подключается</small><span class="stub-status">Недоступно</span></div>
+  <div class="service-stub future"><span class="stub-icon">◉</span><strong>Spotify</strong><small>Пока не подключается</small><span class="stub-status">СКОРО</span></div>
   <div class="service-stub future"><span class="stub-icon">⌁</span><strong>Локальная библиотека</strong><small>NAS и локальные файлы</small><span class="stub-status">СКОРО</span></div>
   <div class="service-stub future"><span class="stub-icon">♫</span><strong>Apple Music</strong><small>Интеграция в разработке</small><span class="stub-status">СКОРО</span></div>
   <div class="service-stub future"><span class="stub-icon">▶</span><strong>YouTube Music</strong><small>Интеграция в разработке</small><span class="stub-status">СКОРО</span></div>
@@ -186,13 +183,13 @@
       </section>
 
       <section class="section" id="complete">
-        <div class="complete-panel"><div class="orbit-globe complete-orb"><div class="orbit-ring"></div><div class="orbit-ring second"></div><div class="orbit-core"></div></div><h1>У Мартина появился<br><span class="gradient-text">свой голос.</span></h1><p>Первый контакт состоялся. Перейди на командный мостик, проверь компоненты и подключи устройство.</p>
+        <div class="complete-panel"><div class="complete-symbol">✓</div><h1>У OpenAssistantа появился<br><span class="gradient-text">свой голос.</span></h1><p>Параметры сохранены. К работе с моделями можно вернуться в любой момент.</p>
         <div class="inline-actions center"><a href="/" class="primary">Перейти на главную <span>→</span></a><a class="secondary" href="/chat.html">Проверить диалог</a></div></div>
       </section>
     </div>
-    <footer>OpenAssistant · <a href="/">Панель управления</a> · <a href="/logs.html">Журнал сервера</a></footer>
+    <footer><a href="/">Панель управления</a> · <a href="/logs.html">Журнал</a></footer>
   </div>
   <script src="/audio-test.js" defer></script>
-  <script src="/scene.js" defer></script><script src="/setup.js?v=bridge-2" defer></script>
+  <script src="/setup.js?v=mono-1" defer></script>
 </body>
 </html>
