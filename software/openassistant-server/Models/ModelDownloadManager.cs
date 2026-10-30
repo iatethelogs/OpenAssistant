@@ -305,6 +305,86 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
             return true;
         }
     }
+    /// <summary>Найти уже полностью скачанный GGUF, чтобы не запрашивать Hub повторно.</summary>
+    public string? FindCachedGguf(string repo, string preferredFile)
+    {
+        if (string.IsNullOrEmpty(repo) || !Regex.IsMatch(repo, @"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"))
+            return null;
+        string directory = Path.Combine(Root, repo.Replace('/', Path.DirectorySeparatorChar));
+        if (!Directory.Exists(directory)) return null;
+        try
+        {
+            var revisions = Directory.EnumerateDirectories(directory).OrderByDescending(Directory.GetLastWriteTimeUtc);
+            foreach (var revision in revisions)
+            {
+                var files = Directory.EnumerateFiles(revision, "*.gguf", SearchOption.AllDirectories)
+                    .Where(x => !x.EndsWith(".partial", StringComparison.OrdinalIgnoreCase) &&
+                        Path.GetFileName(x).Contains("Q8_0", StringComparison.OrdinalIgnoreCase) &&
+                        new FileInfo(x).Length > 1024 * 1024).ToArray();
+                var selected = files.FirstOrDefault(x =>
+                    !string.IsNullOrWhiteSpace(preferredFile) &&
+                    string.Equals(Path.GetRelativePath(revision, x).Replace('\\', '/'),
+                        preferredFile, StringComparison.OrdinalIgnoreCase))
+                    ?? files.OrderByDescending(x => new FileInfo(x).Length).FirstOrDefault();
+                if (selected is not null) return selected;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        return null;
+    }
+
+    /// <summary>Файлы LLM и реальные кеши распознавания/синтеза, без пересчёта копий весов.</summary>
+    private object[] InstalledModels(string[] files)
+    {
+        var result = new List<object>();
+        foreach (string file in files.Where(x => x.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)).Take(500))
+            result.Add(new { role = "llm", name = Path.GetFileName(file), path = file,
+                repo = "", source = "local", removable = true });
+
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string gigaam = Path.Combine(home, ".cache", "gigaam");
+        if (Directory.Exists(gigaam))
+        {
+            try
+            {
+                foreach (var checkpoint in Directory.EnumerateFiles(gigaam, "*.ckpt").Take(100))
+                    result.Add(new { role = "stt", name = Path.GetFileNameWithoutExtension(checkpoint),
+                        path = checkpoint, repo = "salute-developers/GigaAM",
+                        source = "gigaam-cache", removable = false });
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+
+        string hub = Environment.GetEnvironmentVariable("HF_HUB_CACHE") ??
+            Path.Combine(Environment.GetEnvironmentVariable("HF_HOME") ??
+                Path.Combine(home, ".cache", "huggingface"), "hub");
+        if (Directory.Exists(hub))
+        {
+            try
+            {
+                foreach (var repoDir in Directory.EnumerateDirectories(hub, "models--*", SearchOption.TopDirectoryOnly).Take(300))
+                {
+                    string dirname = Path.GetFileName(repoDir);
+                    if (!dirname.Contains("Qwen3-TTS", StringComparison.OrdinalIgnoreCase)) continue;
+                    string snapshots = Path.Combine(repoDir, "snapshots");
+                    if (!Directory.Exists(snapshots)) continue;
+                    foreach (var snapshot in Directory.EnumerateDirectories(snapshots).OrderByDescending(Directory.GetLastWriteTimeUtc))
+                    {
+                        // Hugging Face snapshots contain links to shared blobs, not duplicate weights.
+                        if (!Directory.EnumerateFiles(snapshot, "*.safetensors", SearchOption.AllDirectories)
+                            .Any(File.Exists)) continue;
+                        string name = dirname.Replace("models--", "", StringComparison.Ordinal).Replace("--", "/");
+                        result.Add(new { role = "tts", name = name.Split('/').Last(),
+                            path = snapshot, repo = name, source = "huggingface-cache", removable = false });
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+        return result.ToArray();
+    }
+
     public object Status()
     {
         object[] jobs;
@@ -320,7 +400,7 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
                 .Where(x => !x.EndsWith(".partial", StringComparison.OrdinalIgnoreCase)).Take(2000).ToArray()
             : []; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { files = []; }
-        return new { jobs, files, root = Root, hasToken = File.Exists(TokenPath) };
+        return new { jobs, files, installed = InstalledModels(files), root = Root, hasToken = File.Exists(TokenPath) };
     }
     /// <summary>Ограниченное удаление конкретного GGUF из управляемого хранилища.</summary>
     public Task<object> DeleteWeightAsync(string path, CancellationToken ct)
