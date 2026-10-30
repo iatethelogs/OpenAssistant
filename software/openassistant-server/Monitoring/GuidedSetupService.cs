@@ -19,10 +19,10 @@ public static class GuidedModelCatalog
         new("gemma3n-e4b-abl", "llm", "Gemma 3n E4B · Abliterated", "Q8_0 · усиленная конфигурация", "mradermacher/Huihui-gemma-3n-E4B-it-abliterated-GGUF", "", 0, "Q8_0", false, true),
         new("gemma3n-e2b-abl", "llm", "Gemma 3n E2B · Abliterated", "Компактная мультимодальная модель · Q8_0", "mradermacher/Huihui-gemma-3n-E2B-it-abliterated-GGUF", "", 0, "Q8_0", false, true),
         new("gemma4-e4b-abl", "llm", "Gemma 4 E4B · Abliterated", "Q8_0 · увеличенная модель", "mradermacher/Gemma-4-E4B-Abliterated-GGUF", "", 0, "Q8_0", false, true),
-        new("qwen2-7b-abl", "llm", "Qwen 2.5 7B · Abliterated", "Q8_0 · увеличенный объём весов", "tensorblock/Qwen2.5-7B-Instruct-abliterated-v2-GGUF", "Qwen2.5-7B-Instruct-abliterated-v2-Q8_0.gguf", 0, "Q8_0", false, false),
+        new("qwen2-7b-abl", "llm", "Qwen 2.5 7B · Abliterated", "Q8_0", "tensorblock/Qwen2.5-7B-Instruct-abliterated-v2-GGUF", "Qwen2.5-7B-Instruct-abliterated-v2-Q8_0.gguf", 0, "Q8_0", false, false),
         new("mistral7-heretic", "llm", "Mistral 7B · Heretic", "Mistral · Q8_0", "mradermacher/Mistral-7B-Heretic-GGUF", "", 0, "Q8_0", true, true),
         new("phi4mini-heretic", "llm", "Phi-4 Mini · Heretic", "Microsoft Phi · Q8_0", "mradermacher/Phi-4-mini-instruct-heretic-GGUF", "", 0, "Q8_0", false, true),
-        new("llama31-heretic", "llm", "Llama 3.1 8B · Heretic", "Meta Llama · Q8_0 · требовательна к VRAM", "mradermacher/Meta-Llama-3.1-8B-Instruct-heretic-GGUF", "", 0, "Q8_0", false, true),
+        new("llama31-heretic", "llm", "Llama 3.1 8B · Heretic", "Meta Llama · Q8_0", "mradermacher/Meta-Llama-3.1-8B-Instruct-heretic-GGUF", "", 0, "Q8_0", false, true),
         new("aya8-heretic", "llm", "Aya Expanse 8B · Heretic", "Cohere · Q8_0 · многоязычная", "mradermacher/aya-expanse-8b-heretic-GGUF", "", 0, "Q8_0", false, true),
         new("gemma3n-heresy", "llm", "Gemma 3n E4B · Absolute Heresy", "Gemma · Heretic · Q8_0", "mradermacher/gemma-3n-E4B-it-absolute-heresy-MPOA-GGUF", "", 0, "Q8_0", false, true),
         new("zephyr7-heresy", "llm", "Zephyr 7B · Absolute Heresy", "Zephyr / Mistral · Q8_0", "mradermacher/zephyr-7b-beta-absolute-heresy-GGUF", "", 0, "Q8_0", false, true),
@@ -65,7 +65,6 @@ public sealed class GuidedSetupService(
         public string? TestResult;
         public long Bytes;
         public long Total;
-        public long? VramMiB;
         public DateTimeOffset Started = DateTimeOffset.UtcNow;
         public Queue<string> Log = new();
         public HashSet<string> Completed = new(StringComparer.Ordinal);
@@ -74,7 +73,7 @@ public sealed class GuidedSetupService(
     private static object Snapshot(Job j) => new {
         id = j.Id, role = j.Role, modelId = j.ModelId, name = j.ModelName,
         status = j.Status, step = j.Step, description = j.Description,
-        bytes = j.Bytes, total = j.Total, vramMiB = j.VramMiB, error = j.Error,
+        bytes = j.Bytes, total = j.Total, error = j.Error,
         path = j.ModelPath, runtime = j.Runtime, gpu = j.Gpu, testResult = j.TestResult,
         startedAt = j.Started, completedSteps = j.Completed.OrderBy(x => x).ToArray(), logs = j.Log.ToArray()
     };
@@ -100,7 +99,7 @@ public sealed class GuidedSetupService(
                 visible.Add(new {
                     id = j.Id, role = j.Role, modelId = j.ModelId, name = j.ModelName,
                     status = j.Status, step = j.Step, description = j.Description,
-                    bytes = j.Bytes, total = j.Total, vramMiB = j.VramMiB, error = j.Error,
+                    bytes = j.Bytes, total = j.Total, error = j.Error,
                     path = j.ModelPath, runtime = j.Runtime, gpu = j.Gpu, testResult = j.TestResult,
                     startedAt = j.Started, completedSteps = j.Completed.OrderBy(x => x).ToArray(), logs = j.Log.Concat(logs).TakeLast(120).ToArray()
                 });
@@ -307,14 +306,6 @@ public sealed class GuidedSetupService(
         Stage(j, "test", "Проверяем ответ модели");
         var response = await diagnostics.TestLlmAsync("Привет! Расскажи, что умеет OpenAssistant, одним предложением.", "local", ct);
         lock (_gate) j.TestResult = JsonSerializer.Serialize(response);
-        if (j.Gpu is not null)
-        {
-            var used = await processes.ProcessGpuMemoryMiBAsync("llm", j.Gpu, ct);
-            lock (_gate) j.VramMiB = used;
-            Output(j, used is null
-                ? "nvidia-smi не сообщил VRAM процесса. Оценку не показываем."
-                : $"VRAM llama-server: {used.Value} МиБ (по PID процесса).");
-        }
     }
     private async Task SetupSpeechAsync(Job j, GuidedModelCatalog.Choice choice, string? gpu, CancellationToken ct)
     {
