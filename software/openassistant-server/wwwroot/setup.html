@@ -123,6 +123,18 @@
             <div id="presetVoice"><label for="voiceSelect">Готовый голос</label><select id="voiceSelect"><option value="Ryan">Ryan</option><option value="Aiden">Aiden</option><option value="Serena">Serena</option><option value="Vivian">Vivian</option><option value="Ono_Anna">Ono Anna</option><option value="Sohee">Sohee</option></select></div>
             <div id="customStyle" class="hidden"><label for="voiceStyle">Манера речи</label><textarea id="voiceStyle" rows="2" placeholder="Например: спокойная, уверенная речь, с естественными паузами"></textarea><p class="input-help">Доступно для модели CustomVoice 1.7B. Тембр выбирается из готовых голосов, менять можно интонацию и стиль.</p></div>
             <div id="designedVoice" class="hidden"><label for="voiceDescription">Описание голоса</label><textarea id="voiceDescription" rows="4">Спокойный взрослый мужской голос. Русская речь, естественная артикуляция, средняя скорость и мягкая интонация.</textarea><p class="input-help">Изменяйте описание, чтобы получить другой вариант. Постоянство тембра между генерациями не гарантируется.</p></div>
+            <div class="card-heading"><div><h3 class="card-title">Стабильность и параметры голоса</h3></div></div>
+            <div class="guided-options">
+              <div class="option"><label for="ttsGenerationMode">Режим генерации</label>
+                <select id="ttsGenerationMode"><option value="seeded">Фиксированный seed (рекомендуется)</option><option value="greedy">Строгий, без случайности</option><option value="random">Свободный, вариативный</option></select></div>
+              <div class="option"><label for="ttsSeed">Seed</label><input id="ttsSeed" type="number" min="0" max="2147483647" value="42" step="1"></div>
+              <div class="option"><label for="ttsTemperature">Температура TTS</label><input id="ttsTemperature" type="number" min="0.1" max="2" step="0.05" value="0.75"></div>
+              <div class="option"><label for="ttsTopP">Top-p</label><input id="ttsTopP" type="number" min="0.01" max="1" step="0.05" value="0.9"></div>
+              <div class="option"><label for="ttsTopK">Top-k</label><input id="ttsTopK" type="number" min="1" max="200" value="40" step="1"></div>
+              <div class="option"><label for="ttsPenalty">Штраф за повторения</label><input id="ttsPenalty" type="number" min="1" max="2" step="0.01" value="1.05"></div>
+            </div>
+            <p class="input-help">Фиксированный seed делает повторные генерации более предсказуемыми. Строгий режим отключает случайный выбор токенов, но может ухудшить естественность. Для CustomVoice тембр определяется готовым голосом.</p>
+            <div class="inline-actions"><button class="secondary" id="ttsSaveVoice" type="button">Сохранить настройки голоса</button><span id="ttsSavedMessage" class="input-help"></span></div>
             <label for="ttsPhrase">Тестовая фраза</label><textarea id="ttsPhrase" rows="3">Здравствуйте. Это проверка синтеза речи OpenAssistant.</textarea>
             <div class="inline-actions"><button class="secondary" type="button" id="testTts">Сгенерировать и прослушать</button><a class="secondary hidden" id="downloadWav" href="#" download="openassistant-test.wav">Скачать WAV</a></div><audio id="ttsPlayer" class="audio" controls></audio>
             <div class="inline-actions"><button class="primary" type="button" data-next="music">Далее <span>→</span></button></div>
@@ -148,6 +160,6 @@
     <footer>OpenAssistant · <a href="/">Панель управления</a> · <a href="/logs.html">Журнал сервера</a></footer>
   </div>
   <script src="/audio-test.js" defer></script>
-  <script src="/setup.js?v=20261030-tts-http" defer></script>
+  <script src="/setup.js?v=20261030-voice-cache" defer></script>
 </body>
 </html>
