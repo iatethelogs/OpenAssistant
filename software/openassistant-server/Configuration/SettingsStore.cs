@@ -16,6 +16,7 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
             s.LlmUrl, s.LlmModel, s.SystemPrompt,
             s.SttUrl, s.SttModel, s.TtsUrl, s.TtsModel, s.TtsVoice, s.TtsLanguage,
             s.HomeAssistantUrl, hasDeviceToken = !string.IsNullOrWhiteSpace(s.DeviceToken), hasHomeAssistantToken = !string.IsNullOrWhiteSpace(s.HomeAssistantToken),
+            s.LlmTemperature, s.LlmTopP, s.LlmTopK, s.LlmRepeatPenalty, s.LlmMaxTokens,
             s.InputSampleRate, s.OutputSampleRate, s.RadioStations
         };
     }
@@ -38,6 +39,11 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
             HomeAssistantUrl = url,
             HomeAssistantToken = token,
             DeviceToken = s.DeviceToken,
+            LlmTemperature = s.LlmTemperature,
+            LlmTopP = s.LlmTopP,
+            LlmTopK = s.LlmTopK,
+            LlmRepeatPenalty = s.LlmRepeatPenalty,
+            LlmMaxTokens = s.LlmMaxTokens,
             InputSampleRate = s.InputSampleRate,
             OutputSampleRate = s.OutputSampleRate,
             RadioStations = new Dictionary<string, string>(s.RadioStations)
@@ -58,6 +64,12 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
         RequireHttp(update.SttUrl, nameof(update.SttUrl));
         RequireHttp(update.TtsUrl, nameof(update.TtsUrl));
         RequireHttp(update.HomeAssistantUrl, nameof(update.HomeAssistantUrl), true);
+        if (!double.IsFinite(update.LlmTemperature) || update.LlmTemperature is < 0 or > 2 ||
+            !double.IsFinite(update.LlmTopP) || update.LlmTopP is <= 0 or > 1 ||
+            update.LlmTopK is < 0 or > 200 ||
+            !double.IsFinite(update.LlmRepeatPenalty) || update.LlmRepeatPenalty is < 0.5 or > 2 ||
+            update.LlmMaxTokens is < 16 or > 8192)
+            throw new ArgumentException("Некорректные параметры генерации LLM");
         if (update.InputSampleRate is < 8000 or > 48000 || update.OutputSampleRate is < 8000 or > 48000)
             throw new ArgumentException("частота дискретизации вне допустимого диапазона");
         foreach (string value in new[] { update.LlmModel, update.SttModel, update.TtsModel, update.TtsVoice, update.TtsLanguage })
@@ -76,6 +88,7 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
                     update.TtsVoice, update.TtsLanguage, update.HomeAssistantUrl,
                     HomeAssistantToken = update.HomeAssistantToken is null ? current.HomeAssistantToken : update.HomeAssistantToken,
                     DeviceToken = update.DeviceToken is null ? current.DeviceToken : update.DeviceToken,
+                    update.LlmTemperature, update.LlmTopP, update.LlmTopK, update.LlmRepeatPenalty, update.LlmMaxTokens,
                     update.InputSampleRate, update.OutputSampleRate,
                     RadioStations = update.RadioStations ?? current.RadioStations
                 }
@@ -110,6 +123,11 @@ public sealed class SettingsUpdate
     public string HomeAssistantUrl { get; set; } = "";
     public string? HomeAssistantToken { get; set; }
     public string? DeviceToken { get; set; }
+    public double LlmTemperature { get; set; } = 0.5;
+    public double LlmTopP { get; set; } = 0.9;
+    public int LlmTopK { get; set; } = 40;
+    public double LlmRepeatPenalty { get; set; } = 1.1;
+    public int LlmMaxTokens { get; set; } = 512;
     public int InputSampleRate { get; set; } = 16000;
     public int OutputSampleRate { get; set; } = 24000;
     public Dictionary<string, string>? RadioStations { get; set; }

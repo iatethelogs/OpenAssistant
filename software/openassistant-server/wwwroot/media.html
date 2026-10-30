@@ -15,19 +15,12 @@ small{color:#a1aec6}pre{white-space:pre-wrap;overflow-wrap:anywhere;color:#ccd7e
 #msg{color:#adc4ff;margin:12px 0}ul{padding-left:20px}li{margin:9px 0;overflow-wrap:anywhere}
 </style></head><body>
 <h1>OPENASSISTANT <span style="color:#92b4ff">/ MODELS & MEDIA</span></h1>
-<nav><a href="/">Диалог</a><a href="/settings.html">Настройки</a><a href="/connections.html">Подключения</a><a href="/media.html">Модели и музыка</a></nav>
+<nav><a href="/">Диалог</a><a href="/settings.html">Настройки</a><a href="/connections.html">Подключения</a><a href="/models.html">Модели и GPU</a><a href="/media.html">Музыка</a></nav>
 <p id="msg" role="status">Загрузка…</p>
 <div class="layout">
-<article><h2>GPU и модели</h2>
-<label>Доступные видеокарты</label><pre id="gpus">Получение списка…</pre>
-<label>Движок</label><select id="role"><option value="llm">LLM</option><option value="stt">GigaAM STT</option><option value="tts">Qwen3-TTS</option></select>
-<label>Исполняемый файл Linux (абсолютный путь)</label><input id="exec" placeholder="/usr/local/bin/llama-server">
-<label>Рабочий каталог</label><input id="cwd" placeholder="/opt/llama.cpp">
-<label>Аргументы (один аргумент на строку)</label><textarea id="args" placeholder="-m&#10;/models/model.gguf&#10;--port&#10;8080"></textarea>
-<label>Номера GPU через запятую</label><input id="gids" placeholder="0,1">
-<small>Перед запуском применяется CUDA_VISIBLE_DEVICES. В аргументах движка используются видимые ему индексы.</small>
-<div class="buttons"><button id="save">Сохранить профиль</button><button id="start">Запустить</button><button id="stop" class="secondary">Остановить</button></div>
-<pre id="running"></pre>
+<article><h2>Модели и видеокарты</h2>
+<p><a href="/models.html">Скачивание моделей, настройка GPU, запуск, температура и логи</a></p>
+<small>Всё управление моделями находится на отдельной странице. Музыкальные сервисы остались здесь.</small>
 </article>
 <article><h2>Интернет-радио</h2>
 <label>Поиск станций Radio Browser</label><input id="radioQuery" placeholder="Jazz, Rock, Москва">
@@ -50,15 +43,6 @@ const $=id=>document.getElementById(id);
 const notify=s=>$('msg').textContent=s;
 const request=async(url,opts)=>{const r=await fetch(url,opts);const data=await r.json();if(!r.ok)throw Error(data.error||('HTTP '+r.status));return data};
 const body=data=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-let profiles={};
-function selectRole(){const p=profiles[$('role').value]||{};$('exec').value=p.executable||'';$('cwd').value=p.workingDirectory||'';$('args').value=(p.arguments||[]).join('\n');$('gids').value=(p.gpus||[0]).join(',')}
-async function refresh(){
- try{const d=await request('/api/models');profiles=d.profiles||{};$('gpus').textContent=(d.status.gpus||[]).join('\n')||'nvidia-smi не обнаружил видеокарты';$('running').textContent=JSON.stringify(d.status.running||{},null,2);selectRole();notify('Подключено')}
- catch(e){notify('Ошибка: '+e.message)}
-}
-$('role').onchange=selectRole;
-$('save').onclick=async()=>{try{const role=$('role').value;const p={executable:$('exec').value,workingDirectory:$('cwd').value,arguments:$('args').value.split('\n').filter(Boolean),gpus:$('gids').value.split(',').map(x=>Number(x.trim()))};await request('/api/models/'+role,{...body(p),method:'PUT'});profiles[role]=p;notify('Профиль '+role+' сохранён')}catch(e){notify('Ошибка: '+e.message)}};
-for(const action of ['start','stop'])$(action).onclick=async()=>{try{await request('/api/models/'+$('role').value+'/'+action,{method:'POST'});await refresh()}catch(e){notify('Ошибка: '+e.message)}};
 $('radioSearch').onclick=async()=>{try{const stations=await request('/api/radio/search?name='+encodeURIComponent($('radioQuery').value));$('radioResults').replaceChildren();for(const s of stations){const li=document.createElement('li'),b=document.createElement('button');b.className='secondary';b.textContent='Слушать: '+s.name+' ('+s.codec+')';b.onclick=()=>{const audio=$('radioPlayer');audio.src=s.url;audio.play().catch(e=>notify(e.message))};li.append(b);$('radioResults').append(li)}notify('Станций найдено: '+stations.length)}catch(e){notify(e.message)}};
 $('saveToken').onclick=async()=>{try{await request('/api/yandex/token',body({token:$('token').value}));$('token').value='';notify('Аккаунт подключён')}catch(e){notify(e.message)}};
 $('musicSearch').onclick=async()=>{try{const songs=await request('/api/yandex/search?query='+encodeURIComponent($('musicQuery').value));$('musicResults').replaceChildren();for(const s of songs){
@@ -76,5 +60,4 @@ $('musicSearch').onclick=async()=>{try{const songs=await request('/api/yandex/se
   };
   li.append(btn);$('musicResults').append(li);
 }notify('Треков найдено: '+songs.length)}catch(e){notify(e.message)}};
-refresh();
 </script></body></html>

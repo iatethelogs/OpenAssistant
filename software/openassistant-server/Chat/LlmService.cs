@@ -17,11 +17,14 @@ public sealed class LlmService(IHttpClientFactory http, IOptionsMonitor<ServerOp
     public async IAsyncEnumerable<string> GenerateAsync(IReadOnlyList<ChatMessage> history,
         [EnumeratorCancellation] CancellationToken ct)
     {
+        var options = settings.CurrentValue;
         using var request = new HttpRequestMessage(HttpMethod.Post,
-            settings.CurrentValue.LlmUrl.TrimEnd('/') + "/v1/chat/completions");
+            options.LlmUrl.TrimEnd('/') + "/v1/chat/completions");
         request.Content = JsonContent.Create(new {
-            model = settings.CurrentValue.LlmModel,
-            stream = true, temperature = 0.5, max_tokens = 512,
+            model = options.LlmModel,
+            stream = true, temperature = options.LlmTemperature, top_p = options.LlmTopP,
+            top_k = options.LlmTopK, repeat_penalty = options.LlmRepeatPenalty,
+            max_tokens = options.LlmMaxTokens,
             messages = history.Select(m => new { role = m.Role, content = m.Content })
         });
         using var response = await http.CreateClient("llm").SendAsync(request,

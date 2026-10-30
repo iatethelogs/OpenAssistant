@@ -12,6 +12,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("settings.local.json", optional: true, reloadOnChange: true);
 builder.Services.AddSingleton<SettingsStore>();
 builder.Services.AddSingleton<ModelProcessManager>();
+builder.Services.AddSingleton<ModelDownloadManager>();
+builder.Services.AddHttpClient("model-health", c => c.Timeout = TimeSpan.FromSeconds(4));
+builder.Services.AddHttpClient("hf-metadata", c => c.Timeout = TimeSpan.FromSeconds(65));
+builder.Services.AddHttpClient("hf-download", c => c.Timeout = System.Threading.Timeout.InfiniteTimeSpan);
 builder.Services.AddSingleton<RadioBrowserService>();
 builder.Services.AddSingleton<YandexMusicService>();
 builder.Services.AddSingleton<YandexDeviceAuthService>();
@@ -64,6 +68,44 @@ app.MapPost("/api/settings", async (HttpContext ctx, SettingsUpdate settings, Se
     try { await store.SaveAsync(settings, ct); return Results.Ok(new { saved = true }); }
     catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
+// Hugging Face: запуск задач скачивания не блокирует веб-запрос, весь прогресс доступен через polling.
+app.MapGet("/api/models/downloads", (HttpContext ctx, ModelDownloadManager downloads) =>
+    localOnly(ctx) ? Results.Ok(downloads.Status()) : Results.StatusCode(403));
+app.MapGet("/api/models/hub", async (
+    HttpContext ctx, string repo, string? revision, ModelDownloadManager downloads, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await downloads.InspectAsync(repo, revision ?? "main", ct)); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidDataException or
+        HttpRequestException or System.Text.Json.JsonException)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapPost("/api/models/downloads", async (
+    HttpContext ctx, ModelDownloadManager.DownloadRequest request, ModelDownloadManager downloads, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await downloads.StartAsync(request, ct)); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidDataException or
+        InvalidOperationException or HttpRequestException or System.Text.Json.JsonException)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapPost("/api/models/downloads/{id:guid}/cancel", (
+    HttpContext ctx, Guid id, ModelDownloadManager downloads) =>
+    localOnly(ctx) ? Results.Ok(new { cancelled = downloads.Cancel(id) }) : Results.StatusCode(403));
+app.MapPost("/api/models/hf-token", async (
+    HttpContext ctx, HfTokenInput input, ModelDownloadManager downloads, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { await downloads.SaveTokenAsync(input.Token, ct); return Results.Ok(new { saved = true }); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapDelete("/api/models/hf-token", async (
+    HttpContext ctx, ModelDownloadManager downloads, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    await downloads.RemoveTokenAsync(ct);
+    return Results.Ok(new { disconnected = true });
+});
 app.MapGet("/api/models", async (HttpContext ctx, ModelProcessManager manager, CancellationToken ct) =>
     localOnly(ctx) ? Results.Ok(new { profiles = await manager.ProfilesAsync(ct), status = await manager.StatusAsync(ct) }) : Results.StatusCode(403));
 app.MapPut("/api/models/{role}", async (HttpContext ctx, string role, ModelLaunchProfile profile, ModelProcessManager manager, CancellationToken ct) =>
@@ -71,6 +113,14 @@ app.MapPut("/api/models/{role}", async (HttpContext ctx, string role, ModelLaunc
     if (!localOnly(ctx)) return Results.StatusCode(403);
     try { await manager.SaveAsync(role, profile, ct); return Results.Ok(new { saved = true }); }
     catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapPost("/api/models/{role}/restart", async (
+    HttpContext ctx, string role, ModelProcessManager manager, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await manager.RestartAsync(role, ct)); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+    { return Results.BadRequest(new { error = ex.Message }); }
 });
 app.MapPost("/api/models/{role}/start", async (HttpContext ctx, string role, ModelProcessManager manager, CancellationToken ct) =>
 {
@@ -232,3 +282,5 @@ public sealed record YandexTokenInput(string Token);
 
 public sealed record YandexAuthPollRequest(string Session);
 public sealed record HomeAssistantConnectRequest(string Url, string Token);
+
+public sealed record HfTokenInput(string Token);

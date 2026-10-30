@@ -15,6 +15,11 @@ public sealed class ServerOptions
     public string HomeAssistantUrl { get; set; } = "";
     public string HomeAssistantToken { get; set; } = "";
     public string DeviceToken { get; set; } = "";
+    public double LlmTemperature { get; set; } = 0.5;
+    public double LlmTopP { get; set; } = 0.9;
+    public int LlmTopK { get; set; } = 40;
+    public double LlmRepeatPenalty { get; set; } = 1.1;
+    public int LlmMaxTokens { get; set; } = 512;
     public int InputSampleRate { get; set; } = 16000;
     public int OutputSampleRate { get; set; } = 24000;
     public Dictionary<string, string> RadioStations { get; set; } = new();

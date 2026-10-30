@@ -25,11 +25,12 @@ button:disabled{opacity:.5;cursor:default}.bar{position:sticky;bottom:15px;backg
 </style>
 </head>
 <body>
-<header><div><div class="logo">OPENASSISTANT <span style="color:#91b3ff">/ CONTROL</span></div><div class="subtitle">Локальная панель конфигурации сервера</div></div><nav><a href="/">Диалог</a><a href="/connections.html">Подключения</a><a href="/media.html">Модели</a><a href="/health">Состояние</a></nav></header>
+<header><div><div class="logo">OPENASSISTANT <span style="color:#91b3ff">/ CONTROL</span></div><div class="subtitle">Локальная панель конфигурации сервера</div></div><nav><a href="/">Диалог</a><a href="/connections.html">Подключения</a><a href="/models.html">Модели и GPU</a><a href="/media.html">Музыка</a><a href="/health">Состояние</a></nav></header>
 <form id="settings"><div class="grid">
 <section><h2>Языковая модель</h2>
 <label for="LlmUrl">Адрес API</label><input id="LlmUrl" required placeholder="http://127.0.0.1:8080">
 <label for="LlmModel">Модель</label><input id="LlmModel" required>
+<div class="hint">Дополнительные параметры генерации (temperature, top-p, top-k, max tokens) и настройки запуска: <a href="/models.html">управление моделями</a>.</div>
 <label for="SystemPrompt">Системная инструкция</label><textarea id="SystemPrompt"></textarea>
 </section>
 <section><h2>Распознавание речи · GigaAM</h2>

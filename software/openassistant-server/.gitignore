@@ -8,3 +8,8 @@ models.local.json
 models.local.json.tmp
 yandex-music.local.json
 yandex-music.local.json.*.tmp
+
+hf-token.local.json
+hf-token.local.json.*.tmp
+models/
+models.local.json.*.tmp
