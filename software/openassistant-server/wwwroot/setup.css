@@ -107,3 +107,8 @@ body{background:#16181a;color:#e3e5e7}
 .stt-result .stt-signal{margin:10px 0 0;color:#b4bfc7;font-size:12px;line-height:1.5}
 .stt-result .stt-metrics{margin:8px 0 0;font-size:11px;color:#8e98a2;font-variant-numeric:tabular-nums}
 @media(prefers-reduced-motion:reduce){.record-meter-track span{transition:none!important}}
+
+/* Fixed voice and cached-model controls */
+.model .cache-tag{display:block;position:static;align-self:flex-start;margin-top:8px;color:#91d3ab;border:1px solid #3b6650;background:#23392c;border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700}
+.option input[type=number]{width:100%;background:#24282c;color:#e8eaed;border:1px solid #515860;border-radius:7px;font-size:12px;padding:8px;min-height:35px}
+.option input:disabled,.option select:disabled{opacity:.5}
