@@ -49,10 +49,12 @@ public sealed class ConversationMemoryStore(IWebHostEnvironment env)
             var terms = Regex.Matches(query.ToLowerInvariant(), @"[\p{L}\p{N}]{4,}")
                 .Select(m => m.Value).Where(w => w.Length >= 4).Distinct().Take(16).ToHashSet();
             var old = turns.Take(Math.Max(0, turns.Count - 24)).ToArray();
+            bool generalRecall = Regex.IsMatch(query, @"помни|раньше|прошл|вспомни|обсуждали|говорили",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             var selected = old.Select((turn, i) => new {
                 Index = i, Turn = turn,
                 Score = terms.Count(term => turn.Text.Contains(term, StringComparison.OrdinalIgnoreCase))
-            }).Where(x => x.Score > 0).OrderByDescending(x => x.Score)
+            }).Where(x => x.Score > 0 || generalRecall).OrderByDescending(x => x.Score)
               .ThenByDescending(x => x.Index).Take(8).OrderBy(x => x.Index).ToArray();
             var output = new List<ChatMessage>();
             if (selected.Length > 0)
