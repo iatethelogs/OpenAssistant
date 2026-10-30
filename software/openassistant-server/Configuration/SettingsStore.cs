@@ -55,7 +55,12 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
     public Task UpdateSttUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(null, url, null, null, ct);
     public Task UpdateTtsUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(null, null, url, null, ct);
     public Task UpdateDeviceTokenAsync(string token, CancellationToken ct) => UpdatePartialAsync(null, null, null, token, ct);
-    private Task UpdatePartialAsync(string? llmUrl, string? sttUrl, string? ttsUrl, string? deviceToken, CancellationToken ct)
+    public Task UpdateLlmTemperatureAsync(double temperature, CancellationToken ct)
+    {
+        if (temperature is < 0 or > 2) throw new ArgumentException("Температура должна быть от 0 до 2");
+        return UpdatePartialAsync(null, null, null, null, ct, temperature);
+    }
+    private Task UpdatePartialAsync(string? llmUrl, string? sttUrl, string? ttsUrl, string? deviceToken, CancellationToken ct, double? temperature = null)
     {
         var s = options.CurrentValue;
         return SaveAsync(new SettingsUpdate {
@@ -64,7 +69,7 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
             TtsUrl = ttsUrl ?? s.TtsUrl, TtsModel = s.TtsModel, TtsVoice = s.TtsVoice,
             TtsLanguage = s.TtsLanguage, HomeAssistantUrl = s.HomeAssistantUrl,
             HomeAssistantToken = s.HomeAssistantToken, DeviceToken = deviceToken ?? s.DeviceToken,
-            LlmTemperature = s.LlmTemperature, LlmTopP = s.LlmTopP,
+            LlmTemperature = temperature ?? s.LlmTemperature, LlmTopP = s.LlmTopP,
             LlmTopK = s.LlmTopK, LlmRepeatPenalty = s.LlmRepeatPenalty,
             LlmMaxTokens = s.LlmMaxTokens,
             InputSampleRate = s.InputSampleRate, OutputSampleRate = s.OutputSampleRate,

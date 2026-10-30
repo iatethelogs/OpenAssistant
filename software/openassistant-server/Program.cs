@@ -39,6 +39,7 @@ builder.Services.AddHttpClient("llm");
 builder.Services.AddHttpClient("stt");
 builder.Services.AddHttpClient("tts");
 builder.Services.AddHttpClient("homeassistant");
+builder.Services.AddSingleton<VoiceProfileStore>();
 builder.Services.AddSingleton<SpeechService>();
 builder.Services.AddSingleton<LlmService>();
 builder.Services.AddSingleton<IAssistantTool, HomeAssistantTool>();
@@ -84,6 +85,15 @@ app.MapPost("/api/settings", async (HttpContext ctx, SettingsUpdate settings, Se
 // Пошаговая настройка: каждый этап выполняется сервером и возвращает наблюдаемый статус.
 app.MapGet("/api/setup/status", async (HttpContext ctx, GuidedSetupService guided, CancellationToken ct) =>
     localOnly(ctx) ? Results.Ok(await guided.StatusAsync(ct)) : Results.StatusCode(403));
+app.MapGet("/api/setup/voice", (HttpContext ctx, VoiceProfileStore voices) =>
+    localOnly(ctx) ? Results.Ok(voices.Read()) : Results.StatusCode(403));
+app.MapPut("/api/setup/voice", async (
+    HttpContext ctx, VoiceProfileStore.Profile profile, VoiceProfileStore voices, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await voices.SaveAsync(profile, ct)); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
 app.MapGet("/api/setup/catalog", (HttpContext ctx) =>
     localOnly(ctx) ? Results.Ok(GuidedModelCatalog.All) : Results.StatusCode(403));
 app.MapPost("/api/setup/{role}", (HttpContext ctx, string role,

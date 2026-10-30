@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using OpenAssistant.Server.Models;
 using OpenAssistant.Server.Configuration;
+using OpenAssistant.Server.Audio;
 
 namespace OpenAssistant.Server.Monitoring;
 
@@ -17,7 +18,8 @@ public static class GuidedModelCatalog
         new("smollm-3b", "llm", "SmolLM3 · 3B", "Для экспериментов и быстрого отклика", "ggml-org/SmolLM3-3B-GGUF", "SmolLM3-Q8_0.gguf", 3.28, "Q8_0", false, false),
         new("gemma-1b", "llm", "Gemma 3 · 1B", "Минимальные требования и быстрый отклик", "unsloth/gemma-3-1b-it-GGUF", "gemma-3-1b-it-Q8_0.gguf", 1.07, "Q8_0", false, false),
         new("gigaam-rnnt", "stt", "GigaAM v3 · RNNT", "Распознавание русской речи с пунктуацией", "salute-developers/GigaAM", "", 1.2, "FP32 / FP16", true, true),
-        new("qwen-tts-06", "tts", "Qwen3-TTS · 0.6B", "Готовые голоса, русский язык", "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", "", 2.5, "FP16", true, true)
+        new("qwen-tts-06", "tts", "Qwen3-TTS · 0.6B", "Выбор готового голоса, экономия VRAM", "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", "", 2.5, "FP16", true, true),
+        new("qwen-tts-design", "tts", "Qwen3-TTS · VoiceDesign 1.7B", "Создание голоса по текстовому описанию; требует больше памяти и может работать на CPU", "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign", "", 5.0, "FP16", false, false)
     ];
     public static Choice Require(string id, string role) =>
         All.FirstOrDefault(x => x.Id == id && x.Role == role)
@@ -27,13 +29,13 @@ public static class GuidedModelCatalog
 /// <summary>Запускает реальные этапы установки и подготовки движка, без ручных путей в мастере.</summary>
 public sealed class GuidedSetupService(
     ModelDownloadManager downloads, ModelProcessManager processes,
-    SettingsStore settings, DiagnosticService diagnostics,
+    SettingsStore settings, DiagnosticService diagnostics, VoiceProfileStore voices,
     IWebHostEnvironment env, ILogger<GuidedSetupService> log)
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, Job> _jobs = new(StringComparer.Ordinal);
     private const string LlmDir = "/opt/llama.cpp";
-    public sealed record BeginRequest(string ModelId, string? GpuUuid);
+    public sealed record BeginRequest(string ModelId, string? GpuUuid, int? ContextSize, double? Temperature);
     public sealed record TestRequest(string Prompt);
     private sealed class Job
     {
@@ -116,6 +118,8 @@ public sealed class GuidedSetupService(
         if (role is not ("llm" or "stt" or "tts")) throw new ArgumentException("Недопустимая роль");
         if (input is null) throw new ArgumentException("Нужно выбрать модель");
         var choice = GuidedModelCatalog.Require(input.ModelId, role);
+        if (role == "llm" && (input.ContextSize is < 512 or > 32768 || input.Temperature is < 0 or > 2))
+            throw new ArgumentException("Контекст или температура вне допустимого диапазона");
         if (!string.IsNullOrEmpty(input.GpuUuid) &&
             !System.Text.RegularExpressions.Regex.IsMatch(input.GpuUuid, @"^GPU-[A-Za-z0-9-]{8,80}$"))
             throw new ArgumentException("Неверный идентификатор GPU");
@@ -126,16 +130,16 @@ public sealed class GuidedSetupService(
                 throw new InvalidOperationException("Подготовка этой модели уже выполняется");
             _jobs[role] = j;
         }
-        _ = Task.Run(() => ExecuteAsync(j, choice, input.GpuUuid));
+        _ = Task.Run(() => ExecuteAsync(j, choice, input.GpuUuid, input.ContextSize ?? 4096, input.Temperature ?? 0.5));
         return Snapshot(j);
     }
-    private async Task ExecuteAsync(Job j, GuidedModelCatalog.Choice choice, string? gpu)
+    private async Task ExecuteAsync(Job j, GuidedModelCatalog.Choice choice, string? gpu, int contextSize, double temperature)
     {
         try
         {
             gpu ??= await ChooseGpuAsync(j.Stop.Token);
             lock (_gate) j.Gpu = gpu;
-            if (j.Role == "llm") await SetupLlmAsync(j, choice, gpu, j.Stop.Token);
+            if (j.Role == "llm") await SetupLlmAsync(j, choice, gpu, contextSize, temperature, j.Stop.Token);
             else await SetupSpeechAsync(j, choice, gpu, j.Stop.Token);
             Stage(j, "ready", j.Role == "stt" ? "Сервис распознавания готов. Проверьте его записью микрофона." : "Модель запущена и проверена тестовым запросом");
             lock (_gate) j.Status = "ready";
@@ -178,7 +182,7 @@ public sealed class GuidedSetupService(
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or OperationCanceledException)
         { return null; }
     }
-    private async Task SetupLlmAsync(Job j, GuidedModelCatalog.Choice choice, string? gpu, CancellationToken ct)
+    private async Task SetupLlmAsync(Job j, GuidedModelCatalog.Choice choice, string? gpu, int contextSize, double temperature, CancellationToken ct)
     {
         Stage(j, "download", "Скачиваем " + choice.Name);
         var request = new ModelDownloadManager.DownloadRequest(choice.Repo, "main", [choice.File]);
@@ -198,14 +202,15 @@ public sealed class GuidedSetupService(
             ModelPath = j.ModelPath, GpuUuids = gpu is null ? [] : [gpu], Gpus = [],
             HealthUrl = "http://127.0.0.1:8080/health",
             Arguments = ["--model", "{model}", "--alias", "local",
-                "--host", "127.0.0.1", "--port", "8080", "--ctx-size", "4096",
+                "--host", "127.0.0.1", "--port", "8080", "--ctx-size", contextSize.ToString(),
                 "--n-gpu-layers", gpu is null ? "0" : "99", "--threads", "16", "--parallel", "1", "--jinja"]
         }, ct);
         await processes.RestartAsync("llm", ct);
         await settings.UpdateLlmUrlAsync("http://127.0.0.1:8080", ct);
+        await settings.UpdateLlmTemperatureAsync(temperature, ct);
         await WaitForHealthAsync(j, "http://127.0.0.1:8080/health", ct);
         Stage(j, "test", "Проверяем ответ модели");
-        var response = await diagnostics.TestLlmAsync("Привет, Мартин! Ответь одним предложением.", "local", ct);
+        var response = await diagnostics.TestLlmAsync("Привет! Расскажи, что умеет OpenAssistant, одним предложением.", "local", ct);
         lock (_gate) j.TestResult = JsonSerializer.Serialize(response);
     }
     private async Task SetupSpeechAsync(Job j, GuidedModelCatalog.Choice choice, string? gpu, CancellationToken ct)
@@ -266,7 +271,12 @@ public sealed class GuidedSetupService(
         Stage(j, "test", "Проверяем готовность модели");
         if (j.Role == "tts")
         {
-            var test = await diagnostics.TestTtsAsync("Привет! Я Мартин.", "Ryan", null, ct);
+            var prior = voices.Read();
+            await voices.SaveAsync(prior with { Mode = choice.Id == "qwen-tts-design" ? "design" : "custom" }, ct);
+        }
+        if (j.Role == "tts")
+        {
+            var test = await diagnostics.TestTtsAsync("Здравствуйте! Голосовой синтез готов.", "Ryan", null, ct);
             lock (_gate) j.TestResult = JsonSerializer.Serialize(new {
                 milliseconds = test.Milliseconds, duration = test.DurationSeconds, rtf = test.Rtf });
         }

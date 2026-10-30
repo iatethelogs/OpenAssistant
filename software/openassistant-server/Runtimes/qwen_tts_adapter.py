@@ -59,19 +59,28 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(400, {"error": "invalid text length"})
                 return
             voice = str(args.get("voice", "")).strip()
-            if not voice or voice.lower() == "default":
-                voice = "Ryan"
-            speaker = next((x for x in model.get_supported_speakers() if x.lower() == voice.lower()), None)
-            if speaker is None:
-                self.reply(400, {"error": "unknown voice " + voice, "supported": model.get_supported_speakers()})
-                return
+            instruction = str(args.get("instruct") or "").strip()
             language = str(args.get("language") or "Russian")
             sample_rate = int(args.get("sample_rate", 24000))
             if sample_rate < 8000 or sample_rate > 48000:
                 self.reply(400, {"error": "invalid sample rate"})
                 return
-            with model_lock:
-                wavs, sr = model.generate_custom_voice(text=text, language=language, speaker=speaker)
+            if "VoiceDesign" in name:
+                if len(instruction) < 8 or len(instruction) > 1200:
+                    self.reply(400, {"error": "VoiceDesign requires a voice description"})
+                    return
+                with model_lock:
+                    wavs, sr = model.generate_voice_design(
+                        text=text, language=language, instruct=instruction)
+            else:
+                if not voice or voice.lower() == "default":
+                    voice = "Ryan"
+                speaker = next((x for x in model.get_supported_speakers() if x.lower() == voice.lower()), None)
+                if speaker is None:
+                    self.reply(400, {"error": "unknown voice " + voice, "supported": model.get_supported_speakers()})
+                    return
+                with model_lock:
+                    wavs, sr = model.generate_custom_voice(text=text, language=language, speaker=speaker)
             samples = np.asarray(wavs[0], dtype=np.float32).flatten()
             if sr != sample_rate:
                 common = gcd(sr, sample_rate)

@@ -20,3 +20,7 @@ agent-tools.local.json.*.tmp
 # Автоматическая загрузка исходников движка и локальные отметки установки
 runtimes/
 Runtimes/*.ready
+
+# Настройки голоса OpenAssistant
+voice-profile.local.json
+voice-profile.local.json.tmp

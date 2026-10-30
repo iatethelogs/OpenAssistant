@@ -6,7 +6,7 @@ using OpenAssistant.Server.Configuration;
 namespace OpenAssistant.Server.Audio;
 
 /// <summary>общий интерфейс локальных gpu-сервисов gigaam и qwen tts.</summary>
-public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<ServerOptions> settings)
+public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<ServerOptions> settings, VoiceProfileStore voices)
 {
     /// <summary>отдаёт русскую речь gigaam через совместимый endpoint распознавания.</summary>
     public async Task<string> TranscribeAsync(byte[] pcm, CancellationToken ct, string? modelOverride = null)
@@ -28,10 +28,12 @@ public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<Se
     public async Task<byte[]> SynthesizeAsync(string phrase, string? voice, int outputRate, CancellationToken ct, string? modelOverride = null)
     {
         var cfg = settings.CurrentValue;
+        var voiceProfile = voices.Read();
         // контракт локального tts-адаптера: POST /synthesize, json -> audio/wav pcm16 mono.
         using var response = await clients.CreateClient("tts").PostAsJsonAsync(
             cfg.TtsUrl.TrimEnd('/') + "/synthesize",
-            new { text = phrase, model = string.IsNullOrWhiteSpace(modelOverride) ? cfg.TtsModel : modelOverride, voice = string.IsNullOrWhiteSpace(voice) ? cfg.TtsVoice : voice, language = cfg.TtsLanguage,
+            new { text = phrase, model = string.IsNullOrWhiteSpace(modelOverride) ? cfg.TtsModel : modelOverride, voice = voiceProfile.Mode == "design" ? "" : (string.IsNullOrWhiteSpace(voice) ? voiceProfile.Speaker : voice),
+                instruct = voiceProfile.Mode == "design" ? voiceProfile.Description : null, language = cfg.TtsLanguage,
                 sample_rate = outputRate }, ct);
         response.EnsureSuccessStatusCode();
         byte[] wav = await response.Content.ReadAsByteArrayAsync(ct);
