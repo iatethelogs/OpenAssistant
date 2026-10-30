@@ -40,7 +40,13 @@ public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<Se
             instruct = voiceProfile.Mode == "design" ? voiceProfile.Description :
                 string.IsNullOrWhiteSpace(voiceProfile.Style) ? null : voiceProfile.Style,
             language = cfg.TtsLanguage,
-            sample_rate = outputRate
+            sample_rate = outputRate,
+            generation_mode = voiceProfile.GenerationMode,
+            seed = voiceProfile.Seed,
+            temperature = voiceProfile.Temperature,
+            top_p = voiceProfile.TopP,
+            top_k = voiceProfile.TopK,
+            repetition_penalty = voiceProfile.RepetitionPenalty
         });
         using var content = new ByteArrayContent(json);
         content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
