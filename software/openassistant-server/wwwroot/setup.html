@@ -96,7 +96,8 @@
         </div>
         <div class="result" id="resultStt">
           <div class="result-head"><span class="result-check">✓</span><div><h3>Модель загружена</h3><p>Проверьте распознавание на собственной записи.</p></div></div>
-          <div class="test-area"><label>Проверка микрофона</label><div class="inline-actions"><button class="secondary" type="button" id="recordStt">Записать 5 секунд</button><button class="secondary" type="button" id="transcribeStt" disabled>Распознать запись</button></div><audio id="recordPlayer" class="audio" controls></audio><p id="sttRecognized" class="recognition-result">Запись ещё не сделана.</p>
+          <div class="test-area"><label>Проверка микрофона</label><div class="inline-actions"><button class="secondary" type="button" id="recordStt">Записать 5 секунд</button><button class="secondary" type="button" id="transcribeStt" disabled>Распознать запись</button></div><div class="record-meter" id="recordMeterStt" aria-live="off"><div class="record-meter-caption"><span>Запись микрофона</span><strong id="recordTimeStt">0,0 / 5,0 с</strong></div><div class="record-meter-track" role="progressbar" id="recordTrackStt" aria-label="Запись микрофона" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"><span id="recordBarStt"></span></div></div>
+          <audio id="recordPlayer" class="audio" controls></audio><div class="stt-result" aria-live="polite"><div class="stt-result-heading">Распознанный текст</div><p id="sttRecognized" class="recognition-result">Запись ещё не сделана.</p><p id="sttSignal" class="stt-signal"></p><p id="sttMetrics" class="stt-metrics"></p></div>
           <div class="inline-actions"><button class="primary" type="button" data-next="tts">Далее <span>→</span></button></div></div>
         </div></div>
       </section>
@@ -146,6 +147,7 @@
     </div>
     <footer>OpenAssistant · <a href="/">Панель управления</a> · <a href="/logs.html">Журнал сервера</a></footer>
   </div>
+  <script src="/audio-test.js" defer></script>
   <script src="/setup.js" defer></script>
 </body>
 </html>

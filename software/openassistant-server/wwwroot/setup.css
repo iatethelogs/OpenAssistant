@@ -92,3 +92,18 @@ body{background:#16181a;color:#e3e5e7}
 .transfer-track{height:9px;border-radius:6px;background:#383e44;overflow:hidden}
 .transfer-track span{display:block;height:100%;width:0;border-radius:6px;background:#c4cbd2;transition:width .28s cubic-bezier(.2,.8,.3,1)}
 @media(prefers-reduced-motion:reduce){.transfer-progress,.transfer-track span{animation:none!important;transition:none!important}}
+
+
+/* Recording progress and transcription output */
+.record-meter{margin:13px 0 9px;padding:12px 14px;background:#1b1e22;border:1px solid #40464c;border-radius:8px}
+.record-meter-caption{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;font-size:12px;color:#b2bac2}
+.record-meter-caption strong{font-size:12px;font-variant-numeric:tabular-nums;color:#e8eaed}
+.record-meter-track{height:7px;background:#3b4147;border-radius:5px;overflow:hidden}
+.record-meter-track span{height:100%;width:0;display:block;background:#b4bbc3;border-radius:5px;transition:width .12s linear}
+.record-meter.active .record-meter-track span{background:#d3d8dd}
+.stt-result{margin-top:12px;background:#1b1e22;border:1px solid #3c4248;border-radius:9px;padding:15px}
+.stt-result-heading{font-size:11px;color:#9da7b0;margin-bottom:7px}
+.stt-result .recognition-result,.stt-transcript{margin:0;color:#ecedf0;font-size:16px;font-weight:580;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.stt-result .stt-signal{margin:10px 0 0;color:#b4bfc7;font-size:12px;line-height:1.5}
+.stt-result .stt-metrics{margin:8px 0 0;font-size:11px;color:#8e98a2;font-variant-numeric:tabular-nums}
+@media(prefers-reduced-motion:reduce){.record-meter-track span{transition:none!important}}

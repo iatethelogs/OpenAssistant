@@ -167,30 +167,42 @@ function updateVoiceMode(){
    :"Выбирается один из готовых голосов. Произвольное описание тембра не поддерживается.";
  el("ttsChoiceHelp").dataset.engine=fast?"faster":"official";
 }
-function wav(data,rate=16000){const output=new ArrayBuffer(44+data.byteLength),d=new DataView(output);
- const str=(offset,text)=>{for(let i=0;i<text.length;i++)d.setUint8(offset+i,text.charCodeAt(i))};
- str(0,"RIFF");d.setUint32(4,36+data.byteLength,true);str(8,"WAVE");str(12,"fmt ");d.setUint32(16,16,true);
- d.setUint16(20,1,true);d.setUint16(22,1,true);d.setUint32(24,rate,true);d.setUint32(28,rate*2,true);
- d.setUint16(32,2,true);d.setUint16(34,16,true);str(36,"data");d.setUint32(40,data.byteLength,true);new Uint8Array(output,44).set(data);return output}
-async function record(){
- if(!navigator.mediaDevices?.getUserMedia)throw Error("Микрофон доступен по HTTPS или через http://localhost. Используйте SSH-туннель.");
- const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1}}),ctx=new (window.AudioContext||window.webkitAudioContext)();
- const src=ctx.createMediaStreamSource(stream),processor=ctx.createScriptProcessor(4096,1,1);
- let n=0;const segments=[];
- processor.onaudioprocess=e=>{const a=e.inputBuffer.getChannelData(0),part=new Float32Array(a);segments.push(part);n+=part.length;e.outputBuffer.getChannelData(0).fill(0)};
- src.connect(processor);processor.connect(ctx.destination);el("sttRecognized").textContent="Идёт запись… говорите.";
- try{await new Promise(resolve=>setTimeout(resolve,5000))}finally{processor.disconnect();src.disconnect();stream.getTracks().forEach(t=>t.stop())}
- const all=new Float32Array(n);let pos=0;for(const part of segments){all.set(part,pos);pos+=part.length}
- const ratio=ctx.sampleRate/16000,count=Math.floor(n/ratio),bytes=new Uint8Array(count*2),view=new DataView(bytes.buffer);
- for(let i=0;i<count;i++){const at=i*ratio,a=Math.floor(at),b=Math.min(n-1,a+1),w=at-a,value=(all[a]||0)*(1-w)+(all[b]||0)*w;view.setInt16(i*2,Math.max(-32768,Math.min(32767,Math.round(value*32767))),true)}
- await ctx.close();state.pcm=bytes;
- if(state.recordUrl)URL.revokeObjectURL(state.recordUrl);state.recordUrl=URL.createObjectURL(new Blob([wav(bytes)],{type:"audio/wav"}));
- el("recordPlayer").src=state.recordUrl;el("transcribeStt").disabled=false;el("sttRecognized").textContent="Запись готова. Нажмите «Распознать».";
+function updateRecordingUi(which, elapsed) {
+ const progress = Math.min(100, Math.round(elapsed * 20));
+ el("recordMeter"+which).classList.add("active");
+ el("recordTime"+which).textContent=elapsed.toFixed(1).replace(".",",")+" / 5,0 с";
+ el("recordBar"+which).style.width=progress+"%";
+ el("recordTrack"+which).setAttribute("aria-valuenow",String(progress));
 }
-el("recordStt").onclick=async()=>{const b=el("recordStt");b.disabled=true;try{await record()}catch(e){showError(e.message)}finally{b.disabled=false}};
-el("transcribeStt").onclick=async()=>{const b=el("transcribeStt");b.disabled=true;el("sttRecognized").textContent="Распознаём вашу речь…";
- try{const res=await fetch("/api/control/test/stt",{method:"POST",headers:{"Content-Type":"application/octet-stream"},body:state.pcm});const data=await res.json();if(!res.ok)throw Error(data.error||"Ошибка STT");el("sttRecognized").textContent="«"+data.text+"» · "+data.totalMs+" мс · RTF "+data.realtimeFactor}
- catch(e){el("sttRecognized").textContent=e.message}finally{b.disabled=false}};
+el("recordStt").onclick=async()=>{
+ const btn=el("recordStt");btn.disabled=true;el("transcribeStt").disabled=true;state.pcm=null;
+ el("sttSignal").textContent="";el("sttMetrics").textContent="";
+ updateRecordingUi("Stt",0);el("sttRecognized").textContent="Запись…";
+ try{
+  const data=await OpenAssistantAudioTest.record({onProgress:info=>updateRecordingUi("Stt",info.elapsed)});
+  state.pcm=data.pcm;
+  if(state.recordUrl)URL.revokeObjectURL(state.recordUrl);
+  state.recordUrl=URL.createObjectURL(data.wav);
+  el("recordPlayer").src=state.recordUrl;
+  el("sttRecognized").textContent="Запись готова. Нажмите «Распознать».";
+  el("sttSignal").textContent="RMS: "+data.rmsPercent.toFixed(2)+"% · Пик: "+data.peakPercent.toFixed(1)+"% · "+
+    data.duration.toFixed(2)+" с.";
+  if(data.signalStatus==="silent")el("sttSignal").textContent+=" Микрофон почти не передаёт звук.";
+  el("transcribeStt").disabled=false;
+ }catch(e){el("sttRecognized").textContent="Ошибка записи: "+e.message}
+ finally{btn.disabled=false;el("recordMeterStt").classList.remove("active")}
+};
+el("transcribeStt").onclick=async()=>{
+ const btn=el("transcribeStt");btn.disabled=true;el("sttRecognized").textContent="Распознавание…";
+ try{
+  const result=await OpenAssistantAudioTest.transcribe(state.pcm);
+  const shown=OpenAssistantAudioTest.description(result);
+  el("sttRecognized").textContent=shown.text;
+  el("sttSignal").textContent=shown.quality;
+  el("sttMetrics").textContent=shown.metrics;
+ }catch(e){el("sttRecognized").textContent="Ошибка: "+e.message}
+ finally{btn.disabled=false}
+};
 el("testTts").onclick=async()=>{const b=el("testTts");b.disabled=true;el("ttsMetrics").textContent="Синтезируем выбранным голосом…";
  try{
  const design=state.selected.tts?.includes("design");

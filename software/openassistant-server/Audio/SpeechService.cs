@@ -9,11 +9,11 @@ namespace OpenAssistant.Server.Audio;
 public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<ServerOptions> settings, VoiceProfileStore voices)
 {
     /// <summary>отдаёт русскую речь gigaam через совместимый endpoint распознавания.</summary>
-    public async Task<string> TranscribeAsync(byte[] pcm, CancellationToken ct, string? modelOverride = null)
+    public async Task<string> TranscribeAsync(byte[] pcm, CancellationToken ct, string? modelOverride = null, int? inputSampleRate = null)
     {
         if (pcm.Length == 0) return "";
         using var form = new MultipartFormDataContent();
-        using var wave = new ByteArrayContent(WaveWriter.Wrap(pcm, settings.CurrentValue.InputSampleRate));
+        using var wave = new ByteArrayContent(WaveWriter.Wrap(pcm, inputSampleRate ?? settings.CurrentValue.InputSampleRate));
         wave.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/wav");
         form.Add(wave, "file", "speech.wav");
         form.Add(new StringContent(string.IsNullOrWhiteSpace(modelOverride) ? settings.CurrentValue.SttModel : modelOverride), "model");

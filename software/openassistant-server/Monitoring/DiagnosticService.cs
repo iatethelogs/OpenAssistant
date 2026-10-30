@@ -105,15 +105,44 @@ public sealed class DiagnosticService(IHttpClientFactory http, SpeechService spe
     {
         if (pcm.Length is < 3200 or > 1024 * 1024 || pcm.Length % 2 != 0)
             throw new ArgumentException("Нужна запись PCM16 mono 16 кГц продолжительностью от 0,1 до 32 секунд");
+
+        // Уровень измеряем на исходном PCM до преобразования в WAV и отправки в GigaAM.
+        // Это позволяет отличить тишину с микрофона от пустой транскрипции при нормальном сигнале.
+        int count = pcm.Length / 2;
+        double sumSquares = 0;
+        int clipped = 0;
+        int peak = 0;
+        for (int i = 0; i < pcm.Length; i += 2)
+        {
+            short sample = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(pcm.AsSpan(i, 2));
+            int abs = Math.Abs((int)sample);
+            peak = Math.Max(peak, abs);
+            sumSquares += (double)sample * sample;
+            if (abs >= 32700) clipped++;
+        }
+        double rms = Math.Sqrt(sumSquares / count) / 32768d;
+        double peakRelative = peak / 32768d;
+        double clippedPercent = 100d * clipped / count;
+        string signalStatus = rms < 0.001 || peakRelative < 0.006 ? "silent"
+            : clippedPercent > 2 ? "clipped" : rms < 0.006 ? "quiet" : "normal";
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(90));
         var sw = Stopwatch.StartNew();
-        string recognized = await speech.TranscribeAsync(pcm, timeout.Token, model);
+        string recognized = await speech.TranscribeAsync(pcm, timeout.Token, model, inputSampleRate: 16000);
         sw.Stop();
-        double seconds = pcm.Length / (options.CurrentValue.InputSampleRate * 2.0);
-        return new {
-            text = recognized, totalMs = sw.ElapsedMilliseconds, audioSeconds = Math.Round(seconds, 2),
-            realtimeFactor = Math.Round(sw.Elapsed.TotalSeconds / Math.Max(0.01, seconds), 3)
+        double seconds = pcm.Length / (16000 * 2.0);
+        return new
+        {
+            text = recognized, empty = string.IsNullOrWhiteSpace(recognized),
+            totalMs = sw.ElapsedMilliseconds,
+            audioSeconds = Math.Round(seconds, 2),
+            realtimeFactor = Math.Round(sw.Elapsed.TotalSeconds / Math.Max(0.01, seconds), 3),
+            audioRmsPercent = Math.Round(rms * 100, 3),
+            audioPeakPercent = Math.Round(peakRelative * 100, 2),
+            audioClippedPercent = Math.Round(clippedPercent, 2),
+            signalStatus,
+            inputSamples = count
         };
     }
 }

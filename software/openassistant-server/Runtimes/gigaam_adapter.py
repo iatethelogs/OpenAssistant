@@ -5,6 +5,7 @@ import os
 import argparse
 import tempfile
 import wave
+import numpy as np
 from email.parser import BytesParser
 from email.policy import default
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -63,12 +64,36 @@ class Handler(BaseHTTPRequestHandler):
                 if w.getnchannels() != 1 or w.getsampwidth() != 2 or w.getframerate() != 16000:
                     self.reply(400, {"error": "expected 16kHz mono PCM16"})
                     return
+                samples = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
+                if len(samples) < 1600:
+                    self.reply(400, {"error": "audio too short"})
+                    return
+                normalized = samples.astype(np.float32) * (1.0 / 32768.0)
+                rms = float(np.sqrt(np.mean(normalized ** 2)))
+                peak = float(np.max(np.abs(normalized)))
+                seconds = len(samples) / 16000.0
+                print(f"GigaAM input: {seconds:.2f}s, {len(samples)} samples, rms={rms:.5f}, peak={peak:.5f}", flush=True)
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as file:
                 path = file.name
                 file.write(audio)
             try:
                 result = model.transcribe(path)
                 text = result.text if hasattr(result, "text") else str(result)
+                print("GigaAM recognized:", repr(text[:180]), flush=True)
+                if not text.strip() and rms >= 0.006:
+                    print("GigaAM warning: empty transcript despite non-silent input", flush=True)
+                    # Verify that the same waveform survives FFmpeg/GigaAM's official loader.
+                    try:
+                        from gigaam.preprocess import load_audio
+                        decoded = load_audio(path)
+                        decoded_rms = float(torch.sqrt(torch.mean(decoded.float().square())))
+                        print(f"GigaAM decoded wav: {decoded.numel()} samples, "
+                              f"rms={decoded_rms:.5f}", flush=True)
+                        if decoded.numel() < 1600 or decoded_rms < rms * 0.25:
+                            print("GigaAM INPUT ERROR: FFmpeg output differs significantly "
+                                  "from incoming PCM", flush=True)
+                    except Exception as decode_error:
+                        print("GigaAM FFmpeg diagnostics failed:", repr(decode_error), flush=True)
             finally:
                 os.unlink(path)
             self.reply(200, {"text": text})

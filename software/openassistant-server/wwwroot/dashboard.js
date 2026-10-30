@@ -231,31 +231,36 @@ for(const btn of document.querySelectorAll('[data-view="models"],[data-view="int
  btn.addEventListener("click",()=>{const v=btn.dataset.view;if(v==="models")refreshModels().catch(e=>toast(e.message,true));if(v==="integrations")refreshConnections().catch(e=>toast(e.message,true));if(v==="logs")refreshServerLogs().catch(e=>toast(e.message,true));if(v==="events")refreshEvents().catch(e=>toast(e.message,true))})
 }
 
-/* Direct microphone test: 5 s PCM16 mono 16 kHz */
-let recordedPcm=null,recordedUrl=null;
+/* Microphone test uses the same audio conversion as initial setup. */
+let recordedPcm=null, recordedUrl=null;
+function setRecordingProgress(seconds){
+ const pct=Math.min(100,Math.round(seconds*20));
+ el("recordMeterDashboard").classList.add("active");
+ el("recordTimeDashboard").textContent=seconds.toFixed(1).replace(".",",")+" / 5,0 с";
+ el("recordBarDashboard").style.width=pct+"%";
+ el("recordTrackDashboard").setAttribute("aria-valuenow",String(pct));
+}
 el("recordAudio").onclick=busy(el("recordAudio"),async()=>{
- if(!navigator.mediaDevices?.getUserMedia)throw Error("Для доступа к микрофону откройте панель через localhost либо HTTPS");
- const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1}});
- const ctx=new (window.AudioContext||window.webkitAudioContext)(),src=ctx.createMediaStreamSource(stream),proc=ctx.createScriptProcessor(4096,1,1);
- const parts=[];let total=0;
- proc.onaudioprocess=e=>{const arr=new Float32Array(e.inputBuffer.getChannelData(0));parts.push(arr);total+=arr.length;e.outputBuffer.getChannelData(0).fill(0)};
- src.connect(proc);proc.connect(ctx.destination);
- el("recognitionOutput").textContent="Идёт запись · 5 секунд";
- try{await new Promise(resolve=>setTimeout(resolve,5000))}
- finally{proc.disconnect();src.disconnect();stream.getTracks().forEach(t=>t.stop())}
- const all=new Float32Array(total);let i=0;for(const a of parts){all.set(a,i);i+=a.length}
- const ratio=ctx.sampleRate/16000,n=Math.floor(total/ratio),pcm=new Uint8Array(n*2),p=new DataView(pcm.buffer);
- for(let k=0;k<n;k++){const at=k*ratio,a=Math.floor(at),b=Math.min(total-1,a+1),f=at-a,v=(all[a]||0)*(1-f)+(all[b]||0)*f;p.setInt16(2*k,Math.round(Math.max(-1,Math.min(1,v))*32767),true)}
- await ctx.close();recordedPcm=pcm;
- const wav=new Uint8Array(44+pcm.length),header=new DataView(wav.buffer),write=(offset,s)=>{for(let k=0;k<s.length;k++)wav[offset+k]=s.charCodeAt(k)};
- write(0,"RIFF");header.setUint32(4,36+pcm.length,true);write(8,"WAVE");write(12,"fmt ");header.setUint32(16,16,true);header.setUint16(20,1,true);header.setUint16(22,1,true);header.setUint32(24,16000,true);header.setUint32(28,32000,true);header.setUint16(32,2,true);header.setUint16(34,16,true);write(36,"data");header.setUint32(40,pcm.length,true);wav.set(pcm,44);
- if(recordedUrl)URL.revokeObjectURL(recordedUrl);recordedUrl=URL.createObjectURL(new Blob([wav],{type:"audio/wav"}));
- el("recordedAudio").src=recordedUrl;el("recognizeAudio").disabled=false;el("recognitionOutput").textContent="Запись готова · "+(n/16000).toFixed(1)+" с";
+ recordedPcm=null;el("recognizeAudio").disabled=true;
+ el("recognitionOutput").textContent="Запись…";el("recognitionSignal").textContent="";
+ el("recognitionMetrics").textContent="";setRecordingProgress(0);
+ try{
+  const data=await OpenAssistantAudioTest.record({onProgress:info=>setRecordingProgress(info.elapsed)});
+  recordedPcm=data.pcm;
+  if(recordedUrl)URL.revokeObjectURL(recordedUrl);
+  recordedUrl=URL.createObjectURL(data.wav);el("recordedAudio").src=recordedUrl;
+  el("recognitionOutput").textContent="Запись завершена. Нажмите «Распознать запись».";
+  el("recognitionSignal").textContent="RMS: "+data.rmsPercent.toFixed(2)+"% · Пик: "+data.peakPercent.toFixed(1)+"% · "+data.duration.toFixed(2)+" с";
+  if(data.signalStatus==="silent")el("recognitionSignal").textContent+=". Почти тишина: проверьте микрофон.";
+  el("recognizeAudio").disabled=false;
+ }finally{el("recordMeterDashboard").classList.remove("active")}
 });
 el("recognizeAudio").onclick=busy(el("recognizeAudio"),async()=>{
  if(!recordedPcm)throw Error("Сначала запишите фразу");
- const response=await fetch("/api/control/test/stt",{method:"POST",headers:{"Content-Type":"application/octet-stream"},body:recordedPcm});
- const r=await response.json().catch(()=>({}));
- if(!response.ok)throw Error(r.error||"Ошибка распознавания");
- el("recognitionOutput").textContent="Текст: "+r.text+"\nВремя: "+r.totalMs+" мс\nRTF: "+r.realtimeFactor;
+ el("recognitionOutput").textContent="Распознавание…";
+ const data=await OpenAssistantAudioTest.transcribe(recordedPcm);
+ const shown=OpenAssistantAudioTest.description(data);
+ el("recognitionOutput").textContent=shown.text;
+ el("recognitionSignal").textContent=shown.quality;
+ el("recognitionMetrics").textContent=shown.metrics;
 });
