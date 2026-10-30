@@ -70,6 +70,19 @@
       <div><label for="voice">Голос TTS</label><input id="voice" maxlength="150" placeholder="Ryan"></div>
       <div><label for="language">Язык озвучивания</label><input id="language" maxlength="150" placeholder="Russian"></div>
     </div>
+    <div class="panel-heading"><div><h2>Голос и повторяемость синтеза</h2><p>Профиль используется и мастером, и обычными ответами ассистента</p></div></div>
+    <div class="field-grid">
+      <div><label for="voiceModeSetting">Источник голоса</label><select id="voiceModeSetting"><option value="custom">Готовый голос (CustomVoice)</option><option value="design">VoiceDesign по описанию</option></select></div>
+      <div><label for="voiceGenerationMode">Повторяемость</label><select id="voiceGenerationMode"><option value="seeded">Фиксированный seed</option><option value="greedy">Строгая генерация</option><option value="random">Свободная генерация</option></select></div>
+      <div><label for="voiceSeed">Seed</label><input id="voiceSeed" type="number" min="0" max="2147483647" step="1"></div>
+      <div><label for="voiceTemperature">Температура TTS</label><input id="voiceTemperature" type="number" min="0.1" max="2" step="0.05"></div>
+      <div><label for="voiceTopP">Top-p</label><input id="voiceTopP" type="number" min="0.01" max="1" step="0.05"></div>
+      <div><label for="voiceTopK">Top-k</label><input id="voiceTopK" type="number" min="1" max="200" step="1"></div>
+      <div><label for="voicePenalty">Штраф за повторения</label><input id="voicePenalty" type="number" min="1" max="2" step="0.01"></div>
+    </div>
+    <label for="voiceStyleSetting">Манера речи (CustomVoice 1.7B)</label><textarea id="voiceStyleSetting" rows="2" maxlength="600"></textarea>
+    <label for="voiceDescriptionSetting">Описание тембра (VoiceDesign)</label><textarea id="voiceDescriptionSetting" rows="3" maxlength="1200"></textarea>
+    <p class="minor">Режим с фиксированным seed повторяет случайный выбор токенов. Строгий режим отключает sampling; он может звучать менее естественно. Изменение параметров не требует перезагрузки модели.</p>
     <div class="form-footer"><span class="minor" id="settingsNote">Изменения применяются к новым запросам.</span><button type="submit" id="saveSettings" class="button primary">Сохранить настройки</button></div>
    </form>
    <div class="linked-panel"><span>Настройки движков, GPU и загрузки</span><button type="button" class="text-link text-button" data-view="models">Модели и параметры</button></div>
@@ -189,5 +202,5 @@
 </main></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/audio-test.js" defer></script>
-<script src="/dashboard.js" defer></script>
+<script src="/dashboard.js?v=20261030-voice-cache" defer></script>
 </body></html>
