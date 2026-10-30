@@ -43,7 +43,7 @@
       <div><span>LLM</span><strong>Языковая модель</strong></div>
       <div><span>STT</span><strong>Распознавание речи</strong></div>
       <div><span>TTS</span><strong>Синтез речи</strong></div>
-      <div><span>MEDIA</span><strong>Музыка</strong></div>
+      <div><span>Музыка</span><strong>Музыка</strong></div>
     </div>
   </div>
 </section>
@@ -58,7 +58,7 @@
         
         <div class="panel">
           <div class="card">
-            <div class="card-heading"><div><h2 class="card-title">Языковые модели · Q8_0</h2></div></div>
+            <div class="card-heading"><div><h2 class="card-title">Выбор языковой модели</h2></div></div>
             <div id="llmModels" class="models"></div>
             <details class="custom-model"><summary>Использовать собственную модель</summary><label for="customModelUrl">Ссылка Hugging Face на репозиторий GGUF или отдельный файл</label><input id="customModelUrl" type="url" placeholder="https://huggingface.co/author/model-GGUF"></details>
             <div class="options-heading"><h3>Параметры запуска</h3></div>
@@ -93,7 +93,7 @@
             <p id="answerLlm" class="model-response"></p>
             <div class="result-meta" id="metricsLlm"></div>
             <div class="gpu-live"><div class="gpu-live-heading"><strong>Состояние GPU</strong><span id="gpuBenchmark">Нет данных</span></div><div class="gpu-live-track"><div id="gpuBenchmarkBar"></div></div></div>
-            <div class="test-area"><label for="testPrompt">Тестовый запрос</label><textarea id="testPrompt" rows="3">Кратко объясни, как работает локальный голосовой ассистент.</textarea>
+            <div class="test-area"><label for="testPrompt">Тестовый запрос</label><textarea id="testPrompt" rows="3">Кратко объясни, как ты обрабатываешь голосовые команды.</textarea>
               <div class="inline-actions"><button class="secondary" type="button" id="testLlm">Повторить тест</button><button class="primary" type="button" data-next="stt">Далее <span>→</span></button></div><pre id="manualLlm" class="test-response hidden"></pre></div>
           </div>
         </div>
@@ -168,11 +168,11 @@
         
         <div class="panel"><div class="card">
           <div class="service-stubs">
-  <div class="service-stub future"><span class="stub-icon">VK</span><strong>VK Музыка</strong><small>Пока не подключается</small><span class="stub-status">Недоступно</span></div>
-  <div class="service-stub future"><span class="stub-icon">◉</span><strong>Spotify</strong><small>Пока не подключается</small><span class="stub-status">СКОРО</span></div>
-  <div class="service-stub future"><span class="stub-icon">⌁</span><strong>Локальная библиотека</strong><small>NAS и локальные файлы</small><span class="stub-status">СКОРО</span></div>
-  <div class="service-stub future"><span class="stub-icon">♫</span><strong>Apple Music</strong><small>Интеграция в разработке</small><span class="stub-status">СКОРО</span></div>
-  <div class="service-stub future"><span class="stub-icon">▶</span><strong>YouTube Music</strong><small>Интеграция в разработке</small><span class="stub-status">СКОРО</span></div>
+  <div class="service-stub future"><span class="stub-icon">VK</span><strong>VK Музыка</strong><small>Нет подключения</small><span class="stub-status">Недоступно</span></div>
+  <div class="service-stub future"><span class="stub-icon">◉</span><strong>Spotify</strong><small>Нет подключения</small><span class="stub-status">Недоступно</span></div>
+  <div class="service-stub future"><span class="stub-icon">⌁</span><strong>Локальная библиотека</strong><small>NAS и локальные файлы</small><span class="stub-status">Недоступно</span></div>
+  <div class="service-stub future"><span class="stub-icon">♫</span><strong>Apple Music</strong><small>Нет подключения</small><span class="stub-status">Недоступно</span></div>
+  <div class="service-stub future"><span class="stub-icon">▶</span><strong>YouTube Music</strong><small>Нет подключения</small><span class="stub-status">Недоступно</span></div>
   <div class="service-stub future"><span class="stub-icon">◌</span><strong>Интернет-радио</strong><small>Поиск станций доступен в панели</small><span class="stub-status">В ПАНЕЛИ</span></div>
   </div>
           <div class="card-heading"><div><h2 class="card-title">Яндекс Музыка</h2><p id="setupMusicState" class="card-sub">Проверка подключения…</p></div></div>
@@ -183,7 +183,7 @@
       </section>
 
       <section class="section" id="complete">
-        <div class="complete-panel"><div class="complete-symbol">✓</div><h1>У OpenAssistantа появился<br><span class="gradient-text">свой голос.</span></h1><p>Параметры сохранены. К работе с моделями можно вернуться в любой момент.</p>
+        <div class="complete-panel"><div class="complete-symbol">✓</div><h1>Настройка завершена</h1><p>Параметры сохранены.</p>
         <div class="inline-actions center"><a href="/" class="primary">Перейти на главную <span>→</span></a><a class="secondary" href="/chat.html">Проверить диалог</a></div></div>
       </section>
     </div>
