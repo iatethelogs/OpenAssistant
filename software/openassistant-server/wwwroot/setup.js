@@ -190,6 +190,12 @@ el("transcribeStt").onclick=async()=>{
  }catch(e){el("sttRecognized").textContent="Ошибка: "+e.message}
  finally{btn.disabled=false}
 };
+function updateTtsSamplingControls(){
+ const mode=el("ttsGenerationMode").value;
+ el("ttsSeed").disabled=mode!=="seeded";
+ for(const id of ["ttsTemperature","ttsTopP","ttsTopK"])el(id).disabled=mode==="greedy";
+}
+el("ttsGenerationMode").onchange=updateTtsSamplingControls;
 function readVoiceProfile(){
  const design=state.selected.tts?.includes("design")??false;
  return {...state.voiceProfile,mode:design?"design":"custom",
@@ -237,6 +243,7 @@ async function init(){try{
   el("ttsPenalty").value=profile.repetitionPenalty??1.05;
   if(profile.mode==="design"){state.selected.tts="qwen-tts-fast-design";renderCards("tts")}
  }
+ updateTtsSamplingControls();
  await refreshInstalled();
  await poll();
  const gpu=await api("/api/models").catch(()=>null);const cards=gpu?.status?.gpus||[];
