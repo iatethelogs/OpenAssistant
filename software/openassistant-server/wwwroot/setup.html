@@ -103,6 +103,7 @@
         <div class="panel"><div class="card">
           <div class="card-heading"><div><h2 class="card-title">Модель синтеза</h2><p class="card-sub">Готовые голоса или формирование голоса по описанию.</p></div></div>
           <div id="ttsModels" class="models"></div>
+          <div id="ttsChoiceHelp" class="tts-capabilities">Выберите вариант синтеза. Возможности настройки голоса зависят от модели.</div>
           <div class="guided-options single"><div class="option"><label for="ttsGpu">Видеокарта для синтеза</label><select id="ttsGpu"><option value="">Автоматический выбор</option><option value="cpu">CPU</option></select></div></div>
           <div class="buttonrow"><p>VoiceDesign требует больше видеопамяти, чем CustomVoice.</p><button class="primary" id="startTts" type="button">Установить и запустить <span>↗</span></button></div>
         </div>
@@ -116,6 +117,7 @@
           <div class="result-head"><span class="result-check">✓</span><div><h3>Синтез готов</h3><p id="ttsMetrics">Проверьте звучание на тестовой фразе.</p></div></div>
           <div class="test-area">
             <div id="presetVoice"><label for="voiceSelect">Готовый голос</label><select id="voiceSelect"><option value="Ryan">Ryan</option><option value="Aiden">Aiden</option><option value="Serena">Serena</option><option value="Vivian">Vivian</option><option value="Ono_Anna">Ono Anna</option><option value="Sohee">Sohee</option></select></div>
+            <div id="customStyle" class="hidden"><label for="voiceStyle">Манера речи</label><textarea id="voiceStyle" rows="2" placeholder="Например: спокойная, уверенная речь, с естественными паузами"></textarea><p class="input-help">Доступно для модели CustomVoice 1.7B. Тембр выбирается из готовых голосов, менять можно интонацию и стиль.</p></div>
             <div id="designedVoice" class="hidden"><label for="voiceDescription">Описание голоса</label><textarea id="voiceDescription" rows="4">Спокойный взрослый мужской голос. Русская речь, естественная артикуляция, средняя скорость и мягкая интонация.</textarea><p class="input-help">Изменяйте описание, чтобы получить другой вариант. Постоянство тембра между генерациями не гарантируется.</p></div>
             <label for="ttsPhrase">Тестовая фраза</label><textarea id="ttsPhrase" rows="3">Здравствуйте. Это проверка синтеза речи OpenAssistant.</textarea>
             <div class="inline-actions"><button class="secondary" type="button" id="testTts">Сгенерировать и прослушать</button><a class="secondary hidden" id="downloadWav" href="#" download="openassistant-test.wav">Скачать WAV</a></div><audio id="ttsPlayer" class="audio" controls></audio>

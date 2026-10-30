@@ -8,7 +8,8 @@ public sealed class VoiceProfileStore(IWebHostEnvironment env)
     private readonly SemaphoreSlim _gate = new(1, 1);
     private string FilePath => Path.Combine(env.ContentRootPath, "voice-profile.local.json");
     public sealed record Profile(string Mode = "custom", string Speaker = "Ryan",
-        string Description = "A calm, friendly, clear Russian-speaking adult voice with natural intonation and moderate pace.");
+        string Description = "A calm, friendly, clear Russian-speaking adult voice with natural intonation and moderate pace.",
+        string Style = "");
     public Profile Read()
     {
         if (!File.Exists(FilePath)) return new Profile();
@@ -21,10 +22,11 @@ public sealed class VoiceProfileStore(IWebHostEnvironment env)
             throw new ArgumentException("Выберите готовый голос или проектирование по описанию");
         var speaker = (input.Speaker ?? "").Trim();
         var description = (input.Description ?? "").Trim();
-        if (speaker.Length is < 1 or > 80 || description.Length > 1200 ||
+        var style = (input.Style ?? "").Trim();
+        if (speaker.Length is < 1 or > 80 || description.Length > 1200 || style.Length > 600 ||
             input.Mode == "design" && description.Length < 8)
             throw new ArgumentException("Некорректные параметры голоса");
-        var clean = new Profile(input.Mode, speaker, description);
+        var clean = new Profile(input.Mode, speaker, description, style);
         await _gate.WaitAsync(ct);
         try
         {

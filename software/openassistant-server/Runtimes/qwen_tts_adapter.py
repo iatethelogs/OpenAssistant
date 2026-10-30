@@ -1,4 +1,4 @@
-"""Локальный HTTP-адаптер официальной модели Qwen3-TTS CustomVoice."""
+"""Qwen3-TTS HTTP adapter: official and accelerated CUDA-graph engines."""
 import os
 import io
 import json
@@ -22,12 +22,20 @@ if requested == "cuda" and not torch.cuda.is_available():
     raise RuntimeError("Запрошен GPU, но PyTorch не видит CUDA.")
 device = "cuda:0" if requested == "cuda" else "cpu"
 name = os.environ.get("OPENASSISTANT_MODEL", "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice")
-model = Qwen3TTSModel.from_pretrained(
-    name, device_map=device, dtype=torch.float16 if requested == "cuda" else torch.float32,
-    attn_implementation="sdpa"
-)
+engine = os.environ.get("OPENASSISTANT_TTS_ENGINE", "official")
+if engine == "faster":
+    if device != "cuda:0":
+        raise RuntimeError("Faster Qwen3-TTS uses CUDA Graphs and requires a CUDA GPU; choose the regular engine for CPU.")
+    from faster_qwen3_tts import FasterQwen3TTS
+    model = FasterQwen3TTS.from_pretrained(
+        name, device=device, dtype=torch.bfloat16, attn_implementation="sdpa")
+    model.warmup(prefill_len=100)
+else:
+    model = Qwen3TTSModel.from_pretrained(
+        name, device_map=device, dtype=torch.float16 if requested == "cuda" else torch.float32,
+        attn_implementation="sdpa")
 model_lock = threading.Lock()
-print("READY Qwen3-TTS on", device, flush=True)
+print("READY Qwen3-TTS", engine, "on", device, flush=True)
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *values):
@@ -75,12 +83,14 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 if not voice or voice.lower() == "default":
                     voice = "Ryan"
-                speaker = next((x for x in model.get_supported_speakers() if x.lower() == voice.lower()), None)
+                speakers = (model.model if engine == "faster" else model).get_supported_speakers()
+                speaker = next((x for x in speakers if x.lower() == voice.lower()), None)
                 if speaker is None:
-                    self.reply(400, {"error": "unknown voice " + voice, "supported": model.get_supported_speakers()})
+                    self.reply(400, {"error": "unknown voice " + voice, "supported": speakers})
                     return
                 with model_lock:
-                    wavs, sr = model.generate_custom_voice(text=text, language=language, speaker=speaker)
+                    wavs, sr = model.generate_custom_voice(text=text, language=language, speaker=speaker,
+                        instruct=instruction if "1.7B" in name and instruction else None)
             samples = np.asarray(wavs[0], dtype=np.float32).flatten()
             if sr != sample_rate:
                 common = gcd(sr, sample_rate)

@@ -73,7 +73,7 @@ function updateRole(role,job){
    progress=Math.min(99,progress+Math.round(100*(job.bytes/job.total)/steps.length));
  el("bar"+cap).style.width=Math.max(1,Math.min(progress,100))+"%";
  renderMilestones(role,job);
- el("bytes"+cap).textContent=job.total?fmt(job.bytes)+" / "+fmt(job.total):"Подготовка компонентов";
+ el("bytes"+cap).textContent=job.total?Math.min(100,Math.floor(100*job.bytes/job.total))+"%":"Выполняется";
  el("stage"+cap).textContent=job.status==="ready"?"ГОТОВО":job.status==="failed"?"ОШИБКА":titles[job.step]||"Выполняется";
  const log=el("logs"+cap),nearBottom=log.scrollHeight-log.scrollTop-log.clientHeight<70;
  const content=(job.logs||[]).slice(-125).join("\n");
@@ -120,9 +120,19 @@ el("testLlm").onclick=async()=>{
  finally{clearInterval(timer);await sampleGpu();b.disabled=false}
 };
 function updateVoiceMode(){
- const design=state.selected.tts==="qwen-tts-design";
+ const choice=state.selected.tts||"qwen-tts-fast-06";
+ const design=choice.includes("design");
+ const style=choice.includes("17")&&!design;
+ const fast=choice.includes("-fast-");
  el("designedVoice").classList.toggle("hidden",!design);
  el("presetVoice").classList.toggle("hidden",design);
+ el("customStyle").classList.toggle("hidden",!style);
+ el("ttsChoiceHelp").textContent=design
+   ? "Голос создаётся по описанию. Можно менять тембр, характер и подачу; новый запуск может дать другой результат."
+   :style
+   ? "Выбирается готовый тембр. Можно отдельно изменить манеру речи и интонации."
+   :"Выбирается один из готовых голосов. Произвольное описание тембра не поддерживается.";
+ el("ttsChoiceHelp").dataset.engine=fast?"faster":"official";
 }
 function wav(data,rate=16000){const output=new ArrayBuffer(44+data.byteLength),d=new DataView(output);
  const str=(offset,text)=>{for(let i=0;i<text.length;i++)d.setUint8(offset+i,text.charCodeAt(i))};
@@ -150,9 +160,9 @@ el("transcribeStt").onclick=async()=>{const b=el("transcribeStt");b.disabled=tru
  catch(e){el("sttRecognized").textContent=e.message}finally{b.disabled=false}};
 el("testTts").onclick=async()=>{const b=el("testTts");b.disabled=true;el("ttsMetrics").textContent="Синтезируем выбранным голосом…";
  try{
- const design=state.selected.tts==="qwen-tts-design";
- await api("/api/setup/voice","PUT",{mode:design?"design":"custom",speaker:el("voiceSelect").value,description:el("voiceDescription").value.trim()});
- const res=await fetch("/api/control/test/tts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:el("ttsPhrase").value,voice:state.selected.tts==="qwen-tts-design"?null:el("voiceSelect").value,model:null})});
+ const design=state.selected.tts?.includes("design");
+ await api("/api/setup/voice","PUT",{mode:design?"design":"custom",speaker:el("voiceSelect").value,description:el("voiceDescription").value.trim(),style:el("voiceStyle").value.trim()});
+ const res=await fetch("/api/control/test/tts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:el("ttsPhrase").value,voice:state.selected.tts?.includes("design")?null:el("voiceSelect").value,model:null})});
  if(!res.ok){const d=await res.json().catch(()=>({}));throw Error(d.error||"Ошибка TTS")}
  const blob=await res.blob();if(state.voiceUrl)URL.revokeObjectURL(state.voiceUrl);state.voiceUrl=URL.createObjectURL(blob);
  el("ttsPlayer").src=state.voiceUrl;el("downloadWav").href=state.voiceUrl;el("downloadWav").classList.remove("hidden");
@@ -163,7 +173,7 @@ async function init(){try{
  state.catalog=await api("/api/setup/catalog");
  for(const role of ["llm","stt","tts"]){state.selected[role]=state.catalog.find(m=>m.role===role&&m.default)?.id;renderCards(role)}
  const profile=await api("/api/setup/voice").catch(()=>null);
- if(profile){el("voiceSelect").value=profile.speaker||"Ryan";el("voiceDescription").value=profile.description||el("voiceDescription").value;if(profile.mode==="design"){state.selected.tts="qwen-tts-design";renderCards("tts")}}
+ if(profile){el("voiceSelect").value=profile.speaker||"Ryan";el("voiceDescription").value=profile.description||el("voiceDescription").value;el("voiceStyle").value=profile.style||"";if(profile.mode==="design"){state.selected.tts="qwen-tts-fast-design";renderCards("tts")}}
  await poll();
  const gpu=await api("/api/models").catch(()=>null);const cards=gpu?.status?.gpus||[];
  const best=cards.slice().sort((a,b)=>(b.totalMiB-b.usedMiB)-(a.totalMiB-a.usedMiB))[0];

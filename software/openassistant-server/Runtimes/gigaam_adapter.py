@@ -13,6 +13,8 @@ p = argparse.ArgumentParser()
 p.add_argument("--port", type=int, default=8016)
 args = p.parse_args()
 
+from gigaam_torchaudio_fallback import ensure_torchaudio
+ensure_torchaudio()
 import gigaam
 import torch
 

@@ -33,7 +33,8 @@ public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<Se
         using var response = await clients.CreateClient("tts").PostAsJsonAsync(
             cfg.TtsUrl.TrimEnd('/') + "/synthesize",
             new { text = phrase, model = string.IsNullOrWhiteSpace(modelOverride) ? cfg.TtsModel : modelOverride, voice = voiceProfile.Mode == "design" ? "" : (string.IsNullOrWhiteSpace(voice) ? voiceProfile.Speaker : voice),
-                instruct = voiceProfile.Mode == "design" ? voiceProfile.Description : null, language = cfg.TtsLanguage,
+                instruct = voiceProfile.Mode == "design" ? voiceProfile.Description :
+                    string.IsNullOrWhiteSpace(voiceProfile.Style) ? null : voiceProfile.Style, language = cfg.TtsLanguage,
                 sample_rate = outputRate }, ct);
         response.EnsureSuccessStatusCode();
         byte[] wav = await response.Content.ReadAsByteArrayAsync(ct);

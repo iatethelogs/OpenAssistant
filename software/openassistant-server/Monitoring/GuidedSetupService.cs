@@ -12,13 +12,20 @@ public static class GuidedModelCatalog
     public sealed record Choice(string Id, string Role, string Name, string Summary,
         string Repo, string File, double DiskGb, string Quality, bool Default, bool Recommended);
     public static readonly Choice[] All = [
-        new("gemma-4b-abl", "llm", "Gemma 3 4B · Abliterated", "4.2 ГБ · Q8_0", "mradermacher/gemma-3-4b-abliterated-GGUF", "gemma-3-4b-abliterated.Q8_0.gguf", 4.13, "Q8_0", true, true),
+        new("gemma-4b-abl", "llm", "Gemma 3 4B · Abliterated", "4.2 ГБ · Q8_0", "mradermacher/gemma-3-4b-abliterated-GGUF", "gemma-3-4b-abliterated.Q8_0.gguf", 4.13, "Q8_0", false, false),
         new("phi-mini-abl", "llm", "Phi-4 Mini · Abliterated", "4.1 ГБ · Q8_0", "tensorblock/Phi-4-mini-instruct-abliterated-GGUF", "Phi-4-mini-instruct-abliterated-Q8_0.gguf", 4.08, "Q8_0", false, true),
         new("llama-3b-heretic", "llm", "Llama 3.2 3B · Heretic", "3.4 ГБ · Q8_0", "tinyopsec/Llama-3.2-3B-Instruct-heretic-ablitered-uncensored-GGUF", "model_q8_0.gguf", 3.42, "Q8_0", false, true),
         new("llama-3b-abl", "llm", "Llama 3.2 3B · Abliterated", "3.4 ГБ · Q8_0", "QuantFactory/Llama-3.2-3B-Instruct-abliterated-GGUF", "Llama-3.2-3B-Instruct-abliterated.Q8_0.gguf", 3.42, "Q8_0", false, false),
+        new("gemma3n-e4b-abl", "llm", "Gemma 3n E4B · Abliterated", "7.5 ГБ Q8_0; более крупная модель, для 8 ГБ GPU может потребоваться частичная выгрузка в RAM", "mradermacher/Huihui-gemma-3n-E4B-it-abliterated-GGUF", "", 7.5, "Q8_0", true, true),
+        new("gemma3n-e2b-abl", "llm", "Gemma 3n E2B · Abliterated", "Компактная мультимодальная модель · Q8_0", "mradermacher/Huihui-gemma-3n-E2B-it-abliterated-GGUF", "", 4.9, "Q8_0", false, true),
+        new("gemma4-e4b-abl", "llm", "Gemma 4 E4B · Abliterated", "Более сильная модель · Q8_0; 8.1 ГБ весов, лучше использовать GPU 10 ГБ", "mradermacher/Gemma-4-E4B-Abliterated-GGUF", "", 8.1, "Q8_0", false, true),
+        new("qwen2-7b-abl", "llm", "Qwen 2.5 7B · Abliterated", "7.5 ГБ Q8_0; на GPU 8 ГБ может потребоваться частичная выгрузка в RAM", "tensorblock/Qwen2.5-7B-Instruct-abliterated-v2-GGUF", "Qwen2.5-7B-Instruct-abliterated-v2-Q8_0.gguf", 7.54, "Q8_0", false, false),
         new("gigaam-rnnt", "stt", "GigaAM v3 · RNNT", "Распознавание русской речи", "salute-developers/GigaAM", "", 1.2, "FP32 / FP16", true, true),
-        new("qwen-tts-06", "tts", "Qwen3-TTS · 0.6B", "Готовые голоса", "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", "", 2.5, "FP16", true, true),
-        new("qwen-tts-design", "tts", "Qwen3-TTS · VoiceDesign 1.7B", "Голос по описанию", "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign", "", 5.0, "FP16", false, false)
+        new("qwen-tts-fast-06", "tts", "Faster Qwen3-TTS · 0.6B", "Быстрый синтез · выбор готового голоса · CUDA Graphs", "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", "", 2.5, "FP16", true, true),
+        new("qwen-tts-fast-17", "tts", "Faster Qwen3-TTS · 1.7B", "Более качественная речь · готовые голоса и управление манерой", "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", "", 4.5, "FP16", false, true),
+        new("qwen-tts-fast-design", "tts", "Faster Qwen3-TTS · VoiceDesign", "Создание тембра по текстовому описанию · 1.7B", "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign", "", 5.0, "FP16", false, true),
+        new("qwen-tts-06", "tts", "Qwen3-TTS · 0.6B", "Обычный движок · готовые голоса", "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", "", 2.5, "FP16", false, false),
+        new("qwen-tts-design", "tts", "Qwen3-TTS · VoiceDesign 1.7B", "Обычный движок · голос по описанию", "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign", "", 5.0, "FP16", false, false)
     ];
     public static Choice Require(string id, string role) =>
         All.FirstOrDefault(x => x.Id == id && x.Role == role)
@@ -228,11 +235,13 @@ public sealed class GuidedSetupService(
         {
             var manifest = await downloads.InspectAsync(choice.Repo, "main", ct);
             selectedFile = manifest.Files
-                .Where(x => x.Path.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase) && x.Size <= 8L * 1024 * 1024 * 1024)
+                .Where(x => x.Path.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)
+                    && x.Path.Contains("Q8_0", StringComparison.OrdinalIgnoreCase)
+                    && x.Size <= 10L * 1024 * 1024 * 1024)
                 .OrderByDescending(x => x.Path.Contains("Q8_0", StringComparison.OrdinalIgnoreCase))
                 .ThenByDescending(x => x.Size)
                 .Select(x => x.Path).FirstOrDefault()
-                ?? throw new InvalidOperationException("В репозитории нет подходящего GGUF-файла размером до 8 ГБ");
+                ?? throw new InvalidOperationException("В репозитории не найден GGUF Q8_0 размером до 10 ГБ");
             Output(j, "Выбран файл: " + selectedFile);
         }
         var request = new ModelDownloadManager.DownloadRequest(choice.Repo, "main", [selectedFile]);
@@ -314,62 +323,66 @@ public sealed class GuidedSetupService(
             }
             string[] packages = j.Role == "stt"
                 ? ["git+https://github.com/salute-developers/GigaAM.git", "numpy", "soundfile"]
-                : ["qwen-tts", "numpy", "soundfile"];
+                : choice.Id.StartsWith("qwen-tts-fast-", StringComparison.Ordinal)
+                    ? ["faster-qwen3-tts==0.5.4", "scipy"]
+                    : ["qwen-tts-hf>=0.1.1.post1,<0.2", "numpy", "soundfile", "scipy"];
             // Не создаём venv и не устанавливаем библиотеки на диск проекта.
             await RunCommandAsync(j, python,
                 ["-m", "pip", "install", "--break-system-packages", "--root-user-action=ignore", "--no-input", ..packages], env.ContentRootPath, ct, 1800);
             await File.WriteAllTextAsync(packageMarker, DateTimeOffset.UtcNow.ToString("O"), ct);
         }
-        // .ready может остаться после неполной установки. Всегда проверяем реальные импорты.
+        // Отметка .ready не доказывает, что модули доступны. Снова проверяем импорты.
         if (j.Role == "stt")
         {
-            Stage(j, "install", "Проверяем совместимость torch и torchaudio");
-            try
-            {
-                await RunCommandAsync(j, python, ["-c", "import torch, torchaudio, gigaam, soundfile; print('torch',torch.__version__,'torchaudio',torchaudio.__version__)"],
-                    env.ContentRootPath, ct, 60);
-            }
+            Stage(j, "install", "Проверяем зависимости распознавания");
+            // Современный nightly torch может не иметь торчаудио той же версии на PyPI.
+            // Резервная реализация MelSpectrogram использует текущий torch и не меняет его.
+            var probe = "from gigaam_torchaudio_fallback import ensure_torchaudio; ensure_torchaudio(); import torch, gigaam, soundfile; print('torch',torch.__version__)";
+            var runtimeDir = Path.GetDirectoryName(adapter)!;
+            try { await RunCommandAsync(j, python, ["-c", probe], runtimeDir, ct, 90); }
             catch (InvalidOperationException)
             {
-                Output(j, "Восстанавливаем PyTorch и torchaudio для GigaAM");
-                // Сначала определяем версию torch, чтобы torchaudio использовала ту же ABI.
-                string? version = await ReadTorchVersionAsync(python, ct);
-                if (version is not null)
-                {
-                    await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
-                        "--root-user-action=ignore", "--no-input", "--upgrade", "torchaudio==" + version],
-                        env.ContentRootPath, ct, 1200);
-                }
-                else
-                {
-                    await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
-                        "--root-user-action=ignore", "--no-input", "torch", "torchaudio"],
-                        env.ContentRootPath, ct, 1800);
-                }
-                try
-                {
-                    await RunCommandAsync(j, python, ["-c", "import torch, torchaudio, gigaam, soundfile; print('torch',torch.__version__,'torchaudio',torchaudio.__version__)"],
-                        env.ContentRootPath, ct, 90);
-                }
-                catch (InvalidOperationException)
-                {
-                    Output(j, "Восстанавливаем остальные библиотеки GigaAM");
-                    await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
-                        "--root-user-action=ignore", "--no-input", "git+https://github.com/salute-developers/GigaAM.git",
-                        "numpy", "soundfile"], env.ContentRootPath, ct, 1800);
-                    await RunCommandAsync(j, python, ["-c", "import torch, torchaudio, gigaam, soundfile"],
-                        env.ContentRootPath, ct, 90);
-                }
+                Output(j, "Доустанавливаем зависимости GigaAM без замены установленного PyTorch");
+                await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
+                    "--root-user-action=ignore", "--no-input",
+                    "git+https://github.com/salute-developers/GigaAM.git", "numpy", "soundfile"],
+                    env.ContentRootPath, ct, 1800);
+                await RunCommandAsync(j, python, ["-c", probe], runtimeDir, ct, 120);
             }
         }
         else
         {
-            try { await RunCommandAsync(j, python, ["-c", "import torch, qwen_tts, numpy, soundfile, scipy"], env.ContentRootPath, ct, 60); }
-            catch (InvalidOperationException)
+            bool fast = choice.Id.StartsWith("qwen-tts-fast-", StringComparison.Ordinal);
+            if (fast)
             {
-                await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages", "--root-user-action=ignore",
-                    "--no-input", "--upgrade", "qwen-tts", "numpy", "soundfile", "scipy"], env.ContentRootPath, ct, 1800);
-                await RunCommandAsync(j, python, ["-c", "import torch, qwen_tts, numpy, soundfile, scipy"], env.ContentRootPath, ct, 90);
+                Stage(j, "install", "Подготавливаем Faster Qwen3-TTS");
+                try
+                {
+                    await RunCommandAsync(j, python, ["-c", "from faster_qwen3_tts import FasterQwen3TTS; import qwen_tts, torch, soundfile, scipy"], env.ContentRootPath, ct, 90);
+                }
+                catch (InvalidOperationException)
+                {
+                    Output(j, "Устанавливаем ускоренный движок и его совместимые библиотеки");
+                    // qwen-tts-hf устанавливает тот же модуль qwen_tts; две дистрибуции одновременно не нужны.
+                    await RunCommandAsync(j, python, ["-m", "pip", "uninstall", "-y", "qwen-tts"],
+                        env.ContentRootPath, ct, 120);
+                    await RunCommandAsync(j, python, ["-m", "pip", "install",
+                        "--break-system-packages", "--root-user-action=ignore", "--no-input",
+                        "faster-qwen3-tts==0.5.4", "scipy"], env.ContentRootPath, ct, 1800);
+                    await RunCommandAsync(j, python, ["-c", "from faster_qwen3_tts import FasterQwen3TTS; import qwen_tts, torch, soundfile, scipy"], env.ContentRootPath, ct, 120);
+                }
+            }
+            else
+            {
+                Stage(j, "install", "Проверяем Qwen3-TTS");
+                try { await RunCommandAsync(j, python, ["-c", "import torch, qwen_tts, numpy, soundfile, scipy"], env.ContentRootPath, ct, 90); }
+                catch (InvalidOperationException)
+                {
+                    await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
+                        "--root-user-action=ignore", "--no-input", "qwen-tts-hf>=0.1.1.post1,<0.2",
+                        "numpy", "soundfile", "scipy"], env.ContentRootPath, ct, 1800);
+                    await RunCommandAsync(j, python, ["-c", "import torch, qwen_tts, numpy, soundfile, scipy"], env.ContentRootPath, ct, 120);
+                }
             }
         }
         Stage(j, "launch", "Запускаем сервис; веса будут загружены автоматически");
@@ -381,7 +394,8 @@ public sealed class GuidedSetupService(
             Arguments = [adapter, "--port", port],
             Environment = new Dictionary<string,string> {
                 ["OPENASSISTANT_DEVICE"] = gpu is null ? "cpu" : "cuda",
-                ["OPENASSISTANT_MODEL"] = j.Role == "stt" ? "v3_e2e_rnnt" : choice.Repo
+                ["OPENASSISTANT_MODEL"] = j.Role == "stt" ? "v3_e2e_rnnt" : choice.Repo,
+                ["OPENASSISTANT_TTS_ENGINE"] = choice.Id.StartsWith("qwen-tts-fast-", StringComparison.Ordinal) && gpu is not null ? "faster" : "official"
             }
         };
         await processes.SaveAsync(j.Role, profile, ct);
@@ -392,20 +406,45 @@ public sealed class GuidedSetupService(
         catch (Exception ex) when (gpu is not null && (ex is TimeoutException or InvalidOperationException))
         {
             if (!await IsGpuFailureAsync(j.Role, ct)) throw;
-            Stage(j, "fallback", "GPU-драйвер или PyTorch не поддерживает модель. Пробуем CPU.");
-            profile.GpuUuids = [];
-            profile.Gpus = [];
-            profile.Environment["OPENASSISTANT_DEVICE"] = "cpu";
-            await processes.SaveAsync(j.Role, profile, ct);
-            await processes.RestartAsync(j.Role, ct);
-            lock (_gate) j.Gpu = null;
-            await WaitForHealthAsync(j, profile.HealthUrl, ct, 300);
+            if (j.Role == "tts" && profile.Environment["OPENASSISTANT_TTS_ENGINE"] == "faster")
+            {
+                Output(j, "Ускоренный CUDA Graphs runtime недоступен: " + ex.Message);
+                Stage(j, "fallback", "Пробуем обычный Qwen3-TTS на той же GPU");
+                profile.Environment["OPENASSISTANT_TTS_ENGINE"] = "official";
+                await processes.SaveAsync(j.Role, profile, ct);
+                await processes.RestartAsync(j.Role, ct);
+                try { await WaitForHealthAsync(j, profile.HealthUrl, ct, 300); }
+                catch (Exception next) when (next is TimeoutException or InvalidOperationException)
+                {
+                    if (!await IsGpuFailureAsync(j.Role, ct)) throw;
+                    Output(j, "Обычный GPU runtime также недоступен: " + next.Message);
+                    Stage(j, "fallback", "Переключаем синтез на CPU");
+                    profile.GpuUuids = [];
+                    profile.Gpus = [];
+                    profile.Environment["OPENASSISTANT_DEVICE"] = "cpu";
+                    await processes.SaveAsync(j.Role, profile, ct);
+                    await processes.RestartAsync(j.Role, ct);
+                    lock (_gate) j.Gpu = null;
+                    await WaitForHealthAsync(j, profile.HealthUrl, ct, 300);
+                }
+            }
+            else
+            {
+                Stage(j, "fallback", "GPU-драйвер или PyTorch не поддерживает модель. Пробуем CPU.");
+                profile.GpuUuids = [];
+                profile.Gpus = [];
+                profile.Environment["OPENASSISTANT_DEVICE"] = "cpu";
+                await processes.SaveAsync(j.Role, profile, ct);
+                await processes.RestartAsync(j.Role, ct);
+                lock (_gate) j.Gpu = null;
+                await WaitForHealthAsync(j, profile.HealthUrl, ct, 300);
+            }
         }
         Stage(j, "test", "Проверяем готовность модели");
         if (j.Role == "tts")
         {
             var prior = voices.Read();
-            await voices.SaveAsync(prior with { Mode = choice.Id == "qwen-tts-design" ? "design" : "custom" }, ct);
+            await voices.SaveAsync(prior with { Mode = choice.Repo.EndsWith("VoiceDesign", StringComparison.Ordinal) ? "design" : "custom" }, ct);
         }
         if (j.Role == "tts")
         {
