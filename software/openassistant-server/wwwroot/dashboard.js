@@ -1,6 +1,6 @@
 "use strict";
 const el=id=>document.getElementById(id);
-const state={settings:null,models:null,devices:null,system:null,downloads:null,skills:[],voiceUrl:null,key:"",loading:false};
+const state={settings:null,models:null,devices:null,system:null,downloads:null,skills:[],voiceProfile:null,voiceUrl:null,key:"",loading:false};
 const names={overview:"Обзор системы",settings:"Настройки ассистента",tests:"Проверка работы",devices:"Подключение устройства",integrations:"Интеграции",models:"Модели и загрузки",chat:"Диалог",media:"Музыка и радио",events:"События",logs:"Журнал сервера"};
 function toast(msg,error=false){const box=el("toast");box.textContent=msg;box.className="toast show"+(error?" error":"");clearTimeout(toast.timer);toast.timer=setTimeout(()=>box.className="toast",5000)}
 async function api(url,method="GET",data){const init={method,cache:"no-store"};if(data!==undefined){init.headers={"Content-Type":"application/json"};init.body=JSON.stringify(data)}const r=await fetch(url,init),v=await r.json().catch(()=>({}));if(!r.ok)throw Error(v.error||v.message||"HTTP "+r.status);return v}
@@ -17,8 +17,43 @@ function render(){for(const role of ["llm","stt","tts"])setService(role);renderG
 const sys=state.system||{};el("cpuValue").textContent=sys.cpuThreads??"—";el("memoryValue").textContent=sys.serverMemoryMiB==null?"—":sys.serverMemoryMiB+" МиБ";el("storageValue").textContent=sys.diskFreeGiB==null?"—":sys.diskFreeGiB+" ГиБ";el("downloadsValue").textContent=(state.downloads?.jobs||[]).filter(j=>["queued","downloading"].includes(j.state)).length;
 el("serverChip").textContent="Подключено";el("sideStatus").textContent="Сервер доступен"}
 async function poll(){if(state.loading)return;state.loading=true;try{const [models,system,devices,downloads]=await Promise.all([api("/api/models"),api("/api/control/system"),api("/api/control/devices"),api("/api/models/downloads")]);Object.assign(state,{models,system,devices,downloads});render()}catch(e){el("serverChip").textContent="Нет соединения";el("sideStatus").textContent="Нет подключения";}finally{state.loading=false}}
-function loadSettings(){const s=state.settings||{};el("prompt").value=s.systemPrompt??"";el("temperature").value=s.llmTemperature??.5;el("maxTokens").value=s.llmMaxTokens??512;el("voice").value=s.ttsVoice??"";el("language").value=s.ttsLanguage??"Russian"}
-el("settingsForm").onsubmit=async event=>{event.preventDefault();const b=el("saveSettings");await busy(b,async()=>{const s={...state.settings,systemPrompt:el("prompt").value.trim(),llmTemperature:Number(el("temperature").value),llmMaxTokens:Number(el("maxTokens").value),ttsVoice:el("voice").value.trim(),ttsLanguage:el("language").value.trim()};delete s.hasDeviceToken;delete s.hasHomeAssistantToken;await api("/api/settings","POST",s);state.settings=s;el("settingsNote").textContent="Настройки сохранены.";toast("Изменения сохранены")})()};
+function loadSettings(){
+ const s=state.settings||{},p=state.voiceProfile||{};
+ el("prompt").value=s.systemPrompt??"";
+ el("temperature").value=s.llmTemperature??.5;
+ el("maxTokens").value=s.llmMaxTokens??512;
+ el("voice").value=p.speaker??s.ttsVoice??"Ryan";
+ el("language").value=s.ttsLanguage??"Russian";
+ el("voiceModeSetting").value=p.mode||"custom";
+ el("voiceGenerationMode").value=p.generationMode||"seeded";
+ el("voiceSeed").value=p.seed??42;
+ el("voiceTemperature").value=p.temperature??0.75;
+ el("voiceTopP").value=p.topP??0.9;
+ el("voiceTopK").value=p.topK??40;
+ el("voicePenalty").value=p.repetitionPenalty??1.05;
+ el("voiceStyleSetting").value=p.style||"";
+ el("voiceDescriptionSetting").value=p.description||"";
+}
+el("settingsForm").onsubmit=async event=>{
+ event.preventDefault();const b=el("saveSettings");
+ await busy(b,async()=>{
+  const profile={...state.voiceProfile,
+   mode:el("voiceModeSetting").value,speaker:el("voice").value.trim(),
+   generationMode:el("voiceGenerationMode").value,seed:Number(el("voiceSeed").value),
+   temperature:Number(el("voiceTemperature").value),topP:Number(el("voiceTopP").value),
+   topK:Number(el("voiceTopK").value),repetitionPenalty:Number(el("voicePenalty").value),
+   style:el("voiceStyleSetting").value.trim(),description:el("voiceDescriptionSetting").value.trim()};
+  const savedProfile=await api("/api/setup/voice","PUT",profile);
+  const settings={...state.settings,systemPrompt:el("prompt").value.trim(),
+   llmTemperature:Number(el("temperature").value),llmMaxTokens:Number(el("maxTokens").value),
+   ttsVoice:savedProfile.speaker,ttsLanguage:el("language").value.trim()};
+  delete settings.hasDeviceToken;delete settings.hasHomeAssistantToken;
+  await api("/api/settings","POST",settings);
+  state.voiceProfile=savedProfile;state.settings=settings;
+  el("settingsNote").textContent="Настройки сохранены.";
+  toast("Настройки голоса и ассистента сохранены");
+ })();
+};
 el("runLlm").onclick=busy(el("runLlm"),async()=>{el("llmAnswer").textContent="Генерация ответа…";el("llmBenchmark").textContent="Измерение…";const r=await api("/api/control/test/llm","POST",{prompt:el("testPrompt").value,model:null});el("llmAnswer").textContent=r.text||"(ответ пустой)";el("llmBenchmark").textContent="Первый фрагмент "+r.firstTokenMs+" мс · "+r.totalMs+" мс · "+r.tokensPerSecond+" ток/с"+(r.tokensExact?"":"*");toast("Тест завершён")});
 el("runTts").onclick=busy(el("runTts"),async()=>{el("ttsBenchmark").textContent="Генерация WAV…";const response=await fetch("/api/control/test/tts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:el("testPhrase").value,voice:null,model:null})});if(!response.ok){const x=await response.json().catch(()=>({}));throw Error(x.error||"HTTP "+response.status)}const wav=await response.blob();if(state.voiceUrl)URL.revokeObjectURL(state.voiceUrl);state.voiceUrl=URL.createObjectURL(wav);el("ttsPlayer").src=state.voiceUrl;el("downloadAudio").href=state.voiceUrl;el("downloadAudio").classList.remove("hidden");el("ttsBenchmark").textContent=response.headers.get("X-Synthesis-Ms")+" мс · RTF "+response.headers.get("X-RTF");await el("ttsPlayer").play().catch(()=>{});toast("Аудио готово")});
 function deviceAddress(){let h=el("serverHost").value.trim().replace(/^(ws|wss|http|https):\/\//,"").replace(/\/.*$/,"").replace(/:\d+$/,"");el("wsAddress").textContent="ws://"+(h||"SERVER_IP")+":5055/ws"}
@@ -29,7 +64,7 @@ el("copyKey").onclick=busy(el("copyKey"),async()=>{if(!state.key)throw Error("С
 el("createKey").onclick=busy(el("createKey"),async()=>{if(!confirm("Перевыпустить общий ключ сервера? Для новых подключений предыдущий ключ перестанет работать."))return;const r=await api("/api/control/device/key","POST");state.key=r.token;el("deviceKey").textContent=r.token;toast("Новый ключ создан")});
 function renderSkills(){const box=el("skillsList");box.replaceChildren();for(const skill of state.skills){const label=textNode("label","","skill-option");const check=document.createElement("input");check.type="checkbox";check.dataset.skill=skill.name;check.checked=skill.enabled;const section=document.createElement("div");section.append(textNode("strong",skill.title),textNode("small",skill.description+(skill.sensitive?" · Действие требует разрешения":"")));label.append(check,section);box.append(label)}}
 el("saveSkills").onclick=busy(el("saveSkills"),async()=>{const changes={};for(const input of document.querySelectorAll("#skillsList input"))changes[input.dataset.skill]=input.checked;state.skills=await api("/api/control/skills","PUT",changes);renderSkills();toast("Разрешения навыков обновлены")});
-async function init(){const page=location.hash.slice(1);show(page in names?page:"overview");try{const [settings,skills]=await Promise.all([api("/api/settings"),api("/api/control/skills")]);state.settings=settings;state.skills=skills;loadSettings();renderSkills()}catch(e){toast("Настройки: "+e.message,true)}await poll();await refreshConnections().catch(()=>{});await refreshModels().catch(()=>{})}
+async function init(){const page=location.hash.slice(1);show(page in names?page:"overview");try{const [settings,skills,voiceProfile]=await Promise.all([api("/api/settings"),api("/api/control/skills"),api("/api/setup/voice")]);state.settings=settings;state.skills=skills;state.voiceProfile=voiceProfile;loadSettings();renderSkills()}catch(e){toast("Настройки: "+e.message,true)}await poll();await refreshConnections().catch(()=>{});await refreshModels().catch(()=>{})}
 init();setInterval(poll,6000);setInterval(()=>{if(document.getElementById("logs").classList.contains("active"))refreshServerLogs().catch(()=>{});if(document.getElementById("models").classList.contains("active"))refreshModels().catch(()=>{})},5000);
 
 
@@ -101,21 +136,25 @@ async function refreshModels(){
  }
  if(!box.children.length)box.textContent="Загрузок нет";
  const files=el("installedModels");files.replaceChildren();
- for(const item of (downloads.files||[]).filter(x=>x.toLowerCase().endsWith(".gguf")).slice(0,400)){
+ for(const item of (downloads.installed||[]).slice(0,450)){
   const row=textNode("div","","installed-row");
-  const name=textNode("span",item.split("/").slice(-3).join("/"),"installed-name");name.title=item;
+  const name=textNode("span",(item.role||"").toUpperCase()+" · "+item.name,"installed-name");name.title=item.path;
   const actions=textNode("div","","installed-actions");
-  const select=textNode("button","Выбрать","button secondary");
-  select.onclick=()=>{el("profileRole").value="llm";loadProfile();el("profileModel").value=item;
-    el("profileModel").scrollIntoView({behavior:"smooth",block:"center"});
-    toast("Модель выбрана. Сохраните профиль перед запуском.")};
-  const del=textNode("button","Удалить веса","button danger");
-  del.onclick=busy(del,async()=>{
-    if(!confirm("Удалить файл весов "+item.split("/").pop()+"? Это действие нельзя отменить."))return;
-    await api("/api/models/weights/delete","POST",{path:item});
-    await refreshModels();toast("Веса удалены")
-  });
-  actions.append(select,del);row.append(name,actions);files.append(row);
+  if(item.role==="llm"){
+   const select=textNode("button","Выбрать","button secondary");
+   select.onclick=()=>{el("profileRole").value="llm";loadProfile();el("profileModel").value=item.path;el("profileModel").scrollIntoView({behavior:"smooth",block:"center"});toast("Модель выбрана. Сохраните профиль перед запуском.")};
+   actions.append(select);
+   if(item.removable){
+    const del=textNode("button","Удалить веса","button danger");
+    del.onclick=busy(del,async()=>{
+     if(!confirm("Удалить файл весов "+item.name+"? Это действие нельзя отменить."))return;
+     await api("/api/models/weights/delete","POST",{path:item.path});
+     await refreshModels();toast("Веса удалены")
+    });
+    actions.append(del);
+   }
+  }else actions.append(textNode("span",item.role==="tts"?"Кеш Hugging Face":"Кеш GigaAM","minor"));
+  row.append(name,actions);files.append(row);
  }
  if(!files.children.length)files.textContent="Файлов пока нет";
 }
