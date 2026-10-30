@@ -71,6 +71,15 @@ app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSecond
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "openassistant-server" }));
 // панель доступна только локально; не выдаём конфигурацию и токены по сети.
 var localOnly = new Func<HttpContext, bool>(ctx => ctx.Connection.RemoteIpAddress is { } ip && IPAddress.IsLoopback(ip));
+app.MapGet("/api/control/assistant-defaults", (HttpContext ctx) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    var defaults = new ServerOptions();
+    return Results.Ok(new {
+        defaults.SystemPrompt, defaults.LlmTemperature, defaults.LlmMaxTokens,
+        defaults.LlmTopP, defaults.LlmTopK, defaults.LlmRepeatPenalty
+    });
+});
 app.MapGet("/api/settings", (HttpContext ctx, SettingsStore store) =>
     localOnly(ctx) ? Results.Ok(store.PublicSettings()) : Results.StatusCode(403));
 app.MapPost("/api/settings", async (HttpContext ctx, SettingsUpdate settings, SettingsStore store, CancellationToken ct) =>
@@ -335,6 +344,15 @@ app.MapDelete("/api/integrations/yandex", async (
     oauth.Cancel();
     await music.DisconnectAsync(ct);
     return Results.Ok(new { disconnected = true });
+});
+app.MapGet("/api/integrations/homeassistant/entities", async (
+    HttpContext ctx, VerifiedHomeAssistantService home, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await home.EntitiesAsync(ct)); }
+    catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException or
+        System.Text.Json.JsonException or InvalidDataException or TaskCanceledException)
+    { return Results.BadRequest(new { error = "Home Assistant: " + ex.Message }); }
 });
 app.MapPost("/api/integrations/homeassistant", async (
     HttpContext ctx, HomeAssistantConnectRequest input,
