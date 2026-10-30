@@ -34,7 +34,7 @@ public sealed class GuidedSetupService(
     private readonly object _gate = new();
     private readonly Dictionary<string, Job> _jobs = new(StringComparer.Ordinal);
     private const string LlmDir = "/opt/llama.cpp";
-    public sealed record BeginRequest(string ModelId, string? GpuUuid, int? ContextSize, double? Temperature, string? ModelUrl);
+    public sealed record BeginRequest(string ModelId, string? GpuUuid, int? ContextSize, double? Temperature, string? ModelUrl = null);
     public sealed record TestRequest(string Prompt);
     private sealed class Job
     {
