@@ -324,110 +324,36 @@ public sealed class GuidedSetupService(
             ? new[] { adapter, Path.Combine(env.ContentRootPath, "Runtimes", "gigaam_torchaudio_fallback.py") }
             : new[] { adapter };
         await RunCommandAsync(j, python, ["-m", "py_compile", ..syntaxFiles], env.ContentRootPath, ct, 30);
-        Stage(j, "install", "Проверяем Python и устанавливаем зависимости");
-        if (j.Role == "stt" && !await CommandExistsAsync("git", "--version", ct))
-            await InstallAptAsync(j, ["git"], ct);
-        if (j.Role == "stt" && !await CommandExistsAsync("ffmpeg", "-version", ct))
-            await InstallAptAsync(j, ["ffmpeg"], ct);
-        string packageMarker = Path.Combine(env.ContentRootPath, "Runtimes", j.Role + ".ready");
-        if (!File.Exists(packageMarker))
+        if (j.Role == "tts")
         {
-            Stage(j, "install", "Устанавливаем зависимости " + choice.Name + " в системный Python");
-            if (!await CommandExistsAsync(python, "--version", ct))
-                throw new InvalidOperationException("Python3 недоступен");
-            try { await RunCommandAsync(j, python, ["-m", "pip", "--version"], env.ContentRootPath, ct, 30); }
-            catch (InvalidOperationException)
-            {
-                await InstallAptAsync(j, ["python3-pip", "ffmpeg"], ct);
-            }
-            string[] packages = j.Role == "stt"
-                ? ["git+https://github.com/salute-developers/GigaAM.git", "numpy", "soundfile"]
-                : choice.Id.StartsWith("qwen-tts-fast-", StringComparison.Ordinal)
-                    ? ["faster-qwen3-tts==0.5.4", "scipy"]
-                    : ["qwen-tts-hf>=0.1.1.post1,<0.2", "numpy", "soundfile", "scipy"];
-            // Не создаём venv и не устанавливаем библиотеки на диск проекта.
-            await RunCommandAsync(j, python,
-                ["-m", "pip", "install", "--break-system-packages", "--root-user-action=ignore", "--no-input", ..packages], env.ContentRootPath, ct, 1800);
-            await File.WriteAllTextAsync(packageMarker, DateTimeOffset.UtcNow.ToString("O"), ct);
+            await InstallTtsDependenciesAsync(j, python,
+                choice.Id.StartsWith("qwen-tts-fast-", StringComparison.Ordinal), ct);
         }
-        // Отметка .ready не доказывает, что модули доступны. Снова проверяем импорты.
-        if (j.Role == "stt")
+        else
         {
-            Stage(j, "install", "Проверяем зависимости распознавания");
-            // Современный nightly torch может не иметь торчаудио той же версии на PyPI.
-            // Резервная реализация MelSpectrogram использует текущий torch и не меняет его.
+            // Установка STT независима от Qwen: не меняем работающую GigaAM.
+            Stage(j, "install", "Проверяем зависимости GigaAM");
+            try { await RunCommandAsync(j, python, ["-m", "pip", "--version"], env.ContentRootPath, ct, 30); }
+            catch (InvalidOperationException) { await InstallAptAsync(j, ["python3-pip"], ct); }
+            string marker = Path.Combine(env.ContentRootPath, "Runtimes", "stt.ready");
+            if (!File.Exists(marker))
+            {
+                await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
+                    "--root-user-action=ignore", "--no-input",
+                    "git+https://github.com/salute-developers/GigaAM.git", "numpy", "soundfile"],
+                    env.ContentRootPath, ct, 1800);
+                await File.WriteAllTextAsync(marker, DateTimeOffset.UtcNow.ToString("O"), ct);
+            }
             var probe = "from gigaam_torchaudio_fallback import ensure_torchaudio; ensure_torchaudio(); import torch, gigaam, soundfile; print('torch',torch.__version__)";
             var runtimeDir = Path.GetDirectoryName(adapter)!;
             try { await RunCommandAsync(j, python, ["-c", probe], runtimeDir, ct, 90); }
             catch (InvalidOperationException)
             {
-                Output(j, "Доустанавливаем зависимости GigaAM без замены установленного PyTorch");
                 await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
                     "--root-user-action=ignore", "--no-input",
                     "git+https://github.com/salute-developers/GigaAM.git", "numpy", "soundfile"],
                     env.ContentRootPath, ct, 1800);
                 await RunCommandAsync(j, python, ["-c", probe], runtimeDir, ct, 120);
-            }
-        }
-        else
-        {
-            bool fast = choice.Id.StartsWith("qwen-tts-fast-", StringComparison.Ordinal);
-            if (fast)
-            {
-                Stage(j, "install", "Подготавливаем Faster Qwen3-TTS");
-                try
-                {
-                    await RunCommandAsync(j, python, ["-c", "from faster_qwen3_tts import FasterQwen3TTS; import qwen_tts, torch, soundfile, scipy"], env.ContentRootPath, ct, 90);
-                }
-                catch (InvalidOperationException)
-                {
-                    Output(j, "Устанавливаем ускоренный движок и его совместимые библиотеки");
-                    // qwen-tts-hf устанавливает тот же модуль qwen_tts; две дистрибуции одновременно не нужны.
-                    await RunCommandAsync(j, python, ["-m", "pip", "uninstall", "-y", "qwen-tts"],
-                        env.ContentRootPath, ct, 120);
-                    await RunCommandAsync(j, python, ["-m", "pip", "install",
-                        "--break-system-packages", "--root-user-action=ignore", "--no-input",
-                        "faster-qwen3-tts==0.5.4", "scipy"], env.ContentRootPath, ct, 1800);
-                    await RunCommandAsync(j, python, ["-c", "from faster_qwen3_tts import FasterQwen3TTS; import qwen_tts, torch, soundfile, scipy"], env.ContentRootPath, ct, 120);
-                }
-            }
-            else
-            {
-                Stage(j, "install", "Проверяем Qwen3-TTS");
-                try { await RunCommandAsync(j, python, ["-c", "import torch, qwen_tts, numpy, soundfile, scipy"], env.ContentRootPath, ct, 90); }
-                catch (InvalidOperationException)
-                {
-                    await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
-                        "--root-user-action=ignore", "--no-input", "qwen-tts-hf>=0.1.1.post1,<0.2",
-                        "numpy", "soundfile", "scipy"], env.ContentRootPath, ct, 1800);
-                    await RunCommandAsync(j, python, ["-c", "import torch, qwen_tts, numpy, soundfile, scipy"], env.ContentRootPath, ct, 120);
-                }
-            }
-        }
-        if (j.Role == "tts")
-        {
-            // Transformers 5.16+ изменил RoPE config, вызывая MimiConfig.rope_theta
-            // при загрузке весов Qwen3-TTS. Проверяем версию даже при наличии tts.ready.
-            Stage(j, "install", "Проверяем совместимость загрузчика Qwen3-TTS");
-            // Две связанные версии проверяются вместе. transformers 5.15.1
-            // требует tokenizers >= 0.22.0, <= 0.23.0; 0.23.2 не поддерживается.
-            // Существующая CUDA-сборка torch не меняется.
-            var check = "from importlib.metadata import version; "
-                + "assert version('transformers') == '5.15.1', 'transformers=' + version('transformers'); "
-                + "assert version('tokenizers') == '0.22.2', 'tokenizers=' + version('tokenizers'); "
-                + "import torch, tokenizers, transformers, qwen_tts; "
-                + "print('Qwen runtime OK:', version('transformers'), version('tokenizers'), torch.__version__)";
-            try { await RunCommandAsync(j, python, ["-c", check], env.ContentRootPath, ct, 90); }
-            catch (InvalidOperationException)
-            {
-                Output(j, "Восстанавливаем совместимую пару transformers/tokenizers, сохраняя текущий torch");
-                // pip устанавливает обе версии вместе; прежний --no-deps был причиной
-                // несовместимого tokenizers 0.23.2 и последующего ImportError.
-                await RunCommandAsync(j, python, ["-m", "pip", "install",
-                    "--break-system-packages", "--root-user-action=ignore", "--no-input",
-                    "--upgrade", "transformers==5.15.1", "tokenizers==0.22.2"],
-                    env.ContentRootPath, ct, 1200);
-                await RunCommandAsync(j, python, ["-c", check], env.ContentRootPath, ct, 90);
             }
         }
         Stage(j, "launch", "Запускаем сервис; веса будут загружены автоматически");
@@ -450,7 +376,6 @@ public sealed class GuidedSetupService(
         try { await WaitForHealthAsync(j, profile.HealthUrl, ct, 300); }
         catch (Exception ex) when (gpu is not null && (ex is TimeoutException or InvalidOperationException))
         {
-            if (!await IsGpuFailureAsync(j.Role, ct)) throw;
             if (j.Role == "tts" && profile.Environment["OPENASSISTANT_TTS_ENGINE"] == "faster")
             {
                 Output(j, "Ускоренный CUDA Graphs runtime недоступен: " + ex.Message);
@@ -475,6 +400,7 @@ public sealed class GuidedSetupService(
             }
             else
             {
+                if (!await IsGpuFailureAsync(j.Role, ct)) throw;
                 Stage(j, "fallback", "GPU-драйвер или PyTorch не поддерживает модель. Пробуем CPU.");
                 profile.GpuUuids = [];
                 profile.Gpus = [];
@@ -500,6 +426,61 @@ public sealed class GuidedSetupService(
         else
             lock (_gate) j.TestResult = "Готово к проверке микрофона из браузера";
     }
+    /// <summary>Самовосстанавливаемая установка Qwen3-TTS без ненадёжного tts.ready.</summary>
+    private async Task InstallTtsDependenciesAsync(Job j, string python, bool fast, CancellationToken ct)
+    {
+        Stage(j, "install", "Проверяем окружение Qwen3-TTS");
+        string probe = "from importlib.metadata import version, distributions; "
+            + "from packaging.version import Version; "
+            + "assert version('qwen-tts-hf') == '0.1.1.post1'; "
+            + "assert not any(d.metadata['Name'].lower() == 'qwen-tts' for d in distributions()); "
+            + "assert version('transformers') == '5.15.1'; "
+            + "assert version('tokenizers') == '0.22.2'; "
+            + "assert Version(version('torch').split('+')[0]) >= Version('2.5.1'); "
+            + "import torch, tokenizers, transformers, qwen_tts, soundfile, scipy; "
+            + "print('TTS OK', torch.__version__, transformers.__version__, tokenizers.__version__)";
+        string fastProbe = probe + "; from faster_qwen3_tts import FasterQwen3TTS; "
+            + "assert version('faster-qwen3-tts') == '0.5.4'";
+        try
+        {
+            await RunCommandAsync(j, python, ["-c", fast ? fastProbe : probe],
+                env.ContentRootPath, ct, 120);
+            return;
+        }
+        catch (InvalidOperationException)
+        {
+            Output(j, "Несовместимое окружение, выполняем восстановление TTS.");
+        }
+
+        Stage(j, "install", "Подготавливаем системный pip");
+        try { await RunCommandAsync(j, python, ["-m", "pip", "--version"], env.ContentRootPath, ct, 30); }
+        catch (InvalidOperationException) { await InstallAptAsync(j, ["python3-pip"], ct); }
+
+        // PEP 668 запрещает не только install, но и uninstall.
+        Stage(j, "install", "Убираем конфликт qwen-tts / qwen-tts-hf");
+        await RunCommandAsync(j, python, ["-m", "pip", "uninstall", "--break-system-packages",
+            "--yes", "qwen-tts"], env.ContentRootPath, ct, 120);
+
+        Stage(j, "install", "Устанавливаем совместимый стек Qwen3-TTS");
+        var packages = new List<string> {
+            "qwen-tts-hf==0.1.1.post1", "transformers==5.15.1",
+            "tokenizers==0.22.2", "numpy", "soundfile", "scipy"
+        };
+        if (fast) packages.Add("faster-qwen3-tts==0.5.4");
+        await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
+            "--root-user-action=ignore", "--no-input",
+            "--upgrade-strategy", "only-if-needed", ..packages], env.ContentRootPath, ct, 1800);
+
+        // Удаление qwen-tts могло стереть общий каталог qwen_tts.
+        Stage(j, "install", "Восстанавливаем модуль qwen_tts");
+        await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
+            "--root-user-action=ignore", "--no-input", "--force-reinstall", "--no-deps",
+            "qwen-tts-hf==0.1.1.post1"], env.ContentRootPath, ct, 900);
+        Stage(j, "install", "Проверяем совместимость библиотек TTS");
+        await RunCommandAsync(j, python, ["-c", fast ? fastProbe : probe],
+            env.ContentRootPath, ct, 120);
+    }
+
     private async Task WaitForHealthAsync(Job j, string url, CancellationToken ct, int limitSeconds = 150)
     {
         Stage(j, "loading", "Ждём загрузку весов в память и запуска API");
