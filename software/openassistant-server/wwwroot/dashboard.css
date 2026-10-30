@@ -57,3 +57,15 @@ footer{border-top:1px solid var(--line);padding-top:17px;margin-top:37px;font-si
 @media(max-width:930px){.layout{grid-template-columns:63px minmax(0,1fr)}.sidebar{padding:18px 7px}.brand{padding:0 6px 23px;justify-content:center}.brand>span:last-child,.sidebar-status{display:none}.nav-item{font-size:0;justify-content:center;padding:8px;min-height:39px}.nav-item .symbol{font-size:17px}.nav-divider{margin:10px 4px}.overview-workspace{grid-template-columns:1fr}.gpu-list{display:grid;grid-template-columns:repeat(2,1fr);gap:0 20px;max-height:none}.engine-row{min-height:83px;grid-template-columns:47px 1fr 80px 90px}.engine-row .state-tag{display:inline-flex}.system-foot{margin-top:5px}}
 @media(max-width:660px){.layout{display:block}.sidebar{position:sticky;height:59px;top:0;z-index:8;display:flex;flex-direction:row;gap:12px;overflow-x:auto;align-items:center}.brand{padding:0;margin:0}.brand-icon{width:34px;height:34px}.sidebar nav{display:flex;flex-direction:row;gap:2px}.sidebar nav .nav-item{min-width:34px;width:34px}.sidebar .nav-divider{height:23px;width:1px;margin:5px}.main{padding:17px 16px 35px}.topbar{margin-bottom:16px}.breadcrumb{display:none}.top-actions{width:100%;justify-content:space-between}.overview-heading h1{font-size:31px}.overview-workspace{gap:22px}.engine-row{grid-template-columns:36px 1fr 66px;gap:8px}.engine-row .state-tag{display:none}.engine-state{font-size:10px}.gpu-list{grid-template-columns:1fr}.resource-strip{grid-template-columns:repeat(2,1fr)}.resource-strip>div:nth-child(3){border-left:0;border-top:1px solid var(--line)}.resource-strip>div:nth-child(4){border-top:1px solid var(--line)}.field-grid,.test-grid,.device-grid,.overview-grid,.skills-list,.provider-grid,#models #modelCards{grid-template-columns:1fr}.page-title h1{font-size:30px}.chat-compose{flex-wrap:wrap}.chat-compose input{flex-basis:100%}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation:none!important;transition:none!important}}
+
+/* Compact interactive states; no permanent animations or GPU-heavy layers */
+.profile-bar{display:flex;align-items:end;flex-wrap:wrap;gap:10px;margin-bottom:10px}
+.profile-field{min-width:160px;max-width:230px;flex:1}
+.profile-bar .button{margin-bottom:0}
+.ha-inventory{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.ha-entities{max-height:220px;overflow-y:auto;display:flex;flex-direction:column}
+.ha-entity{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:11px}
+.ha-entity small{color:#aaa;white-space:nowrap}
+.engine-row:hover,.gpu-card:hover,.ha-entity:hover{background:rgba(255,255,255,.025)}
+.panel:focus-within{border-color:#5a5a5a}
+@media(prefers-reduced-motion:reduce){.engine-row:hover{transition:none}}
