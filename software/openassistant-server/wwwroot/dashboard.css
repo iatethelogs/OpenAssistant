@@ -84,3 +84,8 @@ label{color:#c0c5cb}
 .stt-result .stt-signal{margin:10px 0 0;color:#b4bfc7;font-size:12px;line-height:1.5}
 .stt-result .stt-metrics{margin:8px 0 0;font-size:11px;color:#8e98a2;font-variant-numeric:tabular-nums}
 @media(prefers-reduced-motion:reduce){.record-meter-track span{transition:none!important}}
+
+/* Shared voice profile controls */
+#settings .field-grid select{width:100%;min-height:41px;padding:10px 12px;color:#edf3fd;background:#101b2a;border:1px solid #3b506a;border-radius:9px;font:inherit}
+#settings .field-grid input[type=number]:disabled,#settings .field-grid select:disabled{opacity:.55}
+#settings #voiceStyleSetting,#settings #voiceDescriptionSetting{width:100%;margin-bottom:14px}
