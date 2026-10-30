@@ -112,6 +112,9 @@ class Handler(BaseHTTPRequestHandler):
             if generation_mode != "greedy":
                 generate_options.update(
                     temperature=temperature, top_p=top_p, top_k=top_k)
+            elif engine == "official":
+                # Official backend also exposes a separate sub-talker sampler.
+                generate_options["subtalker_dosample"] = False
             if "VoiceDesign" in name:
                 if len(instruction) < 8 or len(instruction) > 1200:
                     self.reply(400, {"error": "VoiceDesign requires a voice description"})
