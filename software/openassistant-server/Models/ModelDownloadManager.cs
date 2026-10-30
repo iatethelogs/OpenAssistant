@@ -308,7 +308,7 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
     /// <summary>Найти уже полностью скачанный GGUF, чтобы не запрашивать Hub повторно.</summary>
     public string? FindCachedGguf(string repo, string preferredFile)
     {
-        if (string.IsNullOrEmpty(repo) || !Regex.IsMatch(repo, @"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"))
+        if (string.IsNullOrEmpty(repo) || repo.Contains("..", StringComparison.Ordinal) || !Regex.IsMatch(repo, @"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"))
             return null;
         string directory = Path.Combine(Root, repo.Replace('/', Path.DirectorySeparatorChar));
         if (!Directory.Exists(directory)) return null;
@@ -340,6 +340,26 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
         foreach (string file in files.Where(x => x.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)).Take(500))
             result.Add(new { role = "llm", name = Path.GetFileName(file), path = file,
                 repo = "", source = "local", removable = true });
+
+        // Отдельно учитываем STT/TTS, загруженные вручную через каталог Hugging Face.
+        // Они могут ещё не быть подключены к Python runtime, поэтому source отличается от кеша.
+        var manual = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var file in files.Where(x => x.EndsWith(".safetensors", StringComparison.OrdinalIgnoreCase) ||
+                                               x.EndsWith(".ckpt", StringComparison.OrdinalIgnoreCase) ||
+                                               x.EndsWith(".bin", StringComparison.OrdinalIgnoreCase)))
+        {
+            string rel = Path.GetRelativePath(Root, file).Replace('\\', '/');
+            var parts = rel.Split('/');
+            if (parts.Length < 4) continue;
+            string repo = parts[0] + "/" + parts[1];
+            string role = parts[1].Contains("TTS", StringComparison.OrdinalIgnoreCase) ? "tts" :
+                parts[1].Contains("GigaAM", StringComparison.OrdinalIgnoreCase) ? "stt" : "";
+            if (role.Length == 0) continue;
+            string modelDir = Path.Combine(Root, parts[0], parts[1], parts[2]);
+            if (!manual.Add(modelDir)) continue;
+            result.Add(new { role, name = parts[1], path = modelDir, repo,
+                source = "manual-download", removable = false });
+        }
 
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         string gigaam = Path.Combine(home, ".cache", "gigaam");
