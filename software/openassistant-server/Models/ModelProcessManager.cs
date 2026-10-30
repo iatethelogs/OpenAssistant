@@ -205,53 +205,6 @@ public sealed class ModelProcessManager(
         finally { _guard.Release(); }
     }
 
-    /// <summary>Объём VRAM именно процесса модели на выбранной GPU, по nvidia-smi.</summary>
-    public async Task<long?> ProcessGpuMemoryMiBAsync(string role, string gpuUuid, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(gpuUuid)) return null;
-        int pid;
-        await _guard.WaitAsync(ct);
-        try
-        {
-            if (!_running.TryGetValue(role, out var managed) || managed.Process.HasExited)
-                return null;
-            pid = managed.Process.Id;
-        }
-        finally { _guard.Release(); }
-
-        try
-        {
-            var start = new ProcessStartInfo("nvidia-smi") {
-                UseShellExecute = false, RedirectStandardOutput = true, CreateNoWindow = true,
-                ArgumentList = { "--query-compute-apps=pid,gpu_uuid,used_gpu_memory",
-                    "--format=csv,noheader,nounits" }
-            };
-            using var process = Process.Start(start);
-            if (process is null) return null;
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TimeSpan.FromSeconds(5));
-            string output = await process.StandardOutput.ReadToEndAsync(timeout.Token);
-            await process.WaitForExitAsync(timeout.Token);
-            if (process.ExitCode != 0) return null;
-            long used = 0;
-            bool found = false;
-            foreach (string line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            {
-                string[] fields = line.Split(',', StringSplitOptions.TrimEntries);
-                if (fields.Length != 3 || !int.TryParse(fields[0], out var rowPid) ||
-                    rowPid != pid || !string.Equals(fields[1], gpuUuid, StringComparison.OrdinalIgnoreCase) ||
-                    !long.TryParse(fields[2], out var allocated)) continue;
-                used += allocated;
-                found = true;
-            }
-            return found ? used : null;
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or OperationCanceledException)
-        {
-            return null;
-        }
-    }
-
     /// <summary>Возвращает PID и exit code, последние строки логов, health API и телеметрию каждой карты.</summary>
     public async Task<object> StatusAsync(CancellationToken ct)
     {
