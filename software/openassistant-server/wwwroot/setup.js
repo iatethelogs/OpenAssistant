@@ -6,10 +6,22 @@ const steps=["llm","stt","tts","complete"];
 function showError(message){alert(message)}
 async function api(url,method="GET",data){const init={method,cache:"no-store"};if(data!==undefined){init.headers={"Content-Type":"application/json"};init.body=JSON.stringify(data)}
  const r=await fetch(url,init);const body=await r.json().catch(()=>({}));if(!r.ok)throw Error(body.error||body.message||"HTTP "+r.status);return body}
-function show(step){if(!steps.includes(step))return;state.step=step;for(const sec of document.querySelectorAll(".section"))sec.classList.toggle("active",sec.id===step);
+function show(step){
+ if(!steps.includes(step))return;
+ const outgoing=document.querySelector(".section.active"),incoming=document.getElementById(step);
+ if(outgoing&&outgoing!==incoming){
+   outgoing.classList.remove("active");
+   if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches){
+     outgoing.classList.add("leaving");
+     setTimeout(()=>outgoing.classList.remove("leaving"),360);
+   }
+ }
+ incoming.classList.add("active");
+ state.step=step;
  for(const elem of document.querySelectorAll(".step")){const ix=steps.indexOf(elem.dataset.step),now=steps.indexOf(step);elem.classList.toggle("current",ix===now);elem.classList.toggle("done",ix<now)}
  history.replaceState(null,"","#"+step);window.scrollTo({top:0,behavior:"smooth"})}
 for(const btn of document.querySelectorAll("[data-next]"))btn.onclick=()=>show(btn.dataset.next);
+for(const btn of document.querySelectorAll(".step[data-step]"))btn.onclick=()=>show(btn.dataset.step);
 function modelCard(m){const b=document.createElement("button");b.type="button";b.className="model";b.dataset.model=m.id;
  const type=document.createElement("span");type.className="type";type.textContent=m.role==="llm"?"Языковая модель":m.role==="stt"?"Распознавание речи":"Синтез речи";
  const name=document.createElement("strong");name.textContent=m.name;const desc=document.createElement("small");desc.textContent=m.summary;
@@ -18,26 +30,55 @@ function modelCard(m){const b=document.createElement("button");b.type="button";b
  if(m.recommended){const label=document.createElement("span");label.className="tag";label.textContent="Рекомендуем";b.append(label)}
  b.onclick=()=>{state.selected[m.role]=m.id;renderCards(m.role);updateVoiceMode()};return b}
 function renderCards(role){const box=el(role+"Models");box.replaceChildren();for(const m of state.catalog.filter(x=>x.role===role)){const b=modelCard(m);if(state.selected[role]===m.id)b.classList.add("selected");box.append(b)}}
-function updateButtons(){for(const role of ["llm","stt","tts"]){const b=el("start"+role.toUpperCase().slice(0,1)+role.slice(1));if(!b)continue;const status=state.jobs[role]?.status;b.disabled=status==="running";b.textContent=status==="ready"?"Установить другую модель ↻":status==="running"?"Устанавливаем…":"Установить и проверить →"}}
+function updateButtons(){for(const role of ["llm","stt","tts"]){const b=el("start"+role.toUpperCase().slice(0,1)+role.slice(1));if(!b)continue;const status=state.jobs[role]?.status;b.disabled=status==="running";b.textContent=status==="ready"?"Установить другую модель":status==="running"?"Установка выполняется…":"Установить и проверить"}}
 async function start(role){if(state.starting[role]||state.jobs[role]?.status==="running")return;const modelId=state.selected[role];if(!modelId)throw Error("Сначала выберите модель");
  state.starting[role]=true;
  try{const input={modelId};if(role==="llm"){input.gpuUuid=el("gpuSelect").value||null;input.contextSize=Number(el("contextSelect").value);input.temperature=Number(el("temperatureSelect").value)}const result=await api("/api/setup/"+role,"POST",input);state.jobs[role]=result;state.shown[role]=false;el("result"+role.charAt(0).toUpperCase()+role.slice(1)).classList.remove("visible");updateRole(role,result);updateButtons()}
  catch(e){showError("Не удалось начать установку: "+e.message)}finally{state.starting[role]=false}}
 for(const role of ["llm","stt","tts"]){const button=el("start"+role.charAt(0).toUpperCase()+role.slice(1));button.onclick=()=>start(role)}
-const titles={download:"Скачиваем модель",install:"Устанавливаем компоненты",runtime:"Подготавливаем движок",launch:"Запускаем нейросеть",loading:"Загружаем веса в память",test:"Проверяем первый ответ",ready:"Готово к работе",failed:"Установка остановлена",cancelled:"Установка отменена",starting:"Готовимся к работе"};
-const stageNums={starting:2,download:12,install:25,runtime:45,launch:60,loading:80,test:95,ready:100};
+const titles={prepare:"Проверка системы",download:"Загрузка модели",install:"Установка зависимостей",runtime:"Подготовка движка",launch:"Запуск модели",loading:"Загрузка весов",test:"Проверка работы",ready:"Установка завершена",failed:"Установка прервана",cancelled:"Установка отменена",fallback:"Переключение на CPU",starting:"Подготовка"};
+const stageSets={
+ llm:[["prepare","Проверка системы"],["download","Загрузка модели"],["runtime","Подготовка llama.cpp"],["launch","Запуск сервиса"],["loading","Загрузка весов"],["test","Проверка ответа"]],
+ stt:[["prepare","Проверка системы"],["install","Зависимости Python"],["launch","Запуск сервиса"],["loading","Загрузка модели"],["test","Проверка API"]],
+ tts:[["prepare","Проверка системы"],["install","Зависимости Python"],["launch","Запуск сервиса"],["loading","Загрузка модели"],["test","Синтез тестовой фразы"]]
+};
+function renderMilestones(role,job){
+ const cap=role[0].toUpperCase()+role.slice(1),box=el("steps"+cap);
+ const steps=stageSets[role],complete=new Set(job.completedSteps||[]);
+ const current=job.step==="fallback"?"loading":job.step;
+ const old=box.dataset.state||"",next=job.status+"|"+job.step+"|"+[...complete].join(",");
+ if(old===next)return;box.dataset.state=next;box.replaceChildren();
+ for(const [id,title] of steps){
+   const done=complete.has(id)||job.status==="ready";
+   const active=!done&&current===id;
+   const failed=active&&job.status==="failed";
+   const item=document.createElement("div");item.className="install-step"+(done?" complete":failed?" failed":active?" active":"");
+   const symbol=document.createElement("span");symbol.className="step-state";symbol.textContent=done?"✓":failed?"×":active?"•":"";
+   const name=document.createElement("span");name.textContent=title;
+   item.append(symbol,name);box.append(item);
+ }
+}
+const stageNums={starting:0,prepare:2,download:18,install:18,runtime:45,launch:63,loading:78,test:94,ready:100};
 function fmt(n){if(!n)return"0 МБ";if(n>1073741824)return(n/1073741824).toFixed(2)+" ГБ";return(n/1048576).toFixed(0)+" МБ"}
 function updateRole(role,job){
  const cap=role[0].toUpperCase()+role.slice(1);
  el("progress"+cap).classList.add("visible");
  el("title"+cap).textContent=titles[job.step]||"Настраиваем";
  el("desc"+cap).textContent=job.error||job.description||"Подготовка";
- const progress=job.step==="download"&&job.total>0?12+Math.round(35*job.bytes/job.total):stageNums[job.step]??30;
- el("bar"+cap).style.width=Math.min(progress,100)+"%";
+ const steps=stageSets[role],done=new Set(job.completedSteps||[]);
+ let progress=job.status==="ready"?100:Math.round(100*steps.filter(x=>done.has(x[0])).length/steps.length);
+ if(job.step==="download"&&job.total>0)
+   progress=Math.min(99,progress+Math.round(100*(job.bytes/job.total)/steps.length));
+ el("bar"+cap).style.width=Math.max(1,Math.min(progress,100))+"%";
+ renderMilestones(role,job);
  el("bytes"+cap).textContent=job.total?fmt(job.bytes)+" / "+fmt(job.total):"Подготовка компонентов";
- el("stage"+cap).textContent=job.step==="ready"?"100%":job.step;
- el("logs"+cap).textContent=(job.logs||[]).slice(-90).join("\n");
- const ring=el("ring"+cap);ring.classList.toggle("ready",job.status==="ready");
+ el("stage"+cap).textContent=job.status==="ready"?"ГОТОВО":job.status==="failed"?"ОШИБКА":titles[job.step]||"Выполняется";
+ const log=el("logs"+cap),nearBottom=log.scrollHeight-log.scrollTop-log.clientHeight<70;
+ const content=(job.logs||[]).slice(-125).join("\n");
+ if(log.textContent!==content){log.textContent=content;if(nearBottom)log.scrollTop=log.scrollHeight}
+ const ring=el("ring"+cap);
+ ring.classList.toggle("ready",job.status==="ready");
+ ring.classList.toggle("failed",job.status==="failed");
  el("progress"+cap).classList.toggle("error",job.status==="failed");
  if(job.status==="failed"){el("desc"+cap).textContent=job.error||"Проверьте технические подробности";updateButtons()}
  if(job.status==="ready"&&!state.shown[role]){state.shown[role]=true;el("result"+cap).classList.add("visible");if(role==="llm")llmResult(job);if(role==="stt")el("sttRecognized").textContent="Модель готова. Запишите тестовую фразу.";if(role==="tts")el("ttsMetrics").textContent="Первичная проверка завершена. Выберите голос и прослушайте результат.";}
@@ -124,7 +165,8 @@ async function init(){try{
  await poll();
  const gpu=await api("/api/models").catch(()=>null);const cards=gpu?.status?.gpus||[];
  const best=cards.slice().sort((a,b)=>(b.totalMiB-b.usedMiB)-(a.totalMiB-a.usedMiB))[0];
- if(best)el("gpuInfo").textContent="Автовыбор GPU · "+best.name+" · "+best.totalMiB+" МиБ VRAM";
+ if(best)el("gpuInfo").textContent="Доступно GPU: "+cards.length+". По умолчанию будет выбрана подходящая карта.";
+ else el("gpuInfo").textContent="GPU не обнаружен. Возможен запуск на CPU.";
  const picker=el("gpuSelect");
  for(const card of cards){const option=new Option("GPU "+card.index+" · "+card.name+" · "+(card.totalMiB-card.usedMiB)+" МиБ свободно",card.uuid);picker.add(option)}
  updateVoiceMode();

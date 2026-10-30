@@ -1,46 +1,133 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OpenAssistant · Первоначальная настройка</title><link rel="stylesheet" href="/setup.css"></head><body>
-<div class="shell">
-<header class="header"><a class="logo" href="/">OPEN<i>ASSISTANT</i></a>
-<div class="top-actions"><span class="live"><span class="dot" id="dot"></span><span id="serverState">Проверяем сервер</span></span><a href="/logs.html">Журнал</a><a href="/">← Панель управления</a><a href="/control.html#advanced">Расширенные настройки</a></div></header>
-<div class="steps" aria-label="Этапы настройки">
-<div class="step current" data-step="llm"><span>1</span><b>Интеллект</b></div><div class="connector"></div>
-<div class="step" data-step="stt"><span>2</span><b>Слух</b></div><div class="connector"></div>
-<div class="step" data-step="tts"><span>3</span><b>Голос</b></div><div class="connector"></div>
-</div>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#121416">
+  <title>Первоначальная настройка · OpenAssistant</title>
+  <link rel="stylesheet" href="/setup.css">
+</head>
+<body>
+  <div class="ambient" aria-hidden="true">
+    <div class="ambient-circle one"></div><div class="ambient-circle two"></div>
+    <div class="ambient-grid"></div><div class="ambient-glow"></div>
+  </div>
+  <div class="shell">
+    <header class="header">
+      <a class="logo" href="/"><span class="logo-mark">OA</span><span>OpenAssistant<small>Настройка сервера</small></span></a>
+      <div class="top-actions">
+        <span class="connection"><span class="dot" id="dot"></span><span id="serverState">Проверка соединения</span></span>
+        <a href="/logs.html">Журнал</a>
+        <a href="/" class="back-link">Закрыть <span>×</span></a>
+      </div>
+    </header>
 
-<section class="section active" id="llm">
-<div class="intro"><div class="eyebrow">Шаг 01 / интеллект</div><h1>Выберите<br><em>языковую модель.</em></h1>
-<p>Несколько проверенных моделей, подходящих для видеокарт с 8 ГБ памяти. Выберите одну — OpenAssistant подготовит и проверит всё автоматически.</p></div>
-<div class="panel"><div class="hardware"><div id="gpuInfo">GPU определяется автоматически</div><div>Без команд и путей</div><div>Один клик для установки</div></div>
-<div class="card"><h2 class="card-title">Какой характер вам ближе?</h2><p class="card-sub">Все варианты Q8_0. Размер указан только для весов; при работе потребуется дополнительная память.</p><div class="models" id="llmModels"></div>
-<div class="guided-options">
-<div class="option"><label for="gpuSelect">Видеокарта</label><select id="gpuSelect"><option value="">Автоматически · рекомендуем</option></select><small>Обычно выбирается GPU с наибольшим объёмом свободной VRAM.</small></div>
-<div class="option"><label for="contextSelect">Контекст</label><select id="contextSelect"><option value="4096" selected>4096 токенов · рекомендуем</option><option value="8192">8192 токенов</option><option value="16384">16384 токенов</option></select><small>Больший контекст требует больше видеопамяти.</small></div>
-<div class="option"><label for="temperatureSelect">Температура</label><select id="temperatureSelect"><option value="0.3">0.3 · точнее</option><option value="0.5" selected>0.5 · рекомендуем</option><option value="0.7">0.7 · свободнее</option><option value="1">1.0 · творчески</option></select><small>Влияет на разнообразие ответов.</small></div>
-</div>
-<div class="buttonrow"><p>Скачивание и установка движка выполняются на сервере.</p><button class="primary" id="startLlm">Установить и запустить модель →</button></div></div>
-<div class="progress-card" id="progressLlm"><div class="progress-main"><div class="ring" id="ringLlm"></div><div><h3 id="titleLlm">Подготавливаем модель</h3><p id="descLlm">Проверяем компоненты</p></div></div><div class="bar"><div id="barLlm"></div></div><div class="progress-footer"><span id="bytesLlm">Подготовка</span><span id="stageLlm">1 / 4</span></div><details><summary>Технические подробности</summary><pre id="logsLlm"></pre></details></div>
-<div class="result" id="resultLlm"><h3>✓ Модель отвечает</h3><p id="answerLlm"></p><div class="result-meta" id="metricsLlm"></div><div class="gpu-live"><strong>Видеокарта во время ответа</strong><span id="gpuBenchmark">Данные появятся после теста</span><div class="gpu-live-track"><div id="gpuBenchmarkBar"></div></div></div>
-<div class="test-area"><label>Проверьте свой вопрос</label><textarea id="testPrompt">Привет! Представься как OpenAssistant в одном предложении.</textarea><div class="inline-actions"><button class="secondary" id="testLlm">Проверить ещё раз</button><button class="primary" data-next="stt">Настроить слух →</button></div><pre id="manualLlm" class="hidden"></pre></div></div>
-</div></section>
+    <div class="wizard-head">
+      <span class="section-label">НАСТРОЙКА OPENASSISTANT</span>
+      <div class="steps" aria-label="Этапы настройки">
+        <button class="step current" data-step="llm" type="button"><span class="step-num">1</span><b>Языковая модель</b></button>
+        <span class="connector"></span>
+        <button class="step" data-step="stt" type="button"><span class="step-num">2</span><b>Распознавание</b></button>
+        <span class="connector"></span>
+        <button class="step" data-step="tts" type="button"><span class="step-num">3</span><b>Синтез речи</b></button>
+      </div>
+    </div>
 
-<section class="section" id="stt"><div class="intro"><div class="eyebrow">Шаг 02 / слух</div><h1>Теперь Мартин<br><em>научится слышать.</em></h1><p>Выберем распознавание русской речи, установим необходимые компоненты и проверим его записью с микрофона.</p></div>
-<div class="panel"><div class="card"><h2 class="card-title">Распознавание речи</h2><p class="card-sub">GigaAM v3. Сервер автоматически загрузит модель и создаст локальный API.</p><div class="models" id="sttModels"></div>
-<div class="buttonrow"><p>Первый запуск может включать установку библиотек Python.</p><button class="primary" id="startStt">Установить распознавание →</button></div></div>
-<div class="progress-card" id="progressStt"><div class="progress-main"><div class="ring" id="ringStt"></div><div><h3 id="titleStt">Готовим распознавание</h3><p id="descStt">Подготовка</p></div></div><div class="bar"><div id="barStt"></div></div><div class="progress-footer"><span id="bytesStt">Подготовка</span><span id="stageStt">Состояние</span></div><details><summary>Технические подробности</summary><pre id="logsStt"></pre></details></div>
-<div class="result" id="resultStt"><h3>✓ Распознавание доступно</h3><p>Проверим, понимает ли модель вашу речь. Запись остаётся в браузере до отправки в локальный STT API.</p>
-<div class="test-area"><div class="inline-actions"><button class="secondary" id="recordStt">Записать 5 секунд</button><button class="secondary" id="transcribeStt" disabled>Распознать</button></div><audio id="recordPlayer" class="audio" controls></audio><p id="sttRecognized">Произнесите: «Привет, Мартин. Как дела?»</p><div class="inline-actions"><button class="primary" data-next="tts">Настроить голос →</button></div></div></div></div></section>
+    <div class="workspace">
+      <section class="section active" id="llm">
+        <div class="intro">
+          <div class="eyebrow">01 / ЯЗЫКОВАЯ МОДЕЛЬ</div>
+          <h1>Выбор модели</h1>
+          <p>Выберите модель и параметры запуска. После установки проверьте её ответ и производительность.</p>
+        </div>
 
-<section class="section" id="tts"><div class="intro"><div class="eyebrow">Шаг 03 / голос</div><h1>Дайте Мартину<br><em>собственный голос.</em></h1><p>Локальный синтез без облачного озвучивания. Сгенерируем тестовую фразу, прослушаем её и измерим скорость синтеза.</p></div>
-<div class="panel"><div class="card"><h2 class="card-title">Модель синтеза</h2><p class="card-sub">Компактная Qwen3-TTS 0.6B. Для первого запуска используется набор готовых голосов.</p><div class="models" id="ttsModels"></div><p class="note">Голос по описанию доступен в VoiceDesign 1.7B. Эта модель тяжелее: при нехватке VRAM будет предпринята попытка запуска на CPU.</p>
-<div class="buttonrow"><p>Система сама установит адаптер и загрузит веса модели.</p><button class="primary" id="startTts">Установить синтез →</button></div></div>
-<div class="progress-card" id="progressTts"><div class="progress-main"><div class="ring" id="ringTts"></div><div><h3 id="titleTts">Готовим синтез</h3><p id="descTts">Подготовка</p></div></div><div class="bar"><div id="barTts"></div></div><div class="progress-footer"><span id="bytesTts">Подготовка</span><span id="stageTts">Состояние</span></div><details><summary>Технические подробности</summary><pre id="logsTts"></pre></details></div>
-<div class="result" id="resultTts"><h3>✓ Синтез речи работает</h3><p id="ttsMetrics">Готово к проверке голоса.</p>
-<div class="test-area"><div id="presetVoice"><label>Голос из готовых вариантов</label><select id="voiceSelect"><option value="Ryan">Ryan — выразительный мужской</option><option value="Aiden">Aiden — мягкий мужской</option><option value="Serena">Serena — мягкий женский</option><option value="Vivian">Vivian — яркий женский</option><option value="Ono_Anna">Ono Anna — японский тембр</option><option value="Sohee">Sohee — корейский тембр</option></select></div><div id="designedVoice" class="hidden"><label for="voiceDescription">Опишите голос, который хотите получить</label><textarea id="voiceDescription" rows="4">Спокойный, приятный, уверенный взрослый мужской голос с естественной русской артикуляцией, средней скоростью речи и мягкой дружелюбной интонацией.</textarea><p class="note">Меняйте описание и генерируйте новые варианты. Для воспроизводимого тембра потребуется отдельный этап сохранения голоса.</p></div><label>Тестовая фраза</label><textarea id="ttsPhrase">Привет! Это проверка нового голоса OpenAssistant.</textarea>
-<div class="inline-actions"><button class="secondary" id="testTts">Сгенерировать голос</button><a class="secondary hidden" id="downloadWav" href="#" download="martin-voice.wav">Скачать WAV</a></div><audio id="ttsPlayer" class="audio" controls></audio>
-<div class="inline-actions"><button class="primary" data-next="complete">Завершить настройку →</button></div></div></div></div></section>
+        <div class="panel">
+          <div class="card">
+            <div class="card-heading"><div><h2 class="card-title">Модели</h2><p class="card-sub">Варианты для одного GPU с 8 ГБ памяти. Формат Q8_0.</p></div><span class="muted-tag">Локальный запуск</span></div>
+            <div id="llmModels" class="models"></div>
+            <div class="options-heading"><h3>Параметры запуска</h3><span class="muted">Рекомендуемые значения выбраны</span></div>
+            <div class="guided-options">
+              <div class="option"><label for="gpuSelect">Видеокарта</label><select id="gpuSelect"><option value="">Автоматический выбор</option></select></div>
+              <div class="option"><label for="contextSelect">Контекст</label><select id="contextSelect"><option value="4096" selected>4096 токенов</option><option value="8192">8192 токенов</option><option value="16384">16384 токенов</option></select></div>
+              <div class="option"><label for="temperatureSelect">Температура</label><select id="temperatureSelect"><option value="0.3">0.3</option><option value="0.5" selected>0.5</option><option value="0.7">0.7</option><option value="1">1.0</option></select></div>
+            </div>
+            <div class="buttonrow">
+              <p id="gpuInfo">Проверяем доступные GPU…</p>
+              <button class="primary" id="startLlm" type="button">Установить и проверить <span>↗</span></button>
+            </div>
+          </div>
 
-<section class="section" id="complete"><div class="panel"><div class="card success"><div class="success-icon">✓</div><h2>OpenAssistant готов.</h2><p>Языковая модель, распознавание и синтез речи настроены. Устройства, в том числе колонку «Мартин», вы сможете добавить отдельно через панель управления.</p><div class="inline-actions" style="justify-content:center"><a class="primary" href="/">Открыть панель управления</a><a class="secondary" href="/chat.html">Проверить диалог</a></div></div></div></section>
-<div class="footer">OpenAssistant · Настройка выполняется на вашем Linux-сервере · Без облачного инференса</div></div>
-<script src="/setup.js" defer></script></body></html>
+          <div class="progress-card" id="progressLlm">
+            <div class="progress-main"><div class="ring" id="ringLlm"></div><div><h3 id="titleLlm">Подготовка</h3><p id="descLlm">Ожидаем ответ сервера</p></div><span class="progress-stage" id="stageLlm">—</span></div>
+            <div class="bar"><div id="barLlm"></div></div>
+            <div class="progress-footer"><span>Ход установки</span><span id="bytesLlm">—</span></div>
+            <div class="install-steps" id="stepsLlm"></div>
+            <details class="log-details" open><summary>Подробный журнал установки <span class="chevron">⌄</span></summary><pre id="logsLlm" class="install-log">Ожидание…</pre></details>
+          </div>
+
+          <div class="result" id="resultLlm">
+            <div class="result-head"><span class="result-check">✓</span><div><h3>Модель запущена</h3><p>Проверочный запрос выполнен.</p></div></div>
+            <p id="answerLlm" class="model-response"></p>
+            <div class="result-meta" id="metricsLlm"></div>
+            <div class="gpu-live"><div class="gpu-live-heading"><strong>Состояние GPU</strong><span id="gpuBenchmark">Нет данных</span></div><div class="gpu-live-track"><div id="gpuBenchmarkBar"></div></div></div>
+            <div class="test-area"><label for="testPrompt">Тестовый запрос</label><textarea id="testPrompt" rows="3">Кратко объясни, как работает локальный голосовой ассистент.</textarea>
+              <div class="inline-actions"><button class="secondary" type="button" id="testLlm">Повторить тест</button><button class="primary" type="button" data-next="stt">Далее <span>→</span></button></div><pre id="manualLlm" class="test-response hidden"></pre></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="stt">
+        <div class="intro"><div class="eyebrow">02 / РАСПОЗНАВАНИЕ</div><h1>Распознавание речи</h1><p>Установите модель распознавания, затем сделайте короткую запись и проверьте результат.</p></div>
+        <div class="panel"><div class="card">
+          <div class="card-heading"><div><h2 class="card-title">Движок распознавания</h2><p class="card-sub">Обработка речи выполняется на вашем сервере.</p></div></div>
+          <div id="sttModels" class="models"></div>
+          <div class="buttonrow"><p>Микрофон доступен при открытии панели через localhost или HTTPS.</p><button class="primary" type="button" id="startStt">Установить и запустить <span>↗</span></button></div>
+        </div>
+        <div class="progress-card" id="progressStt">
+          <div class="progress-main"><div class="ring" id="ringStt"></div><div><h3 id="titleStt">Подготовка</h3><p id="descStt">Ожидаем ответ сервера</p></div><span class="progress-stage" id="stageStt">—</span></div>
+          <div class="bar"><div id="barStt"></div></div><div class="progress-footer"><span>Ход установки</span><span id="bytesStt">—</span></div>
+          <div class="install-steps" id="stepsStt"></div>
+          <details class="log-details" open><summary>Подробный журнал установки <span class="chevron">⌄</span></summary><pre id="logsStt" class="install-log">Ожидание…</pre></details>
+        </div>
+        <div class="result" id="resultStt">
+          <div class="result-head"><span class="result-check">✓</span><div><h3>Модель загружена</h3><p>Проверьте распознавание на собственной записи.</p></div></div>
+          <div class="test-area"><label>Проверка микрофона</label><div class="inline-actions"><button class="secondary" type="button" id="recordStt">Записать 5 секунд</button><button class="secondary" type="button" id="transcribeStt" disabled>Распознать запись</button></div><audio id="recordPlayer" class="audio" controls></audio><p id="sttRecognized" class="recognition-result">Запись ещё не сделана.</p>
+          <div class="inline-actions"><button class="primary" type="button" data-next="tts">Далее <span>→</span></button></div></div>
+        </div></div>
+      </section>
+
+      <section class="section" id="tts">
+        <div class="intro"><div class="eyebrow">03 / СИНТЕЗ РЕЧИ</div><h1>Синтез речи</h1><p>Выберите движок, настройте голос, прослушайте результат и при необходимости измените настройки.</p></div>
+        <div class="panel"><div class="card">
+          <div class="card-heading"><div><h2 class="card-title">Модель синтеза</h2><p class="card-sub">Готовые голоса или формирование голоса по описанию.</p></div></div>
+          <div id="ttsModels" class="models"></div>
+          <div class="buttonrow"><p>VoiceDesign требует больше видеопамяти, чем CustomVoice.</p><button class="primary" id="startTts" type="button">Установить и запустить <span>↗</span></button></div>
+        </div>
+        <div class="progress-card" id="progressTts">
+          <div class="progress-main"><div class="ring" id="ringTts"></div><div><h3 id="titleTts">Подготовка</h3><p id="descTts">Ожидаем ответ сервера</p></div><span class="progress-stage" id="stageTts">—</span></div>
+          <div class="bar"><div id="barTts"></div></div><div class="progress-footer"><span>Ход установки</span><span id="bytesTts">—</span></div>
+          <div class="install-steps" id="stepsTts"></div>
+          <details class="log-details" open><summary>Подробный журнал установки <span class="chevron">⌄</span></summary><pre id="logsTts" class="install-log">Ожидание…</pre></details>
+        </div>
+        <div class="result" id="resultTts">
+          <div class="result-head"><span class="result-check">✓</span><div><h3>Синтез готов</h3><p id="ttsMetrics">Проверьте звучание на тестовой фразе.</p></div></div>
+          <div class="test-area">
+            <div id="presetVoice"><label for="voiceSelect">Готовый голос</label><select id="voiceSelect"><option value="Ryan">Ryan</option><option value="Aiden">Aiden</option><option value="Serena">Serena</option><option value="Vivian">Vivian</option><option value="Ono_Anna">Ono Anna</option><option value="Sohee">Sohee</option></select></div>
+            <div id="designedVoice" class="hidden"><label for="voiceDescription">Описание голоса</label><textarea id="voiceDescription" rows="4">Спокойный взрослый мужской голос. Русская речь, естественная артикуляция, средняя скорость и мягкая интонация.</textarea><p class="input-help">Изменяйте описание, чтобы получить другой вариант. Постоянство тембра между генерациями не гарантируется.</p></div>
+            <label for="ttsPhrase">Тестовая фраза</label><textarea id="ttsPhrase" rows="3">Здравствуйте. Это проверка синтеза речи OpenAssistant.</textarea>
+            <div class="inline-actions"><button class="secondary" type="button" id="testTts">Сгенерировать и прослушать</button><a class="secondary hidden" id="downloadWav" href="#" download="openassistant-test.wav">Скачать WAV</a></div><audio id="ttsPlayer" class="audio" controls></audio>
+            <div class="inline-actions"><button class="primary" type="button" data-next="complete">Завершить <span>→</span></button></div>
+          </div>
+        </div></div>
+      </section>
+
+      <section class="section" id="complete">
+        <div class="complete-panel"><div class="complete-symbol">✓</div><h1>Настройка завершена</h1><p>OpenAssistant подготовлен для работы. Подключение колонок выполняется отдельно в разделе устройств.</p>
+        <div class="inline-actions center"><a href="/" class="primary">Перейти на главную <span>→</span></a><a class="secondary" href="/chat.html">Проверить диалог</a></div></div>
+      </section>
+    </div>
+    <footer>OpenAssistant · <a href="/">Панель управления</a> · <a href="/logs.html">Журнал сервера</a></footer>
+  </div>
+  <script src="/setup.js" defer></script>
+</body>
+</html>
