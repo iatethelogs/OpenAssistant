@@ -65,6 +65,7 @@ public sealed class GuidedSetupService(
         public string? TestResult;
         public long Bytes;
         public long Total;
+        public long? VramMiB;
         public DateTimeOffset Started = DateTimeOffset.UtcNow;
         public Queue<string> Log = new();
         public HashSet<string> Completed = new(StringComparer.Ordinal);
@@ -73,7 +74,7 @@ public sealed class GuidedSetupService(
     private static object Snapshot(Job j) => new {
         id = j.Id, role = j.Role, modelId = j.ModelId, name = j.ModelName,
         status = j.Status, step = j.Step, description = j.Description,
-        bytes = j.Bytes, total = j.Total, error = j.Error,
+        bytes = j.Bytes, total = j.Total, vramMiB = j.VramMiB, error = j.Error,
         path = j.ModelPath, runtime = j.Runtime, gpu = j.Gpu, testResult = j.TestResult,
         startedAt = j.Started, completedSteps = j.Completed.OrderBy(x => x).ToArray(), logs = j.Log.ToArray()
     };
@@ -99,7 +100,7 @@ public sealed class GuidedSetupService(
                 visible.Add(new {
                     id = j.Id, role = j.Role, modelId = j.ModelId, name = j.ModelName,
                     status = j.Status, step = j.Step, description = j.Description,
-                    bytes = j.Bytes, total = j.Total, error = j.Error,
+                    bytes = j.Bytes, total = j.Total, vramMiB = j.VramMiB, error = j.Error,
                     path = j.ModelPath, runtime = j.Runtime, gpu = j.Gpu, testResult = j.TestResult,
                     startedAt = j.Started, completedSteps = j.Completed.OrderBy(x => x).ToArray(), logs = j.Log.Concat(logs).TakeLast(120).ToArray()
                 });
@@ -306,6 +307,14 @@ public sealed class GuidedSetupService(
         Stage(j, "test", "Проверяем ответ модели");
         var response = await diagnostics.TestLlmAsync("Привет! Расскажи, что умеет OpenAssistant, одним предложением.", "local", ct);
         lock (_gate) j.TestResult = JsonSerializer.Serialize(response);
+        if (j.Gpu is not null)
+        {
+            var used = await processes.ProcessGpuMemoryMiBAsync("llm", j.Gpu, ct);
+            lock (_gate) j.VramMiB = used;
+            Output(j, used is null
+                ? "nvidia-smi не сообщил VRAM процесса. Оценку не показываем."
+                : $"VRAM llama-server: {used.Value} МиБ (по PID процесса).");
+        }
     }
     private async Task SetupSpeechAsync(Job j, GuidedModelCatalog.Choice choice, string? gpu, CancellationToken ct)
     {
