@@ -20,7 +20,7 @@ public sealed class VerifiedHomeAssistantService(IHttpClientFactory factory,
     private static readonly Regex EntityId = new(@"\b[a-z_]+\.[a-z0-9_]+\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex HomeTopic = new(
-        @"свет|ламп|люстр|розет|выключател|штор|жалюзи|вентилятор|датчик|термостат|температур|градус|влажност|отоплен|кондиц|увлажнит|двер|замок|гараж|движен|устройств|освещен|реле|home assistant|умн.{0,5}дом|\b(?:light|switch|sensor|binary_sensor|fan|cover|climate|lock)\.",
+        @"\bсвет(?:а|ом|у|е)?\b|светильник|ламп|люстр|розет|выключател|штор|жалюзи|вентилятор|датчик|термостат|температур|градус|влажност|отоплен|кондиц|увлажнит|двер|замок|гараж|движен|устройств|освещен|реле|home assistant|умн.{0,5}дом|\b(?:light|switch|sensor|binary_sensor|fan|cover|climate|lock)\.",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex QueryIntent = new(
         @"включ|выключ|откро|откры|закро|закры|состояни|статус|горит|работает|температур|градус|какие|сколько|покажи|проверь|открыт|закрыт|влажност|движени|\b(on|off)\b|включ[её]н|выключ[её]н|управ",
@@ -168,6 +168,9 @@ public sealed class VerifiedHomeAssistantService(IHttpClientFactory factory,
     public async Task<string?> TryHandleAsync(string text, bool canRead, bool canWrite, CancellationToken ct)
     {
         if ((!HomeTopic.IsMatch(text) && !EntityId.IsMatch(text)) || !QueryIntent.IsMatch(text)) return null;
+        if (Regex.IsMatch(text, @"^\s*(что такое|как устроен|как работает|зачем нужен|почему работает)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            return null;
         if (!canRead) return "Чтение состояний Home Assistant отключено в настройках инструментов.";
         if (!Connected) return "Home Assistant не подключён. Добавьте адрес и токен в разделе интеграций.";
         if (Regex.IsMatch(text, @"вчера|прошл|позавчера|неделю назад|в понедельник",
