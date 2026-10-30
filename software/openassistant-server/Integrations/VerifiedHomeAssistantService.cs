@@ -25,9 +25,9 @@ public sealed class VerifiedHomeAssistantService(IHttpClientFactory factory,
     private static readonly Regex QueryIntent = new(
         @"включ|выключ|откро|откры|закро|закры|состояни|статус|горит|работает|температур|градус|какие|сколько|покажи|проверь|\b(on|off)\b|включ[её]н|выключ[её]н|управ",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex CommandOn = new(@"\bвключ\w*|\bзажги\w*|\bоткро\w*|\bоткры\w*",
+    private static readonly Regex CommandOn = new(@"\bвключи(?:те)?\b|\bзажги(?:те)?\b|\bоткрой(?:те)?\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex CommandOff = new(@"\bвыключ\w*|\bпогаси\w*|\bзакро\w*|\bзакры\w*",
+    private static readonly Regex CommandOff = new(@"\bвыключи(?:те)?\b|\bпогаси(?:те)?\b|\bзакрой(?:те)?\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public bool Connected => !string.IsNullOrWhiteSpace(options.CurrentValue.HomeAssistantUrl) &&
@@ -95,9 +95,9 @@ public sealed class VerifiedHomeAssistantService(IHttpClientFactory factory,
         if (!Controllable.Contains(domain) || !id.StartsWith(domain + ".", StringComparison.Ordinal) ||
             !Regex.IsMatch(id, @"^[a-z_]+\.[a-z0-9_]+$"))
             throw new ArgumentException("Недопустимая команда Home Assistant");
-        bool valid = OnOff.Contains(domain) && service is "turn_on" or "turn_off" ||
-                     domain == "cover" && service is "open_cover" or "close_cover" or "stop_cover" ||
-                     domain == "media_player" && service is "media_play" or "media_pause";
+        bool valid = (OnOff.Contains(domain) && (service is "turn_on" or "turn_off")) ||
+                     (domain == "cover" && (service is "open_cover" or "close_cover" or "stop_cover")) ||
+                     (domain == "media_player" && (service is "media_play" or "media_pause"));
         if (!valid) throw new ArgumentException("Команда не разрешена для устройства");
         var before = await GetAsync(id, ct);
         if (before.State is "unavailable" or "unknown")
@@ -165,9 +165,10 @@ public sealed class VerifiedHomeAssistantService(IHttpClientFactory factory,
     }
 
     /// <summary>Перехватывает вопросы о состоянии и прямые команды; модель не формирует фактический ответ.</summary>
-    public async Task<string?> TryHandleAsync(string text, bool canWrite, CancellationToken ct)
+    public async Task<string?> TryHandleAsync(string text, bool canRead, bool canWrite, CancellationToken ct)
     {
         if (!HomeTopic.IsMatch(text) || !QueryIntent.IsMatch(text)) return null;
+        if (!canRead) return "Чтение состояний Home Assistant отключено в настройках инструментов.";
         if (!Connected) return "Home Assistant не подключён. Добавьте адрес и токен в разделе интеграций.";
         try
         {
