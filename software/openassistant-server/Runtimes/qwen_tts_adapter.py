@@ -85,13 +85,43 @@ class Handler(BaseHTTPRequestHandler):
             if sample_rate < 8000 or sample_rate > 48000:
                 self.reply(400, {"error": "invalid sample rate"})
                 return
+            generation_mode = args.get("generation_mode", "seeded")
+            if generation_mode not in ("seeded", "greedy", "random"):
+                self.reply(400, {"error": "invalid generation_mode"})
+                return
+            try:
+                seed = int(args.get("seed", 42))
+                temperature = float(args.get("temperature", 0.75))
+                top_p = float(args.get("top_p", 0.9))
+                top_k = int(args.get("top_k", 40))
+                repetition_penalty = float(args.get("repetition_penalty", 1.05))
+            except (TypeError, ValueError):
+                self.reply(400, {"error": "invalid TTS sampling parameters"})
+                return
+            if (not 0 <= seed <= 2147483647 or
+                    not 0.1 <= temperature <= 2 or not 0 < top_p <= 1 or
+                    not 1 <= top_k <= 200 or not 1 <= repetition_penalty <= 2):
+                self.reply(400, {"error": "TTS sampling parameters out of range"})
+                return
+            # A fixed seed replays the same sampling sequence per request.
+            # Greedy sampling is the strictest available setting, but can affect naturalness.
+            generate_options = {
+                "do_sample": generation_mode != "greedy",
+                "temperature": temperature,
+                "top_p": top_p,
+                "top_k": top_k,
+                "repetition_penalty": repetition_penalty,
+            }
             if "VoiceDesign" in name:
                 if len(instruction) < 8 or len(instruction) > 1200:
                     self.reply(400, {"error": "VoiceDesign requires a voice description"})
                     return
                 with model_lock:
+                    if generation_mode == "seeded":
+                        torch.manual_seed(seed)
                     wavs, sr = model.generate_voice_design(
-                        text=text, language=language, instruct=instruction)
+                        text=text, language=language, instruct=instruction,
+                        **generate_options)
             else:
                 if not voice or voice.lower() == "default":
                     voice = "Ryan"
@@ -101,8 +131,12 @@ class Handler(BaseHTTPRequestHandler):
                     self.reply(400, {"error": "unknown voice " + voice, "supported": speakers})
                     return
                 with model_lock:
-                    wavs, sr = model.generate_custom_voice(text=text, language=language, speaker=speaker,
-                        instruct=instruction if "1.7B" in name and instruction else None)
+                    if generation_mode == "seeded":
+                        torch.manual_seed(seed)
+                    wavs, sr = model.generate_custom_voice(
+                        text=text, language=language, speaker=speaker,
+                        instruct=instruction if "1.7B" in name and instruction else None,
+                        **generate_options)
             samples = np.asarray(wavs[0], dtype=np.float32).flatten()
             if sr != sample_rate:
                 common = gcd(sr, sample_rate)
