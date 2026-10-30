@@ -240,7 +240,17 @@ public sealed class GuidedSetupService(
             Stage(j, "prepare", "Останавливаем предыдущую LLM");
             await processes.StopAsync("llm", ct);
         }
-        Stage(j, "download", "Скачиваем " + choice.Name);
+        Stage(j, "download", "Проверяем наличие весов " + choice.Name);
+        var cached = downloads.FindCachedGguf(choice.Repo, choice.File);
+        if (cached is not null)
+        {
+            j.ModelPath = cached;
+            var bytes = new FileInfo(cached).Length;
+            lock (_gate) { j.Total = bytes; j.Bytes = bytes; }
+            Output(j, "Используем скачанный GGUF без повторного обращения к Hugging Face: " + cached);
+        }
+        else
+        {
         // Каждую модель проверяем по текущему манифесту Hugging Face.
         // Имя из каталога может измениться; никогда не скачиваем Q4 вместо Q8.
         var manifest = await downloads.InspectAsync(choice.Repo, "main", ct);
@@ -267,6 +277,7 @@ public sealed class GuidedSetupService(
         }, ct);
         j.ModelPath = Path.Combine(folder, selectedFile);
         if (!File.Exists(j.ModelPath)) throw new FileNotFoundException("Файл модели не появился после скачивания");
+        }
         Stage(j, "runtime", "Проверяем llama.cpp и необходимые компоненты");
         var runtime = await FindOrBuildLlamaAsync(j, gpu is not null, ct);
         string executable = runtime.Executable;
