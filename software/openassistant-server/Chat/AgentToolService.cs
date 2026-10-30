@@ -23,6 +23,10 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
         new("radio_play", "Включить радио", "Найди станцию и начни воспроизведение на устройстве.", true, false, One("query", "Название станции")),
         new("music_search", "Поиск Яндекс Музыки", "Найди треки и верни их ID для последующего воспроизведения.", true, false, One("query", "Название или исполнитель")),
         new("music_play", "Включить Яндекс Музыку", "Включи композицию по ID из music_search.", true, false, One("track_id", "ID трека из music_search")),
+        new("ha_list_entities", "Устройства Home Assistant", "Найди реальные устройства и их состояния без угадывания идентификаторов.", true, false,
+            new { type = "object", properties = new {
+                filter = new { type = "string", description = "Часть имени или entity_id, можно оставить пустым" }
+            }, required = new[] { "filter" }, additionalProperties = false }),
         new("ha_get_state", "Состояние устройства", "Узнай состояние конкретного entity_id Home Assistant.", true, false, One("entity_id", "Например light.kitchen")),
         new("ha_call_service", "Управление Home Assistant", "Выполни явно запрошенное пользователем действие с устройством. Доступно только после включения администратором.", false, true,
             new { type = "object", properties = new {
@@ -75,7 +79,7 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
         return await ListAsync(ct);
     }
 
-    public async Task<AgentAction> ExecuteAsync(string name, JsonElement args, CancellationToken ct)
+    public async Task<AgentAction> ExecuteAsync(string name, JsonElement args, CancellationToken ct, string? userRequest = null)
     {
         var skills = await ListAsync(ct);
         if (!skills.Any(s => s.Name == name && s.Enabled))
@@ -120,6 +124,16 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
                     new { type = "play_media", url = playable.Url, title = "Яндекс Музыка", source = "yandex_music",
                         codec = playable.Codec, bitrateKbps = playable.BitrateKbps });
             }
+            case "ha_list_entities":
+            {
+                var items = (VerifiedHomeAssistantService.Entity[])await ha.ExecuteAsync(
+                    JsonSerializer.SerializeToElement(new { action = "list_states" }), ct);
+                string filter = args.TryGetProperty("filter", out var value) &&
+                    value.ValueKind == JsonValueKind.String ? (value.GetString() ?? "").Trim() : "";
+                return new AgentAction(items.Where(e => filter.Length == 0 ||
+                    e.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                    e.Id.Contains(filter, StringComparison.OrdinalIgnoreCase)).Take(40).ToArray());
+            }
             case "ha_get_state":
             {
                 string entity = Arg(args, "entity_id");
@@ -130,6 +144,10 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
             }
             case "ha_call_service":
             {
+                if (string.IsNullOrWhiteSpace(userRequest) ||
+                    !Regex.IsMatch(userRequest, @"\b(?:включи(?:те)?|выключи(?:те)?|открой(?:те)?|закрой(?:те)?|зажги(?:те)?|погаси(?:те)?|останови(?:те)?)\b|\bпоставь на паузу\b",
+                        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                    throw new InvalidOperationException("Нет явной просьбы пользователя на управление устройством");
                 string domain = Arg(args, "domain"), service = Arg(args, "service"), entity = Arg(args, "entity_id");
                 if (!Regex.IsMatch(entity, @"^[a-z_]+\.[a-z0-9_]+$") ||
                     !Regex.IsMatch(domain, @"^[a-z_]+$") || !Regex.IsMatch(service, @"^[a-z_]+$"))

@@ -21,6 +21,8 @@ builder.Services.AddSingleton<ModelProcessManager>();
 builder.Services.AddSingleton<ModelDownloadManager>();
 builder.Services.AddSingleton<AgentToolService>();
 builder.Services.AddSingleton<AgentRunner>();
+builder.Services.AddSingleton<ConversationMemoryStore>();
+builder.Services.AddSingleton<VerifiedHomeAssistantService>();
 builder.Services.AddSingleton<DiagnosticService>();
 builder.Services.AddSingleton<DeviceRegistry>();
 builder.Services.AddSingleton<SetupService>();
@@ -69,6 +71,15 @@ app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSecond
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "openassistant-server" }));
 // панель доступна только локально; не выдаём конфигурацию и токены по сети.
 var localOnly = new Func<HttpContext, bool>(ctx => ctx.Connection.RemoteIpAddress is { } ip && IPAddress.IsLoopback(ip));
+app.MapGet("/api/control/assistant-defaults", (HttpContext ctx) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    var defaults = new ServerOptions();
+    return Results.Ok(new {
+        defaults.SystemPrompt, defaults.LlmTemperature, defaults.LlmMaxTokens,
+        defaults.LlmTopP, defaults.LlmTopK, defaults.LlmRepeatPenalty
+    });
+});
 app.MapGet("/api/settings", (HttpContext ctx, SettingsStore store) =>
     localOnly(ctx) ? Results.Ok(store.PublicSettings()) : Results.StatusCode(403));
 app.MapPost("/api/settings", async (HttpContext ctx, SettingsUpdate settings, SettingsStore store, CancellationToken ct) =>
@@ -106,6 +117,20 @@ app.MapPost("/api/setup/{role}", (HttpContext ctx, string role,
 });
 app.MapGet("/api/setup/logs", (HttpContext ctx, DashboardLogProvider logs, int? take) =>
     localOnly(ctx) ? Results.Ok(logs.Recent(take ?? 300)) : Results.StatusCode(403));
+app.MapGet("/api/memory/{profile}", async (
+    HttpContext ctx, string profile, ConversationMemoryStore memory, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(new { profile, exchanges = await memory.CountAsync(profile, ct) }); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapDelete("/api/memory/{profile}", async (
+    HttpContext ctx, string profile, ConversationMemoryStore memory, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { await memory.ClearAsync(profile, ct); return Results.Ok(new { cleared = true }); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
 app.MapGet("/api/control/skills", async (HttpContext ctx, AgentToolService skills, CancellationToken ct) =>
     localOnly(ctx) ? Results.Ok(await skills.ListAsync(ct)) : Results.StatusCode(403));
 app.MapPut("/api/control/skills", async (
@@ -319,6 +344,15 @@ app.MapDelete("/api/integrations/yandex", async (
     oauth.Cancel();
     await music.DisconnectAsync(ct);
     return Results.Ok(new { disconnected = true });
+});
+app.MapGet("/api/integrations/homeassistant/entities", async (
+    HttpContext ctx, VerifiedHomeAssistantService home, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await home.EntitiesAsync(ct)); }
+    catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException or
+        System.Text.Json.JsonException or InvalidDataException or TaskCanceledException)
+    { return Results.BadRequest(new { error = "Home Assistant: " + ex.Message }); }
 });
 app.MapPost("/api/integrations/homeassistant", async (
     HttpContext ctx, HomeAssistantConnectRequest input,

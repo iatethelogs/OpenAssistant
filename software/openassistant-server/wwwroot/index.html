@@ -3,7 +3,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#131313">
 <title>OpenAssistant — Панель управления</title>
-<link rel="stylesheet" href="/dashboard.css?v=mono-1"></head>
+<link rel="stylesheet" href="/dashboard.css?v=memory-ha-1"></head>
 <body>
 <div class="layout">
 <aside class="sidebar">
@@ -71,7 +71,8 @@
 <section class="view" id="settings">
    <div class="page-title"><h1>Поведение ассистента</h1></div>
    <form id="settingsForm" class="panel settings-panel">
-    <div class="panel-heading"><div><h2>Системная инструкция</h2><p>Определяет поведение языковой модели</p></div></div>
+    <div class="panel-heading"><div><h2>Системная инструкция</h2><p>Определяет поведение языковой модели</p></div>
+        <button id="assistantDefaults" type="button" class="button secondary">Профиль ассистента</button></div>
     <label for="prompt">Промпт</label><textarea id="prompt" rows="9" maxlength="16000"></textarea>
     <div class="field-grid">
       <div><label for="temperature">Температура LLM</label><input id="temperature" type="number" min="0" max="2" step=".05"></div>
@@ -154,6 +155,9 @@
     <label for="haUrl">Адрес Home Assistant</label><input id="haUrl" placeholder="http://homeassistant.local:8123">
     <label for="haToken">Токен доступа</label><input id="haToken" type="password" autocomplete="off">
     <div class="button-row"><button id="haConnect" class="button primary" type="button">Подключить</button><button id="haDisconnect" class="button secondary" type="button">Отключить</button></div>
+    <div class="ha-inventory"><div class="button-row"><span class="minor">Состояния устройств</span><button id="haRefreshEntities" class="button secondary" type="button">Обновить</button></div>
+      <div id="haEntities" class="ha-entities">Устройства не загружены</div>
+    </div>
   </article>
  </div>
 </section>
@@ -184,7 +188,15 @@
 
  <section class="view" id="chat">
   <div class="page-title"><h1>Чат с ассистентом</h1></div>
-  <div class="panel"><div class="button-row"><button id="chatConnect" class="button secondary" type="button">Подключиться</button><span id="chatStatus" class="minor">Отключено</span></div>
+  <div class="panel">
+    <div class="profile-bar">
+      <div class="profile-field"><label for="chatProfile">Профиль собеседника</label><input id="chatProfile" maxlength="48" value="Общий" placeholder="Имя профиля"></div>
+      <button id="chatProfileSet" class="button secondary" type="button">Выбрать</button>
+      <span id="chatMemoryCount" class="minor"></span>
+      <button id="chatMemoryClear" class="button secondary" type="button">Очистить историю</button>
+    </div>
+    <p class="minor">Разговоры сохраняются в выбранном профиле. Определения человека по голосу нет.</p>
+    <div class="button-row"><button id="chatConnect" class="button secondary" type="button">Подключиться</button><span id="chatStatus" class="minor">Отключено</span></div>
    <div id="chatHistory" class="chat-history" aria-live="polite"></div>
    <div class="chat-compose"><input id="chatInput" placeholder="Напишите сообщение"><button id="chatSend" type="button" class="button primary" disabled>Отправить</button><button id="chatCancel" type="button" class="button secondary" disabled>Стоп</button></div>
    <audio id="chatAudio" controls></audio>
@@ -219,5 +231,5 @@
 </main></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/audio-test.js" defer></script>
-<script src="/dashboard.js?v=mono-1" defer></script>
+<script src="/dashboard.js?v=memory-ha-1" defer></script>
 </body></html>

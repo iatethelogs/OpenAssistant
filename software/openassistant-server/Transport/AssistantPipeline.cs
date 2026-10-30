@@ -14,7 +14,8 @@ namespace OpenAssistant.Server.Transport;
 /// <summary>независимый сеанс устройства: речь, llm, tts и музыкальные команды.</summary>
 public sealed class AssistantPipeline(
     SpeechService speech, AgentRunner agent, ToolRegistry tools,
-    ConversationLog conversationLog, DeviceRegistry devices,
+    ConversationMemoryStore memory, VerifiedHomeAssistantService homeAssistant,
+    AgentToolService skills, ConversationLog conversationLog, DeviceRegistry devices,
     IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
 {
     /// <summary>принимает аудио и команды клиента до отключения websocket.</summary>
@@ -26,7 +27,7 @@ public sealed class AssistantPipeline(
         using var input = new MemoryStream();
         bool rejectingOversizedAudio = false;
         string? pendingWakeWord = null;
-        var history = new List<ChatMessage> { new("system", settings.CurrentValue.SystemPrompt) };
+        string profile = "Общий";
         string voice = settings.CurrentValue.TtsVoice;
         CancellationTokenSource? active = null;
         Task? current = null;
@@ -92,8 +93,32 @@ public sealed class AssistantPipeline(
             await JsonAsync(new { type = "transcript", text }, ct);
             conversationLog.Add(fromAudio ? "stt" : "user", text);
 
-            history[0] = new ChatMessage("system", settings.CurrentValue.SystemPrompt);
-            var messages = history.Skip(1).TakeLast(30).Prepend(history[0]).Append(new ChatMessage("user", text)).ToArray();
+            var permissions = await skills.ListAsync(ct);
+            bool readHa = permissions.Any(s => s.Name == "ha_get_state" && s.Enabled);
+            bool writeHa = permissions.Any(s => s.Name == "ha_call_service" && s.Enabled);
+            string? verified = await homeAssistant.TryHandleAsync(text, readHa, writeHa, ct);
+            if (verified is not null)
+            {
+                await JsonAsync(new { type = "text", delta = verified }, ct);
+                conversationLog.Add("llm", verified);
+                await memory.SaveExchangeAsync(profile, text, verified, ct);
+                byte[] audio = await speech.SynthesizeAsync(verified, voice,
+                    settings.CurrentValue.OutputSampleRate, ct);
+                await AudioAsync(audio, settings.CurrentValue.OutputSampleRate, ct);
+                await JsonAsync(new { type = "done" }, ct);
+                return;
+            }
+            var recalled = await memory.RecallAsync(profile, text, ct);
+            var context = new List<ChatMessage> {
+                new("system", settings.CurrentValue.SystemPrompt),
+                new("system", profile == "Общий" ?
+                    "Профиль собеседника не выбран. Не делай выводов о личности по голосу." :
+                    "Выбранный пользователем профиль: " + profile +
+                    ". Это имя указано клиентом, а не распознано по голосу.")
+            };
+            context.AddRange(recalled);
+            context.Add(new ChatMessage("user", text));
+            var messages = context.ToArray();
             var segmenter = new SentenceSegmenter();
             var complete = new StringBuilder();
             int outputRate = settings.CurrentValue.OutputSampleRate;
@@ -144,8 +169,7 @@ public sealed class AssistantPipeline(
                 phrases.Writer.TryComplete();
                 await speaker;
                 ct.ThrowIfCancellationRequested();
-                history.Add(new ChatMessage("user", text));
-                history.Add(new ChatMessage("assistant", complete.ToString()));
+                await memory.SaveExchangeAsync(profile, text, complete.ToString(), ct);
                 conversationLog.Add("llm", complete.ToString());
                 await JsonAsync(new { type = "done" }, ct);
             }
@@ -226,6 +250,15 @@ public sealed class AssistantPipeline(
                         await JsonAsync(new { type = "listening" }, disconnected);
                         continue;
                     }
+                    if (kind == "profile")
+                    {
+                        string selected = ConversationMemoryStore.NormalizeProfile(
+                            root.GetProperty("name").GetString());
+                        await CancelAsync();
+                        profile = selected;
+                        await JsonAsync(new { type = "profile", name = profile }, disconnected);
+                        continue;
+                    }
                     if (kind == "voice")
                     {
                         string chosen = root.GetProperty("voice").GetString() ?? "";
@@ -272,6 +305,8 @@ public sealed class AssistantPipeline(
                     else if (kind == "text") { input.SetLength(0); rejectingOversizedAudio = false; pendingWakeWord = null; current = RunRequestAsync(inner => RespondAsync(text ?? "", false, inner), token); }
                     else current = RunRequestAsync(async inner =>
                     {
+                        if (string.Equals(toolName, "home_assistant", StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidOperationException("Управление Home Assistant выполняется только через проверенные запросы ассистента");
                         object result = await tools.InvokeAsync(toolName ?? "", arguments, inner);
                         await JsonAsync(new { type = "tool_result", name = toolName, result }, inner);
                     }, token);

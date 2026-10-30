@@ -31,7 +31,7 @@ public sealed class ConversationMemoryStore(IWebHostEnvironment env)
         try
         {
             var turns = JsonSerializer.Deserialize<List<Turn>>(await File.ReadAllTextAsync(path, ct)) ?? [];
-            return turns.Where(t => t.Role is "user" or "assistant" && t.Text.Length <= 4000)
+            return turns.Where(t => (t.Role is "user" or "assistant") && t.Text.Length <= 4000)
                 .TakeLast(1500).ToList();
         }
         catch (JsonException) { throw new InvalidDataException("Не удалось прочесть историю профиля"); }
@@ -49,10 +49,12 @@ public sealed class ConversationMemoryStore(IWebHostEnvironment env)
             var terms = Regex.Matches(query.ToLowerInvariant(), @"[\p{L}\p{N}]{4,}")
                 .Select(m => m.Value).Where(w => w.Length >= 4).Distinct().Take(16).ToHashSet();
             var old = turns.Take(Math.Max(0, turns.Count - 24)).ToArray();
+            bool generalRecall = Regex.IsMatch(query, @"помни|раньше|прошл|вспомни|обсуждали|говорили",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             var selected = old.Select((turn, i) => new {
                 Index = i, Turn = turn,
                 Score = terms.Count(term => turn.Text.Contains(term, StringComparison.OrdinalIgnoreCase))
-            }).Where(x => x.Score > 0).OrderByDescending(x => x.Score)
+            }).Where(x => x.Score > 0 || generalRecall).OrderByDescending(x => x.Score)
               .ThenByDescending(x => x.Index).Take(8).OrderBy(x => x.Index).ToArray();
             var output = new List<ChatMessage>();
             if (selected.Length > 0)
@@ -77,6 +79,8 @@ public sealed class ConversationMemoryStore(IWebHostEnvironment env)
         try
         {
             Directory.CreateDirectory(Root);
+            if (OperatingSystem.IsLinux())
+                Directory.SetUnixFileMode(Root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             var turns = await ReadUnsafeAsync(profile, ct);
             var now = DateTimeOffset.UtcNow;
             turns.Add(new Turn(now, "user", user[..Math.Min(user.Length, 4000)]));
