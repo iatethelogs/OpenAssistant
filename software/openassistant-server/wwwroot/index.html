@@ -7,7 +7,7 @@
 <body>
 <div class="layout">
 <aside class="sidebar">
- <a class="brand" href="/"><span class="brand-icon">OA</span><span><b>OpenAssistant</b><small>Сервер управления</small></span></a>
+ <a class="brand" href="/"><span class="brand-icon">OA</span><span><b>OpenAssistant</b><small>Управление</small></span></a>
  <nav id="navigation" aria-label="Навигация">
  <button type="button" class="nav-item active" data-view="overview"><span class="symbol">⌂</span>Обзор</button>
  <button type="button" class="nav-item" data-view="models"><span class="symbol">≡</span>Модели</button>
@@ -127,7 +127,7 @@
        <div class="rule"></div>
        <label>Ключ для подключения</label><div id="deviceKey" class="code-box">Не создан в этой сессии</div>
        <div class="button-row"><button id="createKey" class="button primary" type="button">Создать новый ключ</button><button id="copyKey" class="button secondary" type="button">Скопировать ключ</button></div>
-       <p class="small-warning">Сейчас используется общий ключ подключений сервера. Его перевыпуск делает старый ключ недействительным для новых подключений. Отдельные имена и профили устройств — следующий этап разработки.</p>
+       <p class="small-warning">Новый ключ заменит действующий ключ подключения.</p>
      </article>
      <article class="panel"><div class="panel-heading"><div><h2>Активные подключения</h2><p>Сеансы подключённых клиентов</p></div><span id="onlineBadge" class="state-tag neutral">0 онлайн</span></div>
        <div id="connections" class="connection-list"><div class="empty">Устройств пока нет. После подключения клиент появится здесь.</div></div>
@@ -139,8 +139,8 @@
 
  <section class="view" id="integrations">
     <div class="page-title"><h1>Сервисы и навыки</h1></div>
-    <article class="panel"><div class="panel-heading"><div><h2>Разрешённые инструменты LLM</h2><p>Выберите, к каким действиям ассистент может обращаться</p></div></div>
-      <div id="skillsList" class="skills-list"><p class="muted">Загружаем навыки…</p></div><div class="form-footer"><span class="minor">Изменяющие состояние устройства инструменты отключены по умолчанию.</span><button id="saveSkills" type="button" class="button primary">Сохранить разрешения</button></div>
+    <article class="panel"><div class="panel-heading"><div><h2>Доступные действия</h2><p>Выберите, к каким действиям ассистент может обращаться</p></div></div>
+      <div id="skillsList" class="skills-list"><p class="muted">Загружаем навыки…</p></div><div class="form-footer"><span class="minor"></span><button id="saveSkills" type="button" class="button primary">Сохранить разрешения</button></div>
     </article>
     
  
@@ -160,7 +160,7 @@
 
 
  <section class="view" id="models">
-  <div class="page-title"><h1>Модели и загрузки</h1><p>Управление локальными движками и хранилищем моделей.</p></div>
+  <div class="page-title"><h1>Модели и загрузки</h1><p>Загрузка, запуск и выбор моделей.</p></div>
   <div class="service-grid three" id="modelCards"></div>
   <div class="overview-grid wide">
     <article class="panel"><div class="panel-heading"><div><h2>Загрузка модели</h2><p>Hugging Face</p></div></div>
@@ -193,13 +193,13 @@
 
  <section class="view" id="media">
   <div class="page-title"><h1>Музыка и радио</h1></div>
-  <div class="providers-landscape"><div class="provider-title"><span class="eyebrow">STREAMING / SOURCES</span><h2>Музыка — из твоих источников.</h2><p>Яндекс Музыка подключается уже сейчас. Остальные провайдеры появятся по мере реализации адаптеров.</p></div><div class="provider-grid">
-<div class="provider-panel available"><span class="provider-symbol">Я</span><strong>Яндекс Музыка</strong><small>Авторизация на вкладке «Интеграции»</small><span class="provider-state">ПОДКЛЮЧЕНИЕ ДОСТУПНО</span></div>
-<div class="provider-panel"><span class="provider-symbol">VK</span><strong>VK Музыка</strong><small>Планируется</small><span class="provider-state">СКОРО</span></div>
-<div class="provider-panel"><span class="provider-symbol">◉</span><strong>Spotify</strong><small>Планируется</small><span class="provider-state">СКОРО</span></div>
-<div class="provider-panel"><span class="provider-symbol">⌁</span><strong>Локальная медиатека</strong><small>Каталоги, NAS и файлы</small><span class="provider-state">СКОРО</span></div>
-<div class="provider-panel"><span class="provider-symbol">♫</span><strong>Apple Music</strong><small>Планируется</small><span class="provider-state">СКОРО</span></div>
-<div class="provider-panel"><span class="provider-symbol">▶</span><strong>YouTube Music</strong><small>Планируется</small><span class="provider-state">СКОРО</span></div>
+  <div class="providers-landscape"><div class="provider-title"><h2>Источники музыки</h2></div><div class="provider-grid">
+<div class="provider-panel available"><span class="provider-symbol">Я</span><strong>Яндекс Музыка</strong><small>Авторизация на вкладке «Интеграции»</small><span class="provider-state">Подключение в настройках</span></div>
+<div class="provider-panel"><span class="provider-symbol">VK</span><strong>VK Музыка</strong><small>Нет подключения</small><span class="provider-state">Недоступно</span></div>
+<div class="provider-panel"><span class="provider-symbol">◉</span><strong>Spotify</strong><small>Нет подключения</small><span class="provider-state">Недоступно</span></div>
+<div class="provider-panel"><span class="provider-symbol">⌁</span><strong>Локальная медиатека</strong><small>Каталоги, NAS и файлы</small><span class="provider-state">Недоступно</span></div>
+<div class="provider-panel"><span class="provider-symbol">♫</span><strong>Apple Music</strong><small>Нет подключения</small><span class="provider-state">Недоступно</span></div>
+<div class="provider-panel"><span class="provider-symbol">▶</span><strong>YouTube Music</strong><small>Нет подключения</small><span class="provider-state">Недоступно</span></div>
 </div></div>
   <div class="test-grid"><article class="panel"><h2>Поиск радио</h2><label for="radioQuery">Станция</label><div class="button-row"><input id="radioQuery" placeholder="Название станции"><button id="searchRadio" class="button secondary">Найти</button></div><div id="radioResults" class="search-results"></div></article>
   <article class="panel"><h2>Яндекс Музыка</h2><label for="musicQuery">Название или исполнитель</label><div class="button-row"><input id="musicQuery" placeholder="Поиск композиции"><button id="searchMusic" class="button secondary">Найти</button></div><div id="musicResults" class="search-results"></div></article></div>
@@ -215,7 +215,7 @@
   <div class="page-title"><h1>Журнал сервера</h1></div>
   <div class="panel"><div class="button-row"><label for="logLevel">Уровень</label><select id="logLevel"><option value="">Все</option><option value="Information">Информация</option><option value="Warning">Предупреждения</option><option value="Error">Ошибки</option></select><button id="refreshLogs" class="button secondary">Обновить</button></div><pre id="serverLogs" class="output-lines">Загрузка…</pre></div>
  </section>
- <footer>OpenAssistant · <a href="/setup.html">Мастер установки</a></footer>
+ <footer><a href="/setup.html">Мастер настройки</a></footer>
 </main></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/audio-test.js" defer></script>
