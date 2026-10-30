@@ -110,7 +110,8 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
                     using var args = JsonDocument.Parse(call.function.arguments);
                     using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
                     limit.CancelAfter(TimeSpan.FromSeconds(15));
-                    var action = await skills.ExecuteAsync(call.function.name, args.RootElement, limit.Token);
+                    var action = await skills.ExecuteAsync(call.function.name, args.RootElement, limit.Token,
+                        history.LastOrDefault(m => m.Role == "user")?.Content);
                     result = action.Result;
                     media = action.Media;
                 }
