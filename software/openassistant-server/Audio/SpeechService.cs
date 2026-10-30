@@ -30,13 +30,39 @@ public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<Se
         var cfg = settings.CurrentValue;
         var voiceProfile = voices.Read();
         // контракт локального tts-адаптера: POST /synthesize, json -> audio/wav pcm16 mono.
-        using var response = await clients.CreateClient("tts").PostAsJsonAsync(
-            cfg.TtsUrl.TrimEnd('/') + "/synthesize",
-            new { text = phrase, model = string.IsNullOrWhiteSpace(modelOverride) ? cfg.TtsModel : modelOverride, voice = voiceProfile.Mode == "design" ? "" : (string.IsNullOrWhiteSpace(voice) ? voiceProfile.Speaker : voice),
-                instruct = voiceProfile.Mode == "design" ? voiceProfile.Description :
-                    string.IsNullOrWhiteSpace(voiceProfile.Style) ? null : voiceProfile.Style, language = cfg.TtsLanguage,
-                sample_rate = outputRate }, ct);
-        response.EnsureSuccessStatusCode();
+        // JsonContent из PostAsJsonAsync может отправляться chunked без Content-Length.
+        // Наш локальный Python HTTP-сервер принимает запросы с известной длиной тела.
+        byte[] json = JsonSerializer.SerializeToUtf8Bytes(new {
+            text = phrase,
+            model = string.IsNullOrWhiteSpace(modelOverride) ? cfg.TtsModel : modelOverride,
+            voice = voiceProfile.Mode == "design" ? "" :
+                (string.IsNullOrWhiteSpace(voice) ? voiceProfile.Speaker : voice),
+            instruct = voiceProfile.Mode == "design" ? voiceProfile.Description :
+                string.IsNullOrWhiteSpace(voiceProfile.Style) ? null : voiceProfile.Style,
+            language = cfg.TtsLanguage,
+            sample_rate = outputRate
+        });
+        using var content = new ByteArrayContent(json);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        content.Headers.ContentLength = json.Length;
+        using var response = await clients.CreateClient("tts").PostAsync(
+            cfg.TtsUrl.TrimEnd('/') + "/synthesize", content, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            string error = await response.Content.ReadAsStringAsync(ct);
+            try
+            {
+                using var detail = JsonDocument.Parse(error);
+                if (detail.RootElement.TryGetProperty("error", out var message) &&
+                    message.ValueKind == JsonValueKind.String)
+                    error = message.GetString() ?? error;
+            }
+            catch (JsonException) { }
+            if (error.Length > 300) error = error[..300];
+            throw new HttpRequestException(
+                $"Ошибка Qwen3-TTS (HTTP {(int)response.StatusCode}): {error}",
+                null, response.StatusCode);
+        }
         byte[] wav = await response.Content.ReadAsByteArrayAsync(ct);
         if (wav.Length > 30 * 1024 * 1024) throw new InvalidDataException("tts вернул слишком много аудио");
         return WavePcmReader.ReadPcm16(wav, outputRate);
