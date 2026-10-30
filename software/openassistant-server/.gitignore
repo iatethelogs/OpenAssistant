@@ -7,3 +7,4 @@ obj/
 models.local.json
 models.local.json.tmp
 yandex-music.local.json
+yandex-music.local.json.*.tmp

@@ -29,6 +29,7 @@ public static class StartupBanner
             System.Console.ForegroundColor = ConsoleColor.White;
             string displayUrl = url.Replace("0.0.0.0", "127.0.0.1", StringComparison.Ordinal);
             System.Console.WriteLine($"  Web control    {displayUrl}/settings.html");
+            System.Console.WriteLine($"  Connections    {displayUrl}/connections.html");
             System.Console.WriteLine($"  Voice chat     {displayUrl}/");
             System.Console.WriteLine($"  WebSocket      {displayUrl.Replace("http", "ws", StringComparison.Ordinal)}/ws");
             System.Console.ForegroundColor = ConsoleColor.DarkGray;

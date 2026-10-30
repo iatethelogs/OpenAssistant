@@ -18,6 +18,57 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
     private readonly SemaphoreSlim _tokenLock = new(1, 1);
     private string TokenFile => Path.Combine(env.ContentRootPath, "yandex-music.local.json");
 
+    /// <summary>проверяет действительность токена по account/status до его сохранения.</summary>
+    public async Task<string> ValidateTokenAsync(string token, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(token) || token.Length is < 10 or > 4096)
+            throw new ArgumentException("некорректный oauth-токен");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, Api + "/account/status");
+        request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", token.Trim());
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(8));
+        using var response = await factory.CreateClient("yandex-music").SendAsync(request, timeout.Token);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException("Яндекс Музыка отклонила токен (HTTP " +
+                (int)response.StatusCode + ")");
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
+        var root = document.RootElement;
+        if (!root.TryGetProperty("result", out var result) ||
+            result.ValueKind != JsonValueKind.Object ||
+            !result.TryGetProperty("account", out var account) ||
+            account.ValueKind != JsonValueKind.Object)
+            throw new InvalidDataException("Яндекс Музыка не подтвердила аккаунт");
+        string login = PropertyString(account, "login");
+        return login.Length > 0 ? login : "Аккаунт подтверждён";
+    }
+
+    /// <summary>возвращает статус авторизации без раскрытия OAuth-токена.</summary>
+    public async Task<ServiceConnectionStatus> ConnectionStatusAsync(CancellationToken ct)
+    {
+        if (!File.Exists(TokenFile))
+            return new ServiceConnectionStatus(false, false, null, "Не подключён");
+        try
+        {
+            string token = await ReadTokenAsync(ct);
+            string account = await ValidateTokenAsync(token, ct);
+            return new ServiceConnectionStatus(true, true, account, "Авторизация подтверждена");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or
+            InvalidDataException or InvalidOperationException or ArgumentException or TaskCanceledException)
+        {
+            return new ServiceConnectionStatus(true, false, null, "Проверка не удалась: " + ex.Message);
+        }
+    }
+
+    /// <summary>удаляет локальный токен и отключает учётную запись.</summary>
+    public async Task DisconnectAsync(CancellationToken ct)
+    {
+        await _tokenLock.WaitAsync(ct);
+        try { if (File.Exists(TokenFile)) File.Delete(TokenFile); }
+        finally { _tokenLock.Release(); }
+    }
+
     /// <summary>сохраняет пользовательский oauth-токен без пароля; файл недоступен другим пользователям linux.</summary>
     public async Task SaveTokenAsync(string token, CancellationToken ct)
     {

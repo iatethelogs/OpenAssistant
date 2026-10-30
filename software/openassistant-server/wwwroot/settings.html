@@ -25,7 +25,7 @@ button:disabled{opacity:.5;cursor:default}.bar{position:sticky;bottom:15px;backg
 </style>
 </head>
 <body>
-<header><div><div class="logo">OPENASSISTANT <span style="color:#91b3ff">/ CONTROL</span></div><div class="subtitle">Локальная панель конфигурации сервера</div></div><nav><a href="/">Диалог</a><a href="/health">Состояние</a></nav></header>
+<header><div><div class="logo">OPENASSISTANT <span style="color:#91b3ff">/ CONTROL</span></div><div class="subtitle">Локальная панель конфигурации сервера</div></div><nav><a href="/">Диалог</a><a href="/connections.html">Подключения</a><a href="/media.html">Модели</a><a href="/health">Состояние</a></nav></header>
 <form id="settings"><div class="grid">
 <section><h2>Языковая модель</h2>
 <label for="LlmUrl">Адрес API</label><input id="LlmUrl" required placeholder="http://127.0.0.1:8080">
@@ -45,7 +45,7 @@ button:disabled{opacity:.5;cursor:default}.bar{position:sticky;bottom:15px;backg
 <label for="TtsLanguage">Язык</label><input id="TtsLanguage" required>
 <label for="OutputSampleRate">Частота воспроизведения, Гц</label><input id="OutputSampleRate" type="number" min="8000" max="48000" required>
 </section>
-<section><h2>Home Assistant</h2>
+<section><h2>Home Assistant</h2><div class="hint">Подключение, проверка и отключение: <a href="/connections.html">открыть сервисы</a>.</div>
 <label for="HomeAssistantUrl">Адрес Home Assistant</label><input id="HomeAssistantUrl" placeholder="http://homeassistant.local:8123">
 <label for="HomeAssistantToken">Токен доступа</label><input id="HomeAssistantToken" type="password" autocomplete="new-password" placeholder="Не изменять">
 <div class="hint" id="tokenHint">Оставьте пустым, чтобы сохранить прежний токен.</div>
@@ -68,7 +68,7 @@ async function load(){
   const res=await fetch('/api/settings',{cache:'no-store'});
   if(!res.ok)throw Error('Панель доступна только на локальном компьютере (HTTP '+res.status+')');
   const data=await res.json();
-  for(const key of ids)$(key).value=data[key]??'';
+  for(const key of ids)$(key).value=data[key[0].toLowerCase()+key.slice(1)]??'';
   $('RadioStations').value=JSON.stringify(data.radioStations??{},null,2);
   $('tokenHint').textContent=data.hasHomeAssistantToken?'Токен сохранён. Оставьте поле пустым, чтобы его не менять.':'Токен ещё не задан.';
   $('deviceHint').textContent=data.hasDeviceToken?'Ключ задан. Оставьте поле пустым, чтобы сохранить его.':'Ключ не задан: удалённые устройства не смогут подключиться.';

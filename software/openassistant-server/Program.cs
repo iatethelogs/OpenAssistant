@@ -14,8 +14,11 @@ builder.Services.AddSingleton<SettingsStore>();
 builder.Services.AddSingleton<ModelProcessManager>();
 builder.Services.AddSingleton<RadioBrowserService>();
 builder.Services.AddSingleton<YandexMusicService>();
+builder.Services.AddSingleton<YandexDeviceAuthService>();
+builder.Services.AddSingleton<HomeAssistantConnectionService>();
 builder.Services.AddHttpClient("radio-browser", c => c.DefaultRequestHeaders.UserAgent.ParseAdd("OpenAssistant/0.1"));
 builder.Services.AddHttpClient("yandex-music");
+builder.Services.AddHttpClient("yandex-oauth", c => c.Timeout = TimeSpan.FromSeconds(12));
 builder.Services.Configure<ServerOptions>(builder.Configuration.GetSection("OpenAssistant"));
 builder.Services.AddHttpClient("llm");
 builder.Services.AddHttpClient("stt");
@@ -83,6 +86,86 @@ app.MapGet("/api/radio/search", async (HttpContext ctx, string name, RadioBrowse
     try { return Results.Ok(await radio.SearchAsync(name, ct)); }
     catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
+// состояние сервисов без передачи сохранённых токенов в браузер.
+app.MapGet("/api/integrations", async (
+    HttpContext ctx, YandexMusicService yandex,
+    HomeAssistantConnectionService home, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    var yandexStatus = await yandex.ConnectionStatusAsync(ct);
+    var homeStatus = await home.StatusAsync(ct);
+    return Results.Ok(new {
+        yandexMusic = yandexStatus,
+        homeAssistant = homeStatus,
+        radioBrowser = new { requiresAuthentication = false, provider = "Radio Browser" }
+    });
+});
+app.MapPost("/api/integrations/yandex/token", async (
+    HttpContext ctx, YandexTokenInput input, YandexMusicService music, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try {
+        string account = await music.ValidateTokenAsync(input.Token, ct);
+        await music.SaveTokenAsync(input.Token.Trim(), ct);
+        return Results.Ok(new { connected = true, account });
+    }
+    catch (Exception ex) when (ex is ArgumentException or InvalidDataException or
+        InvalidOperationException or HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapPost("/api/integrations/yandex/device/start", async (
+    HttpContext ctx, YandexDeviceAuthService oauth, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await oauth.StartAsync(ct)); }
+    catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or
+        System.Text.Json.JsonException or TaskCanceledException)
+    { return Results.BadRequest(new { error = "Не удалось получить код Яндекса: " + ex.Message }); }
+});
+app.MapPost("/api/integrations/yandex/device/poll", async (
+    HttpContext ctx, YandexAuthPollRequest input, YandexDeviceAuthService oauth, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await oauth.PollAsync(input.Session, ct)); }
+    catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or
+        InvalidOperationException or System.Text.Json.JsonException or TaskCanceledException)
+    { return Results.BadRequest(new { error = "Ошибка проверки авторизации: " + ex.Message }); }
+});
+app.MapPost("/api/integrations/yandex/device/cancel", (
+    HttpContext ctx, YandexDeviceAuthService oauth) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    oauth.Cancel();
+    return Results.Ok(new { cancelled = true });
+});
+app.MapDelete("/api/integrations/yandex", async (
+    HttpContext ctx, YandexMusicService music, YandexDeviceAuthService oauth, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    oauth.Cancel();
+    await music.DisconnectAsync(ct);
+    return Results.Ok(new { disconnected = true });
+});
+app.MapPost("/api/integrations/homeassistant", async (
+    HttpContext ctx, HomeAssistantConnectRequest input,
+    HomeAssistantConnectionService home, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try {
+        var result = await home.ConnectAsync(input.Url, input.Token, ct);
+        return result.Connected ? Results.Ok(result) : Results.BadRequest(result);
+    }
+    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
+        HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapDelete("/api/integrations/homeassistant", async (
+    HttpContext ctx, HomeAssistantConnectionService home, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    await home.DisconnectAsync(ct);
+    return Results.Ok(new { disconnected = true });
+});
 app.MapGet("/api/yandex/search", async (HttpContext ctx, string query, YandexMusicService music, CancellationToken ct) =>
 {
     if (!localOnly(ctx)) return Results.StatusCode(403);
@@ -102,8 +185,14 @@ app.MapGet("/api/yandex/tracks/{trackId}/playback", async (
 app.MapPost("/api/yandex/token", async (HttpContext ctx, YandexTokenInput input, YandexMusicService music, CancellationToken ct) =>
 {
     if (!localOnly(ctx)) return Results.StatusCode(403);
-    try { await music.SaveTokenAsync(input.Token, ct); return Results.Ok(new { saved = true }); }
-    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+    try {
+        string account = await music.ValidateTokenAsync(input.Token, ct);
+        await music.SaveTokenAsync(input.Token.Trim(), ct);
+        return Results.Ok(new { saved = true, account });
+    }
+    catch (Exception ex) when (ex is ArgumentException or InvalidDataException or
+        InvalidOperationException or HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
+    { return Results.BadRequest(new { error = ex.Message }); }
 });
 app.MapGet("/api/events", (HttpContext ctx, long? after, ConversationLog log) =>
     localOnly(ctx) ? Results.Ok(log.Since(Math.Max(0, after ?? 0))) : Results.StatusCode(403));
@@ -140,3 +229,6 @@ app.Lifetime.ApplicationStarted.Register(() =>
 app.Run();
 
 public sealed record YandexTokenInput(string Token);
+
+public sealed record YandexAuthPollRequest(string Session);
+public sealed record HomeAssistantConnectRequest(string Url, string Token);

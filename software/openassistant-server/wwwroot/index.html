@@ -10,14 +10,14 @@ h1{font-weight:650;letter-spacing:-.035em}p,.muted{color:#aeb6c6}
 .panel{background:#1b202a;border:1px solid #303746;border-radius:14px;padding:20px;margin:16px 0}
 .row{display:flex;gap:10px;flex-wrap:wrap}input,button{font:inherit;padding:11px;border-radius:9px;border:1px solid #424c61}
 input{background:#101319;color:#e9edf7;flex:1;min-width:140px}
-button{background:#384d84;color:white;cursor:pointer}button:disabled{opacity:.5}
+a{color:#a4c0ff;text-decoration:none}button{background:#384d84;color:white;cursor:pointer}button:disabled{opacity:.5}
 #log{white-space:pre-wrap;line-height:1.5;max-height:480px;overflow-y:auto}
 small{color:#aeb6c6}#state{font-weight:600}
 </style>
 </head>
 <body>
 <h1>OpenAssistant</h1>
-<p>Локальный голосовой ассистент</p>
+<p>Локальный голосовой ассистент · <a href="/settings.html">Настройки</a> · <a href="/connections.html">Подключения</a> · <a href="/media.html">Музыка и модели</a></p>
 <div class="panel">
 <div class="row"><span id="state">Отключён</span><button id="connect">Подключиться</button><button id="stop" disabled>Прервать</button></div>
 </div>

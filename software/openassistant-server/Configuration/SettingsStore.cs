@@ -20,6 +20,30 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
         };
     }
 
+    /// <summary>обновляет только параметры Home Assistant; прочие настройки сохраняет.</summary>
+    public Task UpdateHomeAssistantAsync(string url, string token, CancellationToken ct)
+    {
+        var s = options.CurrentValue;
+        return SaveAsync(new SettingsUpdate
+        {
+            LlmUrl = s.LlmUrl,
+            LlmModel = s.LlmModel,
+            SystemPrompt = s.SystemPrompt,
+            SttUrl = s.SttUrl,
+            SttModel = s.SttModel,
+            TtsUrl = s.TtsUrl,
+            TtsModel = s.TtsModel,
+            TtsVoice = s.TtsVoice,
+            TtsLanguage = s.TtsLanguage,
+            HomeAssistantUrl = url,
+            HomeAssistantToken = token,
+            DeviceToken = s.DeviceToken,
+            InputSampleRate = s.InputSampleRate,
+            OutputSampleRate = s.OutputSampleRate,
+            RadioStations = new Dictionary<string, string>(s.RadioStations)
+        }, ct);
+    }
+
     /// <summary>валидирует настройки и атомарно сохраняет их в settings.local.json.</summary>
     public async Task SaveAsync(SettingsUpdate update, CancellationToken ct)
     {
