@@ -2,7 +2,7 @@
 const el=id=>document.getElementById(id);
 const state={catalog:[],selected:{},jobs:{},step:"llm",pcm:null,voiceUrl:null,recordUrl:null,key:"",starting:{},shown:{},last:{}};
 const captions={llm:"Интеллект",stt:"Слух",tts:"Голос"};
-const steps=["llm","stt","tts","complete"];
+const steps=["llm","stt","tts","music","complete"];
 function showError(message){alert(message)}
 async function api(url,method="GET",data){const init={method,cache:"no-store"};if(data!==undefined){init.headers={"Content-Type":"application/json"};init.body=JSON.stringify(data)}
  const r=await fetch(url,init);const body=await r.json().catch(()=>({}));if(!r.ok)throw Error(body.error||body.message||"HTTP "+r.status);return body}
@@ -33,7 +33,9 @@ function renderCards(role){const box=el(role+"Models");box.replaceChildren();for
 function updateButtons(){for(const role of ["llm","stt","tts"]){const b=el("start"+role.toUpperCase().slice(0,1)+role.slice(1));if(!b)continue;const status=state.jobs[role]?.status;b.disabled=status==="running";b.textContent=status==="ready"?"Установить другую модель":status==="running"?"Установка выполняется…":"Установить и проверить"}}
 async function start(role){if(state.starting[role]||state.jobs[role]?.status==="running")return;const modelId=state.selected[role];if(!modelId)throw Error("Сначала выберите модель");
  state.starting[role]=true;
- try{const input={modelId};if(role==="llm"){input.gpuUuid=el("gpuSelect").value||null;input.contextSize=Number(el("contextSelect").value);input.temperature=Number(el("temperatureSelect").value)}const result=await api("/api/setup/"+role,"POST",input);state.jobs[role]=result;state.shown[role]=false;el("result"+role.charAt(0).toUpperCase()+role.slice(1)).classList.remove("visible");updateRole(role,result);updateButtons()}
+ try{const input={modelId};
+ if(role==="llm"){input.gpuUuid=el("gpuSelect").value||null;input.contextSize=Number(el("contextSelect").value);input.temperature=Number(el("temperatureSelect").value);input.modelUrl=el("customModelUrl").value.trim()||null;}
+ else input.gpuUuid=el(role+"Gpu").value||null;const result=await api("/api/setup/"+role,"POST",input);state.jobs[role]=result;state.shown[role]=false;el("result"+role.charAt(0).toUpperCase()+role.slice(1)).classList.remove("visible");updateRole(role,result);updateButtons()}
  catch(e){showError("Не удалось начать установку: "+e.message)}finally{state.starting[role]=false}}
 for(const role of ["llm","stt","tts"]){const button=el("start"+role.charAt(0).toUpperCase()+role.slice(1));button.onclick=()=>start(role)}
 const titles={prepare:"Проверка системы",download:"Загрузка модели",install:"Установка зависимостей",runtime:"Подготовка движка",launch:"Запуск модели",loading:"Загрузка весов",test:"Проверка работы",ready:"Установка завершена",failed:"Установка прервана",cancelled:"Установка отменена",fallback:"Переключение на CPU",starting:"Подготовка"};
@@ -168,9 +170,49 @@ async function init(){try{
  if(best)el("gpuInfo").textContent="Доступно GPU: "+cards.length+". По умолчанию будет выбрана подходящая карта.";
  else el("gpuInfo").textContent="GPU не обнаружен. Возможен запуск на CPU.";
  const picker=el("gpuSelect");
- for(const card of cards){const option=new Option("GPU "+card.index+" · "+card.name+" · "+(card.totalMiB-card.usedMiB)+" МиБ свободно",card.uuid);picker.add(option)}
+ for(const card of cards){
+  const name="GPU "+card.index+" · "+card.name+" · "+(card.totalMiB-card.usedMiB)+" МиБ свободно";
+  picker.add(new Option(name,card.uuid));
+  el("sttGpu").add(new Option(name,card.uuid));
+  el("ttsGpu").add(new Option(name,card.uuid));
+ }
  updateVoiceMode();
  }catch(e){el("serverState").textContent="Ошибка подключения";showError(e.message)}
  const hash=location.hash.slice(1);if(steps.includes(hash))show(hash);
 }
 init();setInterval(poll,2000);
+
+
+/* Optional music connection during setup */
+let setupAuthSession=null,setupAuthEpoch=0,setupAuthTimer=null;
+function stopSetupAuth(){setupAuthEpoch++;setupAuthSession=null;clearTimeout(setupAuthTimer);setupAuthTimer=null;el("setupMusicAuth").classList.add("hidden")}
+async function setupMusicStatus(){
+ const v=await api("/api/integrations");
+ el("setupMusicState").textContent=v.yandexMusic?.connected?"Аккаунт подключён: "+(v.yandexMusic.account||""):"Не подключено";
+ if(v.yandexMusic?.connected)el("setupMusicLogin").textContent="Переподключить";
+}
+el("setupMusicSkip").onclick=()=>{stopSetupAuth();show("complete")};
+el("setupMusicLogin").onclick=async()=>{
+ const btn=el("setupMusicLogin");btn.disabled=true;stopSetupAuth();
+ try{
+  const v=await api("/api/integrations/yandex/device/start","POST");
+  const epoch=++setupAuthEpoch;setupAuthSession=v.session;
+  el("setupMusicCode").textContent=v.userCode;el("setupMusicUrl").href=v.verificationUrl;
+  el("setupMusicAuth").classList.remove("hidden");
+  const poll=async()=>{
+   if(epoch!==setupAuthEpoch||!setupAuthSession)return;
+   try{
+    const result=await api("/api/integrations/yandex/device/poll","POST",{session:setupAuthSession});
+    if(epoch!==setupAuthEpoch)return;
+    if(result.state==="connected"){stopSetupAuth();await setupMusicStatus();show("complete");return}
+    if(result.state==="expired"||result.state==="error"){el("setupMusicProgress").textContent=result.message;return}
+    el("setupMusicProgress").textContent=result.message||"Ожидание подтверждения";
+    setupAuthTimer=setTimeout(poll,Math.max(5,Number(result.interval)||5)*1000);
+   }catch(e){el("setupMusicProgress").textContent=e.message;setupAuthTimer=setTimeout(poll,10000)}
+  };
+  setupAuthTimer=setTimeout(poll,Math.max(5,Number(v.interval)||5)*1000);
+ }catch(e){alert("Яндекс Музыка: "+e.message)}finally{btn.disabled=false}
+};
+el("setupMusicCancel").onclick=async()=>{stopSetupAuth();await api("/api/integrations/yandex/device/cancel","POST").catch(()=>{})};
+el("setupMusicSaveToken").onclick=async()=>{const b=el("setupMusicSaveToken");b.disabled=true;try{await api("/api/integrations/yandex/token","POST",{token:el("setupMusicToken").value.trim()});el("setupMusicToken").value="";stopSetupAuth();await setupMusicStatus();show("complete")}catch(e){alert(e.message)}finally{b.disabled=false}};
+for(const btn of document.querySelectorAll('[data-step="music"],[data-next="music"]'))btn.addEventListener("click",()=>setupMusicStatus().catch(e=>el("setupMusicState").textContent=e.message));

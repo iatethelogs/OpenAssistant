@@ -12,14 +12,13 @@ public static class GuidedModelCatalog
     public sealed record Choice(string Id, string Role, string Name, string Summary,
         string Repo, string File, double DiskGb, string Quality, bool Default, bool Recommended);
     public static readonly Choice[] All = [
-        new("gemma-4b", "llm", "Gemma 3 · 4B", "Сбалансированная модель для ассистента", "unsloth/gemma-3-4b-it-GGUF", "gemma-3-4b-it-Q8_0.gguf", 4.13, "Q8_0", true, true),
-        new("phi-mini", "llm", "Phi-4 Mini · 3.8B", "Компактная, хороша для технических вопросов", "unsloth/Phi-4-mini-instruct-GGUF", "Phi-4-mini-instruct.Q8_0.gguf", 4.08, "Q8_0", false, true),
-        new("llama-3b", "llm", "Llama 3.2 · 3B", "Лёгкая универсальная модель", "bartowski/Llama-3.2-3B-Instruct-GGUF", "Llama-3.2-3B-Instruct-Q8_0.gguf", 3.42, "Q8_0", false, false),
-        new("smollm-3b", "llm", "SmolLM3 · 3B", "Для экспериментов и быстрого отклика", "ggml-org/SmolLM3-3B-GGUF", "SmolLM3-Q8_0.gguf", 3.28, "Q8_0", false, false),
-        new("gemma-1b", "llm", "Gemma 3 · 1B", "Минимальные требования и быстрый отклик", "unsloth/gemma-3-1b-it-GGUF", "gemma-3-1b-it-Q8_0.gguf", 1.07, "Q8_0", false, false),
-        new("gigaam-rnnt", "stt", "GigaAM v3 · RNNT", "Распознавание русской речи с пунктуацией", "salute-developers/GigaAM", "", 1.2, "FP32 / FP16", true, true),
-        new("qwen-tts-06", "tts", "Qwen3-TTS · 0.6B", "Выбор готового голоса, экономия VRAM", "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", "", 2.5, "FP16", true, true),
-        new("qwen-tts-design", "tts", "Qwen3-TTS · VoiceDesign 1.7B", "Создание голоса по текстовому описанию; требует больше памяти и может работать на CPU", "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign", "", 5.0, "FP16", false, false)
+        new("gemma-4b-abl", "llm", "Gemma 3 4B · Abliterated", "4.2 ГБ · Q8_0", "mradermacher/gemma-3-4b-abliterated-GGUF", "gemma-3-4b-abliterated.Q8_0.gguf", 4.13, "Q8_0", true, true),
+        new("phi-mini-abl", "llm", "Phi-4 Mini · Abliterated", "4.1 ГБ · Q8_0", "tensorblock/Phi-4-mini-instruct-abliterated-GGUF", "Phi-4-mini-instruct-abliterated-Q8_0.gguf", 4.08, "Q8_0", false, true),
+        new("llama-3b-heretic", "llm", "Llama 3.2 3B · Heretic", "3.4 ГБ · Q8_0", "tinyopsec/Llama-3.2-3B-Instruct-heretic-ablitered-uncensored-GGUF", "model_q8_0.gguf", 3.42, "Q8_0", false, true),
+        new("llama-3b-abl", "llm", "Llama 3.2 3B · Abliterated", "3.4 ГБ · Q8_0", "QuantFactory/Llama-3.2-3B-Instruct-abliterated-GGUF", "Llama-3.2-3B-Instruct-abliterated.Q8_0.gguf", 3.42, "Q8_0", false, false),
+        new("gigaam-rnnt", "stt", "GigaAM v3 · RNNT", "Распознавание русской речи", "salute-developers/GigaAM", "", 1.2, "FP32 / FP16", true, true),
+        new("qwen-tts-06", "tts", "Qwen3-TTS · 0.6B", "Готовые голоса", "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", "", 2.5, "FP16", true, true),
+        new("qwen-tts-design", "tts", "Qwen3-TTS · VoiceDesign 1.7B", "Голос по описанию", "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign", "", 5.0, "FP16", false, false)
     ];
     public static Choice Require(string id, string role) =>
         All.FirstOrDefault(x => x.Id == id && x.Role == role)
@@ -35,7 +34,7 @@ public sealed class GuidedSetupService(
     private readonly object _gate = new();
     private readonly Dictionary<string, Job> _jobs = new(StringComparer.Ordinal);
     private const string LlmDir = "/opt/llama.cpp";
-    public sealed record BeginRequest(string ModelId, string? GpuUuid, int? ContextSize, double? Temperature);
+    public sealed record BeginRequest(string ModelId, string? GpuUuid, int? ContextSize, double? Temperature, string? ModelUrl);
     public sealed record TestRequest(string Prompt);
     private sealed class Job
     {
@@ -124,10 +123,12 @@ public sealed class GuidedSetupService(
     {
         if (role is not ("llm" or "stt" or "tts")) throw new ArgumentException("Недопустимая роль");
         if (input is null) throw new ArgumentException("Нужно выбрать модель");
-        var choice = GuidedModelCatalog.Require(input.ModelId, role);
+        var choice = !string.IsNullOrWhiteSpace(input.ModelUrl) && role == "llm"
+            ? ParseCustomModel(input.ModelUrl)
+            : GuidedModelCatalog.Require(input.ModelId, role);
         if (role == "llm" && (input.ContextSize is < 512 or > 32768 || input.Temperature is < 0 or > 2))
             throw new ArgumentException("Контекст или температура вне допустимого диапазона");
-        if (!string.IsNullOrEmpty(input.GpuUuid) &&
+        if (!string.IsNullOrEmpty(input.GpuUuid) && input.GpuUuid != "cpu" &&
             !System.Text.RegularExpressions.Regex.IsMatch(input.GpuUuid, @"^GPU-[A-Za-z0-9-]{8,80}$"))
             throw new ArgumentException("Неверный идентификатор GPU");
         var j = new Job { Role = role, ModelId = choice.Id, ModelName = choice.Name };
@@ -137,15 +138,43 @@ public sealed class GuidedSetupService(
                 throw new InvalidOperationException("Подготовка этой модели уже выполняется");
             _jobs[role] = j;
         }
-        _ = Task.Run(() => ExecuteAsync(j, choice, input.GpuUuid, input.ContextSize ?? 4096, input.Temperature ?? 0.5));
+        _ = Task.Run(() => ExecuteAsync(j, choice, input.GpuUuid == "cpu" ? null : input.GpuUuid, input.GpuUuid == "cpu", input.ContextSize ?? 4096, input.Temperature ?? 0.5));
         return Snapshot(j);
     }
-    private async Task ExecuteAsync(Job j, GuidedModelCatalog.Choice choice, string? gpu, int contextSize, double temperature)
+    private static GuidedModelCatalog.Choice ParseCustomModel(string supplied)
+    {
+        // Только Hugging Face: исключаем локальные адреса и произвольные URL (SSRF).
+        if (!Uri.TryCreate(supplied.Trim(), UriKind.Absolute, out var url) ||
+            url.Scheme != Uri.UriSchemeHttps || !url.Host.Equals("huggingface.co", StringComparison.OrdinalIgnoreCase) ||
+            url.Port != 443 || url.UserInfo.Length != 0 || url.Query.Length != 0 || url.Fragment.Length != 0)
+            throw new ArgumentException("Укажите HTTPS-ссылку на модель Hugging Face");
+        string[] chunks = url.AbsolutePath.Trim('/').Split('/');
+        if (chunks.Length < 2 || chunks.Any(x => x is "." or "..") ||
+            chunks[0].Length is < 1 or > 80 || chunks[1].Length is < 1 or > 80 ||
+            !System.Text.RegularExpressions.Regex.IsMatch(chunks[0] + "/" + chunks[1],
+                @"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"))
+            throw new ArgumentException("Некорректная ссылка на модель");
+        string file = "";
+        if (chunks.Length > 2)
+        {
+            if (chunks.Length < 4 || chunks[2] is not ("blob" or "resolve" or "tree") || chunks[3] != "main")
+                throw new ArgumentException("Поддерживаются ссылки на репозиторий или отдельный GGUF из ветки main");
+            if (chunks[2] == "tree" && chunks.Length == 4) return new GuidedModelCatalog.Choice("custom", "llm", chunks[1], "Пользовательская модель", chunks[0] + "/" + chunks[1], "", 0, "GGUF", false, false);
+            file = string.Join("/", chunks.Skip(4));
+            if (!file.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase) ||
+                chunks.Skip(4).Any(x => x is "" or "." or ".."))
+                throw new ArgumentException("Выберите файл GGUF");
+        }
+        return new GuidedModelCatalog.Choice("custom", "llm", chunks[1], "Пользовательская модель",
+            chunks[0] + "/" + chunks[1], file, 0, "GGUF", false, false);
+    }
+
+    private async Task ExecuteAsync(Job j, GuidedModelCatalog.Choice choice, string? gpu, bool forceCpu, int contextSize, double temperature)
     {
         try
         {
             Stage(j, "prepare", "Проверяем сервер и доступные видеокарты");
-            gpu ??= await ChooseGpuAsync(j.Stop.Token);
+            if (!forceCpu) gpu ??= await ChooseGpuAsync(j.Stop.Token);
             lock (_gate) j.Gpu = gpu;
             if (j.Role == "llm") await SetupLlmAsync(j, choice, gpu, contextSize, temperature, j.Stop.Token);
             else await SetupSpeechAsync(j, choice, gpu, j.Stop.Token);
@@ -194,14 +223,26 @@ public sealed class GuidedSetupService(
     private async Task SetupLlmAsync(Job j, GuidedModelCatalog.Choice choice, string? gpu, int contextSize, double temperature, CancellationToken ct)
     {
         Stage(j, "download", "Скачиваем " + choice.Name);
-        var request = new ModelDownloadManager.DownloadRequest(choice.Repo, "main", [choice.File]);
+        string selectedFile = choice.File;
+        if (string.IsNullOrWhiteSpace(selectedFile))
+        {
+            var manifest = await downloads.InspectAsync(choice.Repo, "main", ct);
+            selectedFile = manifest.Files
+                .Where(x => x.Path.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase) && x.Size <= 8L * 1024 * 1024 * 1024)
+                .OrderByDescending(x => x.Path.Contains("Q8_0", StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(x => x.Size)
+                .Select(x => x.Path).FirstOrDefault()
+                ?? throw new InvalidOperationException("В репозитории нет подходящего GGUF-файла размером до 8 ГБ");
+            Output(j, "Выбран файл: " + selectedFile);
+        }
+        var request = new ModelDownloadManager.DownloadRequest(choice.Repo, "main", [selectedFile]);
         using var result = JsonDocument.Parse(JsonSerializer.Serialize(await downloads.StartAsync(request, ct)));
         var id = result.RootElement.GetProperty("id").GetGuid();
         string folder = result.RootElement.GetProperty("path").GetString()!;
         await downloads.WaitAsync(id, (received, total, file) => {
             lock (_gate) { j.Bytes = received; j.Total = total; j.Description = "Загрузка · " + file; }
         }, ct);
-        j.ModelPath = Path.Combine(folder, choice.File);
+        j.ModelPath = Path.Combine(folder, selectedFile);
         if (!File.Exists(j.ModelPath)) throw new FileNotFoundException("Файл модели не появился после скачивания");
         Stage(j, "runtime", "Проверяем llama.cpp и необходимые компоненты");
         var runtime = await FindOrBuildLlamaAsync(j, gpu is not null, ct);
@@ -276,8 +317,60 @@ public sealed class GuidedSetupService(
                 : ["qwen-tts", "numpy", "soundfile"];
             // Не создаём venv и не устанавливаем библиотеки на диск проекта.
             await RunCommandAsync(j, python,
-                ["-m", "pip", "install", "--break-system-packages", "--no-input", ..packages], env.ContentRootPath, ct, 1800);
+                ["-m", "pip", "install", "--break-system-packages", "--root-user-action=ignore", "--no-input", ..packages], env.ContentRootPath, ct, 1800);
             await File.WriteAllTextAsync(packageMarker, DateTimeOffset.UtcNow.ToString("O"), ct);
+        }
+        // .ready может остаться после неполной установки. Всегда проверяем реальные импорты.
+        if (j.Role == "stt")
+        {
+            Stage(j, "install", "Проверяем совместимость torch и torchaudio");
+            try
+            {
+                await RunCommandAsync(j, python, ["-c", "import torch, torchaudio, gigaam, soundfile; print('torch',torch.__version__,'torchaudio',torchaudio.__version__)"],
+                    env.ContentRootPath, ct, 60);
+            }
+            catch (InvalidOperationException)
+            {
+                Output(j, "Восстанавливаем PyTorch и torchaudio для GigaAM");
+                // Сначала определяем версию torch, чтобы torchaudio использовала ту же ABI.
+                string? version = await ReadTorchVersionAsync(python, ct);
+                if (version is not null)
+                {
+                    await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
+                        "--root-user-action=ignore", "--no-input", "--upgrade", "torchaudio==" + version],
+                        env.ContentRootPath, ct, 1200);
+                }
+                else
+                {
+                    await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
+                        "--root-user-action=ignore", "--no-input", "torch", "torchaudio"],
+                        env.ContentRootPath, ct, 1800);
+                }
+                try
+                {
+                    await RunCommandAsync(j, python, ["-c", "import torch, torchaudio, gigaam, soundfile; print('torch',torch.__version__,'torchaudio',torchaudio.__version__)"],
+                        env.ContentRootPath, ct, 90);
+                }
+                catch (InvalidOperationException)
+                {
+                    Output(j, "Восстанавливаем остальные библиотеки GigaAM");
+                    await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
+                        "--root-user-action=ignore", "--no-input", "git+https://github.com/salute-developers/GigaAM.git",
+                        "numpy", "soundfile"], env.ContentRootPath, ct, 1800);
+                    await RunCommandAsync(j, python, ["-c", "import torch, torchaudio, gigaam, soundfile"],
+                        env.ContentRootPath, ct, 90);
+                }
+            }
+        }
+        else
+        {
+            try { await RunCommandAsync(j, python, ["-c", "import torch, qwen_tts, numpy, soundfile, scipy"], env.ContentRootPath, ct, 60); }
+            catch (InvalidOperationException)
+            {
+                await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages", "--root-user-action=ignore",
+                    "--no-input", "--upgrade", "qwen-tts", "numpy", "soundfile", "scipy"], env.ContentRootPath, ct, 1800);
+                await RunCommandAsync(j, python, ["-c", "import torch, qwen_tts, numpy, soundfile, scipy"], env.ContentRootPath, ct, 90);
+            }
         }
         Stage(j, "launch", "Запускаем сервис; веса будут загружены автоматически");
         string port = j.Role == "stt" ? "8016" : "8020";
@@ -298,6 +391,7 @@ public sealed class GuidedSetupService(
         try { await WaitForHealthAsync(j, profile.HealthUrl, ct, 300); }
         catch (Exception ex) when (gpu is not null && (ex is TimeoutException or InvalidOperationException))
         {
+            if (!await IsGpuFailureAsync(j.Role, ct)) throw;
             Stage(j, "fallback", "GPU-драйвер или PyTorch не поддерживает модель. Пробуем CPU.");
             profile.GpuUuids = [];
             profile.Gpus = [];
@@ -409,6 +503,38 @@ public sealed class GuidedSetupService(
             throw new FileNotFoundException("Сборка завершена, но llama-server не найден", result);
         return (result, gpu);
     }
+    private async Task<bool> IsGpuFailureAsync(string role, CancellationToken ct)
+    {
+        string[] logs = await processes.ProcessLogsAsync(role, ct);
+        var tail = string.Join("\n", logs.TakeLast(45));
+        if (tail.Contains("ModuleNotFoundError", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("ImportError", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return tail.Contains("CUDA", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("out of memory", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("no kernel image", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("device-side assert", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<string?> ReadTorchVersionAsync(string python, CancellationToken ct)
+    {
+        try
+        {
+            using var p = Process.Start(new ProcessStartInfo(python) {
+                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
+                ArgumentList = { "-c", "import torch;print(torch.__version__.split('+')[0])" }
+            });
+            if (p is null) return null;
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            string value = (await p.StandardOutput.ReadToEndAsync(timeout.Token)).Trim();
+            await p.WaitForExitAsync(timeout.Token);
+            return p.ExitCode == 0 && System.Text.RegularExpressions.Regex.IsMatch(value, @"^\d+\.\d+\.\d+$")
+                ? value : null;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or OperationCanceledException) { return null; }
+    }
+
     private async Task InstallAptAsync(Job j, string[] packages, CancellationToken ct)
     {
         if (!OperatingSystem.IsLinux() || Environment.UserName != "root")

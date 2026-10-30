@@ -7,7 +7,7 @@
 <body>
 <div class="layout">
 <aside class="sidebar">
- <a class="brand" href="/"><span class="brand-icon">OA</span><span><b>OpenAssistant</b><small>LOCAL AI PLATFORM</small></span></a>
+ <a class="brand" href="/"><span class="brand-icon">OA</span><span><b>OpenAssistant</b><small>ЛОКАЛЬНЫЙ СЕРВЕР</small></span></a>
  <div class="nav-title">УПРАВЛЕНИЕ</div>
  <nav id="navigation">
   <button type="button" class="nav-item active" data-view="overview"><span class="symbol">◈</span>Обзор системы</button>
@@ -17,27 +17,28 @@
   <button type="button" class="nav-item" data-view="integrations"><span class="symbol">⌘</span>Интеграции</button>
  </nav>
  <div class="nav-title secondary-title">ДОПОЛНИТЕЛЬНО</div>
- <div class="nav-links">
-  <a href="/chat.html" class="nav-item"><span class="symbol">▤</span>Диалог</a>
-  <a href="/media.html" class="nav-item"><span class="symbol">♫</span>Музыка и радио</a>
-  <a href="/logs.html" class="nav-item"><span class="symbol">≡</span>Журнал сервера</a>
-  <a href="/control.html#advanced" class="nav-item"><span class="symbol">⚙</span>Расширенные настройки</a>
- </div>
- <div class="sidebar-status"><span id="sideDot" class="dot"></span><span><strong id="sideStatus">Проверка соединения</strong><small>Локальный сервер OpenAssistant</small></span></div>
+ <nav class="nav-links">
+  <button type="button" class="nav-item" data-view="models"><span class="symbol">▤</span>Модели и загрузки</button>
+  <button type="button" class="nav-item" data-view="chat"><span class="symbol">◌</span>Диалог</button>
+  <button type="button" class="nav-item" data-view="media"><span class="symbol">♫</span>Музыка и радио</button>
+  <button type="button" class="nav-item" data-view="events"><span class="symbol">◷</span>События</button>
+  <button type="button" class="nav-item" data-view="logs"><span class="symbol">≡</span>Журнал сервера</button>
+ </nav>
+ <div class="sidebar-status"><span><strong>OpenAssistant</strong><small id="sideStatus">Соединение с сервером</small></span></div>
 </aside>
 <main class="main">
  <header class="topbar">
   <div class="breadcrumb"><span>OpenAssistant</span><span class="slash">/</span><strong id="pageName">Обзор системы</strong></div>
-  <div class="top-actions"><span id="serverChip" class="chip"><span class="dot"></span>Проверка</span><a href="/setup.html" class="button primary">Мастер настройки <span>↗</span></a></div>
+  <div class="top-actions"><span id="serverChip" class="chip">Проверка соединения</span><a href="/setup.html" class="button primary">Мастер настройки <span>↗</span></a></div>
  </header>
 
  <section class="view active" id="overview">
   <div class="hero">
-   <div class="hero-copy"><div class="eyebrow"><span class="hero-dot"></span> СВОЯ ПЛАТФОРМА ГОЛОСОВОГО ИИ</div>
-    <h1>OpenAssistant<span class="blue-dot">.</span></h1>
-    <p>Модели, звук, устройства и автоматизация — на вашем сервере. Управляйте системой из одного интерфейса.</p>
+   <div class="hero-copy"><div class="eyebrow">ЛОКАЛЬНЫЙ СЕРВЕР</div>
+    <h1>OpenAssistant</h1>
+    <p>Панель управления моделями, голосом и устройствами.</p>
     <div class="actions"><a href="/setup.html" class="button light">Первоначальная настройка <span>↗</span></a><button type="button" class="button ghost" data-view="tests">Проверить работу</button></div>
-   </div><div class="art" aria-hidden="true"><div class="aura"></div><div class="orb"><div class="orb-inner"></div></div><div class="orbit one"></div><div class="orbit two"></div><div class="spark"></div></div>
+   </div>
   </div>
   <div class="section-heading"><h2>Состояние компонентов</h2><span id="updatedAt" class="minor">Обновление…</span></div>
   <div class="service-grid">
@@ -57,7 +58,7 @@
       <button type="button" data-view="tests"><span class="quick-icon purple">✦</span><span><b>Проверить модель</b><small>Скорость ответа и синтез речи</small></span><span>↗</span></button>
       <a href="/setup.html"><span class="quick-icon blue">↓</span><span><b>Установить модели</b><small>Пошаговый мастер настройки</small></span><span>↗</span></a>
       <button type="button" data-view="devices"><span class="quick-icon teal">▣</span><span><b>Подключить устройство</b><small>Отдельно от настройки сервера</small></span><span>↗</span></button>
-      <a href="/logs.html"><span class="quick-icon orange">≡</span><span><b>Журнал событий</b><small>Сообщения и диагностика</small></span><span>↗</span></a>
+      <button type="button" data-view="logs"><span class="quick-icon orange">≡</span><span><b>Журнал событий</b><small>Сообщения и диагностика</small></span><span>↗</span></button>
     </div>
    </article>
   </div>
@@ -77,7 +78,7 @@
     </div>
     <div class="form-footer"><span class="minor" id="settingsNote">Изменения применяются к новым запросам.</span><button type="submit" id="saveSettings" class="button primary">Сохранить настройки</button></div>
    </form>
-   <div class="linked-panel"><span>Нужны адреса API, GPU или тонкие параметры генерации?</span><a href="/control.html#advanced">Расширенные настройки ↗</a></div>
+   <div class="linked-panel"><span>Настройки движков, GPU и загрузки</span><button type="button" class="text-link text-button" data-view="models">Модели и параметры</button></div>
  </section>
 
  <section class="view" id="tests">
@@ -92,8 +93,13 @@
       <div class="form-footer"><span id="ttsBenchmark" class="minor">Ещё не проверялось</span><button id="runTts" class="button primary" type="button">Синтезировать</button></div><audio id="ttsPlayer" controls></audio><a id="downloadAudio" class="text-link hidden" download="openassistant-test.wav">Скачать WAV ↗</a>
      </article>
    </div>
-   <div class="linked-panel"><span>Проверка микрофона, STT, сравнение моделей и полный аудиотракт.</span><a href="/control.html#tests">Полная диагностика ↗</a></div>
- </section>
+   
+ 
+   <article class="panel extra-panel"><div class="panel-heading"><div><h2>Распознавание речи</h2><p>Запись микрофона и замер GigaAM</p></div></div>
+    <div class="button-row"><button id="recordAudio" type="button" class="button secondary">Записать 5 секунд</button><button id="recognizeAudio" type="button" class="button primary" disabled>Распознать запись</button></div>
+    <audio id="recordedAudio" controls></audio><pre id="recognitionOutput" class="output-lines">Запись ещё не сделана</pre>
+   </article>
+</section>
 
  <section class="view" id="devices">
     <div class="page-title"><div class="eyebrow">УСТРОЙСТВА</div><h1>Подключение устройства</h1><p>Устройства добавляются отдельно, после настройки OpenAssistant. Никакая колонка, включая «Мартин», не создаётся автоматически.</p></div>
@@ -117,13 +123,75 @@
 
  <section class="view" id="integrations">
     <div class="page-title"><div class="eyebrow">ИНТЕГРАЦИИ</div><h1>Сервисы и навыки</h1><p>Подключайте музыкальные сервисы, умный дом и навыки LLM по мере необходимости.</p></div>
-    <article class="panel"><div class="panel-heading"><div><h2>Разрешённые инструменты LLM</h2><p>Включённые навыки передаются модели через function calling</p></div></div>
+    <article class="panel"><div class="panel-heading"><div><h2>Разрешённые инструменты LLM</h2><p>Выберите, к каким действиям ассистент может обращаться</p></div></div>
       <div id="skillsList" class="skills-list"><p class="muted">Загружаем навыки…</p></div><div class="form-footer"><span class="minor">Изменяющие состояние устройства инструменты отключены по умолчанию.</span><button id="saveSkills" type="button" class="button primary">Сохранить разрешения</button></div>
     </article>
-    <div class="linked-panel"><span>Авторизация Яндекс Музыки и подключение Home Assistant</span><a href="/connections.html">Открыть подключения ↗</a></div>
+    
+ 
+ <div class="test-grid extra-panel">
+  <article class="panel"><div class="panel-heading"><div><h2>Яндекс Музыка</h2><p id="ymState">Проверка подключения</p></div></div>
+    <div class="button-row"><button id="ymStart" class="button primary" type="button">Авторизоваться</button><button id="ymDisconnect" class="button secondary" type="button">Отключить</button></div>
+    <div id="ymPair" class="oauth-pair hidden"><strong id="ymCode"></strong><a id="ymLink" href="#" rel="noopener noreferrer" target="_blank">Открыть Яндекс ↗</a><p id="ymProgress"></p><button id="ymCancel" class="button secondary" type="button">Отмена</button></div>
+    <label for="ymToken">Или подключить по токену</label><input id="ymToken" type="password" autocomplete="off"><button id="ymSaveToken" class="button secondary extra-gap" type="button">Подключить</button>
+  </article>
+  <article class="panel"><div class="panel-heading"><div><h2>Home Assistant</h2><p id="haState">Проверка подключения</p></div></div>
+    <label for="haUrl">Адрес Home Assistant</label><input id="haUrl" placeholder="http://homeassistant.local:8123">
+    <label for="haToken">Токен доступа</label><input id="haToken" type="password" autocomplete="off">
+    <div class="button-row"><button id="haConnect" class="button primary" type="button">Подключить</button><button id="haDisconnect" class="button secondary" type="button">Отключить</button></div>
+  </article>
+ </div>
+</section>
+
+
+ <section class="view" id="models">
+  <div class="page-title"><div class="eyebrow">МОДЕЛИ</div><h1>Модели и загрузки</h1><p>Управление локальными движками и хранилищем моделей.</p></div>
+  <div class="service-grid three" id="modelCards"></div>
+  <div class="overview-grid wide">
+    <article class="panel"><div class="panel-heading"><div><h2>Загрузка модели</h2><p>Hugging Face</p></div></div>
+      <label for="hfRepo">Репозиторий</label><input id="hfRepo" placeholder="автор/модель">
+      <div class="field-grid"><div><label for="hfRevision">Ревизия</label><input id="hfRevision" value="main"></div><div><label for="hfToken">Токен, если требуется</label><input id="hfToken" type="password" placeholder="hf_…" autocomplete="off"></div></div>
+      <div class="button-row"><button type="button" id="inspectHub" class="button secondary">Показать файлы</button><button type="button" id="saveHfToken" class="button secondary">Сохранить токен</button></div>
+      <div id="hubFiles" class="scroll-list">Укажите репозиторий</div>
+      <div class="form-footer"><span id="downloadHint" class="minor">Выберите файлы для загрузки</span><button type="button" id="downloadSelected" class="button primary">Загрузить</button></div>
+    </article>
+    <article class="panel"><div class="panel-heading"><div><h2>Загрузки</h2></div></div><div id="downloadsList" class="scroll-list">Нет загрузок</div><div class="rule"></div><div class="panel-heading"><div><h2>Файлы моделей</h2></div></div><div id="installedModels" class="scroll-list">Нет загруженных файлов</div></article>
+  </div>
+  <div class="panel model-editor"><div class="panel-heading"><div><h2>Параметры запуска</h2><p>Раздельные профили LLM, STT и TTS</p></div></div>
+    <label for="profileRole">Движок</label><select id="profileRole"><option value="llm">LLM</option><option value="stt">STT</option><option value="tts">TTS</option></select>
+    <div class="field-grid"><div><label for="profileExecutable">Исполняемый файл</label><input id="profileExecutable"></div><div><label for="profileModel">Файл модели / адаптера</label><input id="profileModel"></div><div><label for="profileCwd">Рабочий каталог</label><input id="profileCwd"></div><div><label for="profileHealth">Проверка API</label><input id="profileHealth"></div></div>
+    <label for="profileArgs">Аргументы запуска (по одному в строке)</label><textarea id="profileArgs" rows="5" spellcheck="false"></textarea>
+    <label>GPU, доступные процессу</label><div id="profileGpus" class="checkbox-list"></div>
+    <div class="button-row"><button id="profileSave" type="button" class="button primary">Сохранить профиль</button><button id="profileStart" type="button" class="button secondary">Запустить</button><button id="profileRestart" type="button" class="button secondary">Перезапустить</button><button id="profileStop" type="button" class="button secondary">Остановить</button></div>
+    <pre id="profileLogs" class="output-lines">Журнал процесса</pre>
+  </div>
  </section>
 
- <footer>OpenAssistant · Local first · <a href="/logs.html">Системный журнал</a></footer>
+ <section class="view" id="chat">
+  <div class="page-title"><div class="eyebrow">ДИАЛОГ</div><h1>Чат с ассистентом</h1></div>
+  <div class="panel"><div class="button-row"><button id="chatConnect" class="button secondary" type="button">Подключиться</button><span id="chatStatus" class="minor">Отключено</span></div>
+   <div id="chatHistory" class="chat-history" aria-live="polite"></div>
+   <div class="chat-compose"><input id="chatInput" placeholder="Напишите сообщение"><button id="chatSend" type="button" class="button primary" disabled>Отправить</button><button id="chatCancel" type="button" class="button secondary" disabled>Стоп</button></div>
+   <audio id="chatAudio" controls></audio>
+  </div>
+ </section>
+
+ <section class="view" id="media">
+  <div class="page-title"><div class="eyebrow">МУЗЫКА</div><h1>Музыка и радио</h1></div>
+  <div class="test-grid"><article class="panel"><h2>Поиск радио</h2><label for="radioQuery">Станция</label><div class="button-row"><input id="radioQuery" placeholder="Название станции"><button id="searchRadio" class="button secondary">Найти</button></div><div id="radioResults" class="search-results"></div></article>
+  <article class="panel"><h2>Яндекс Музыка</h2><label for="musicQuery">Название или исполнитель</label><div class="button-row"><input id="musicQuery" placeholder="Поиск композиции"><button id="searchMusic" class="button secondary">Найти</button></div><div id="musicResults" class="search-results"></div></article></div>
+  <div class="panel extra-panel"><h2>Прослушивание</h2><audio id="mediaPlayer" controls></audio></div>
+ </section>
+
+ <section class="view" id="events">
+  <div class="page-title"><div class="eyebrow">СОБЫТИЯ</div><h1>История запросов</h1></div>
+  <div class="panel"><div class="button-row"><button id="refreshEvents" class="button secondary">Обновить</button></div><pre id="eventsOutput" class="output-lines">Событий нет</pre></div>
+ </section>
+
+ <section class="view" id="logs">
+  <div class="page-title"><div class="eyebrow">ДИАГНОСТИКА</div><h1>Журнал сервера</h1></div>
+  <div class="panel"><div class="button-row"><label for="logLevel">Уровень</label><select id="logLevel"><option value="">Все</option><option value="Information">Информация</option><option value="Warning">Предупреждения</option><option value="Error">Ошибки</option></select><button id="refreshLogs" class="button secondary">Обновить</button></div><pre id="serverLogs" class="output-lines">Загрузка…</pre></div>
+ </section>
+ <footer>OpenAssistant · <a href="/setup.html">Мастер установки</a></footer>
 </main></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/dashboard.js" defer></script>

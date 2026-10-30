@@ -29,7 +29,7 @@
         <span class="connector"></span>
         <button class="step" data-step="stt" type="button"><span class="step-num">2</span><b>Распознавание</b></button>
         <span class="connector"></span>
-        <button class="step" data-step="tts" type="button"><span class="step-num">3</span><b>Синтез речи</b></button>
+        <button class="step" data-step="tts" type="button"><span class="step-num">3</span><b>Синтез речи</b></button><span class="connector"></span><button class="step" data-step="music" type="button"><span class="step-num">4</span><b>Музыка</b></button>
       </div>
     </div>
 
@@ -45,6 +45,7 @@
           <div class="card">
             <div class="card-heading"><div><h2 class="card-title">Модели</h2><p class="card-sub">Варианты для одного GPU с 8 ГБ памяти. Формат Q8_0.</p></div><span class="muted-tag">Локальный запуск</span></div>
             <div id="llmModels" class="models"></div>
+            <details class="custom-model"><summary>Использовать собственную модель</summary><label for="customModelUrl">Ссылка Hugging Face на репозиторий GGUF или отдельный файл</label><input id="customModelUrl" type="url" placeholder="https://huggingface.co/author/model-GGUF"><p>При выборе ссылки модель из списка игнорируется.</p></details>
             <div class="options-heading"><h3>Параметры запуска</h3><span class="muted">Рекомендуемые значения выбраны</span></div>
             <div class="guided-options">
               <div class="option"><label for="gpuSelect">Видеокарта</label><select id="gpuSelect"><option value="">Автоматический выбор</option></select></div>
@@ -81,6 +82,7 @@
         <div class="panel"><div class="card">
           <div class="card-heading"><div><h2 class="card-title">Движок распознавания</h2><p class="card-sub">Обработка речи выполняется на вашем сервере.</p></div></div>
           <div id="sttModels" class="models"></div>
+          <div class="guided-options single"><div class="option"><label for="sttGpu">Видеокарта для распознавания</label><select id="sttGpu"><option value="">Автоматический выбор</option><option value="cpu">CPU</option></select></div></div>
           <div class="buttonrow"><p>Микрофон доступен при открытии панели через localhost или HTTPS.</p><button class="primary" type="button" id="startStt">Установить и запустить <span>↗</span></button></div>
         </div>
         <div class="progress-card" id="progressStt">
@@ -101,6 +103,7 @@
         <div class="panel"><div class="card">
           <div class="card-heading"><div><h2 class="card-title">Модель синтеза</h2><p class="card-sub">Готовые голоса или формирование голоса по описанию.</p></div></div>
           <div id="ttsModels" class="models"></div>
+          <div class="guided-options single"><div class="option"><label for="ttsGpu">Видеокарта для синтеза</label><select id="ttsGpu"><option value="">Автоматический выбор</option><option value="cpu">CPU</option></select></div></div>
           <div class="buttonrow"><p>VoiceDesign требует больше видеопамяти, чем CustomVoice.</p><button class="primary" id="startTts" type="button">Установить и запустить <span>↗</span></button></div>
         </div>
         <div class="progress-card" id="progressTts">
@@ -116,8 +119,18 @@
             <div id="designedVoice" class="hidden"><label for="voiceDescription">Описание голоса</label><textarea id="voiceDescription" rows="4">Спокойный взрослый мужской голос. Русская речь, естественная артикуляция, средняя скорость и мягкая интонация.</textarea><p class="input-help">Изменяйте описание, чтобы получить другой вариант. Постоянство тембра между генерациями не гарантируется.</p></div>
             <label for="ttsPhrase">Тестовая фраза</label><textarea id="ttsPhrase" rows="3">Здравствуйте. Это проверка синтеза речи OpenAssistant.</textarea>
             <div class="inline-actions"><button class="secondary" type="button" id="testTts">Сгенерировать и прослушать</button><a class="secondary hidden" id="downloadWav" href="#" download="openassistant-test.wav">Скачать WAV</a></div><audio id="ttsPlayer" class="audio" controls></audio>
-            <div class="inline-actions"><button class="primary" type="button" data-next="complete">Завершить <span>→</span></button></div>
+            <div class="inline-actions"><button class="primary" type="button" data-next="music">Далее <span>→</span></button></div>
           </div>
+        </div></div>
+      </section>
+
+      <section class="section" id="music">
+        <div class="intro"><div class="eyebrow">04 / МУЗЫКА</div><h1>Музыкальный сервис</h1><p>Подключите аккаунт Яндекс Музыки или пропустите этот шаг. Сделать это можно и позже.</p></div>
+        <div class="panel"><div class="card">
+          <div class="card-heading"><div><h2 class="card-title">Яндекс Музыка</h2><p id="setupMusicState" class="card-sub">Проверка подключения…</p></div></div>
+          <div class="button-row"><button id="setupMusicLogin" class="primary" type="button">Подключить аккаунт</button><button id="setupMusicSkip" class="secondary" type="button">Пропустить</button></div>
+          <div id="setupMusicAuth" class="setup-auth hidden"><p>Откройте страницу авторизации и подтвердите вход.</p><strong id="setupMusicCode"></strong><a id="setupMusicUrl" target="_blank" rel="noopener noreferrer" class="secondary" href="#">Перейти к Яндексу ↗</a><p id="setupMusicProgress">Ожидание подтверждения</p><button id="setupMusicCancel" class="secondary" type="button">Отмена</button></div>
+          <details class="custom-model"><summary>Подключение по токену</summary><label for="setupMusicToken">Токен аккаунта</label><input id="setupMusicToken" type="password" autocomplete="off"><button id="setupMusicSaveToken" class="secondary extra-gap" type="button">Подключить</button></details>
         </div></div>
       </section>
 
