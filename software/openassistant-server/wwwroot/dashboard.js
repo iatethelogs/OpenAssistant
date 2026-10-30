@@ -17,6 +17,12 @@ function render(){for(const role of ["llm","stt","tts"])setService(role);renderG
 const sys=state.system||{};el("cpuValue").textContent=sys.cpuThreads??"—";el("memoryValue").textContent=sys.serverMemoryMiB==null?"—":sys.serverMemoryMiB+" МиБ";el("storageValue").textContent=sys.diskFreeGiB==null?"—":sys.diskFreeGiB+" ГиБ";el("downloadsValue").textContent=(state.downloads?.jobs||[]).filter(j=>["queued","downloading"].includes(j.state)).length;
 el("serverChip").textContent="Подключено";el("sideStatus").textContent="Сервер доступен"}
 async function poll(){if(state.loading)return;state.loading=true;try{const [models,system,devices,downloads]=await Promise.all([api("/api/models"),api("/api/control/system"),api("/api/control/devices"),api("/api/models/downloads")]);Object.assign(state,{models,system,devices,downloads});render()}catch(e){el("serverChip").textContent="Нет соединения";el("sideStatus").textContent="Нет подключения";}finally{state.loading=false}}
+function updateVoiceSamplingInputs(){
+ const mode=el("voiceGenerationMode").value;
+ el("voiceSeed").disabled=mode!=="seeded";
+ for(const id of ["voiceTemperature","voiceTopP","voiceTopK"])el(id).disabled=mode==="greedy";
+}
+el("voiceGenerationMode").onchange=updateVoiceSamplingInputs;
 function loadSettings(){
  const s=state.settings||{},p=state.voiceProfile||{};
  el("prompt").value=s.systemPrompt??"";
@@ -33,6 +39,7 @@ function loadSettings(){
  el("voicePenalty").value=p.repetitionPenalty??1.05;
  el("voiceStyleSetting").value=p.style||"";
  el("voiceDescriptionSetting").value=p.description||"";
+ updateVoiceSamplingInputs();
 }
 el("settingsForm").onsubmit=async event=>{
  event.preventDefault();const b=el("saveSettings");
