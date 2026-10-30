@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using OpenAssistant.Server.Models;
+using OpenAssistant.Server.Configuration;
 
 namespace OpenAssistant.Server.Monitoring;
 
@@ -282,7 +283,7 @@ public sealed class GuidedSetupService(
             try
             {
                 using var response = await http.GetAsync(url, ct);
-                if (response.IsSuccessStatusCode) return;
+                if (response.IsSuccessStatusCode && await processes.IsRunningAsync(j.Role, ct)) return;
             }
             catch (HttpRequestException) { }
             catch (TaskCanceledException) when (!ct.IsCancellationRequested) { }

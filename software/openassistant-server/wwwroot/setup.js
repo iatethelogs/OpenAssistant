@@ -16,7 +16,7 @@ function modelCard(m){const b=document.createElement("button");b.type="button";b
  const foot=document.createElement("span");foot.className="foot";foot.textContent=m.diskGb.toLocaleString("ru-RU")+" ГБ · "+m.quality;
  b.append(type,name,desc,foot);
  if(m.recommended){const label=document.createElement("span");label.className="tag";label.textContent="Рекомендуем";b.append(label)}
- b.onclick=()=>{state.selected[m.role]=m.id;renderCards(m.role);start(m.role).catch(e=>showError(e.message))};return b}
+ b.onclick=()=>{state.selected[m.role]=m.id;renderCards(m.role)};return b}
 function renderCards(role){const box=el(role+"Models");box.replaceChildren();for(const m of state.catalog.filter(x=>x.role===role)){const b=modelCard(m);if(state.selected[role]===m.id)b.classList.add("selected");box.append(b)}}
 function updateButtons(){for(const role of ["llm","stt","tts"]){const b=el("start"+role.toUpperCase().slice(0,1)+role.slice(1));if(!b)continue;const status=state.jobs[role]?.status;b.disabled=status==="running";b.textContent=status==="ready"?"Установить другую модель ↻":status==="running"?"Устанавливаем…":"Установить и проверить →"}}
 async function start(role){if(state.starting[role]||state.jobs[role]?.status==="running")return;const modelId=state.selected[role];if(!modelId)throw Error("Сначала выберите модель");
