@@ -27,8 +27,9 @@ if engine == "faster":
     if device != "cuda:0":
         raise RuntimeError("Faster Qwen3-TTS uses CUDA Graphs and requires a CUDA GPU; choose the regular engine for CPU.")
     from faster_qwen3_tts import FasterQwen3TTS
+    fast_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
     model = FasterQwen3TTS.from_pretrained(
-        name, device=device, dtype=torch.bfloat16, attn_implementation="sdpa")
+        name, device=device, dtype=fast_dtype, attn_implementation="sdpa")
     model.warmup(prefill_len=100)
 else:
     model = Qwen3TTSModel.from_pretrained(
