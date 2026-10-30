@@ -24,3 +24,6 @@ Runtimes/*.ready
 # Настройки голоса OpenAssistant
 voice-profile.local.json
 voice-profile.local.json.tmp
+
+# Conversation history, stored only on the server
+conversation-memory.local/
