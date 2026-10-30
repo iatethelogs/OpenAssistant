@@ -43,9 +43,20 @@ function modelCard(m){const b=document.createElement("button");b.type="button";b
  b.onclick=()=>{state.selected[m.role]=m.id;renderCards(m.role);updateVoiceMode()};return b}
 function renderCards(role){const box=el(role+"Models");box.replaceChildren();for(const m of state.catalog.filter(x=>x.role===role)){const b=modelCard(m);if(state.selected[role]===m.id)b.classList.add("selected");box.append(b)}}
 async function refreshInstalled(){
- try{const data=await api("/api/models/downloads");state.installed=data.installed||[];for(const role of ["llm","stt","tts"])renderCards(role)}catch{}
+ try{const data=await api("/api/models/downloads");state.installed=data.installed||[];for(const role of ["llm","stt","tts"])renderCards(role);updateButtons()}catch{}
 }
-function updateButtons(){for(const role of ["llm","stt","tts"]){const b=el("start"+role.toUpperCase().slice(0,1)+role.slice(1));if(!b)continue;const status=state.jobs[role]?.status;b.disabled=status==="running";b.textContent=status==="ready"?"Установить другую модель":status==="running"?"Установка выполняется…":"Установить и проверить"}}
+function updateButtons(){
+ for(const role of ["llm","stt","tts"]){
+  const b=el("start"+role.toUpperCase().slice(0,1)+role.slice(1));if(!b)continue;
+  const status=state.jobs[role]?.status,choice=state.catalog.find(m=>m.id===state.selected[role]);
+  const cached=choice&&state.installed.some(item=>item.role===role&&item.source!=="manual-download"&&
+   (role==="stt" || (role==="tts"&&item.repo===choice.repo) ||
+    (role==="llm"&&item.path?.includes("/"+choice.repo+"/"))));
+  b.disabled=status==="running";
+  b.textContent=status==="ready"?"Установить другую модель":status==="running"?"Установка выполняется…":
+   cached?"Запустить и проверить":"Установить и проверить";
+ }
+}
 async function start(role){if(state.starting[role]||state.jobs[role]?.status==="running")return;const modelId=state.selected[role];if(!modelId)throw Error("Сначала выберите модель");
  state.starting[role]=true;
  try{const input={modelId};
