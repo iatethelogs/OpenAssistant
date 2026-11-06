@@ -3,52 +3,47 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#131313">
+  <meta name="theme-color" content="#17181b"><meta name="color-scheme" content="dark light">
   <title>Первоначальная настройка · OpenAssistant</title>
-  <link rel="stylesheet" href="/setup.css?v=mono-1">
+  <script src="/ui.js?v=20261106"></script>
+  <link rel="stylesheet" href="/setup.css?v=20261106">
 </head>
 <body>
   <div class="shell">
     <header class="header">
-      <a class="logo" href="/"><span class="logo-mark">OA</span><span>OpenAssistant<small>Настройка моделей</small></span></a>
+      <a class="logo" href="/" aria-label="OpenAssistant — обзор"><span class="logo-mark">OA</span><span>OpenAssistant<small>Настройка</small></span></a>
       <div class="top-actions">
-        <span class="connection"><span class="dot" id="dot"></span><span id="serverState">Подключение…</span></span>
-        
-        <a href="/" class="back-link">Закрыть <span>×</span></a>
+        <span class="connection" role="status"><span class="dot" id="dot" aria-hidden="true"></span><span id="serverState">Соединение…</span></span>
+        <button type="button" class="button icon-button" data-theme-toggle aria-label="Сменить тему" title="Сменить тему"></button>
+        <a href="/" class="back-link"><span data-icon="close"></span>Закрыть</a>
       </div>
     </header>
 
     <div class="wizard-head">
-      <span class="section-label">Настройка</span>
+      <span class="section-label">Мастер настройки</span>
       <div class="steps" aria-label="Этапы настройки">
         <button class="step" data-step="welcome" type="button"><b>Начало</b></button>
-        <button class="step" data-step="llm" type="button"><b>Интеллект</b></button>
-        <button class="step" data-step="stt" type="button"><b>Слух</b></button>
-        <button class="step" data-step="tts" type="button"><b>Голос</b></button>
+        <button class="step" data-step="llm" type="button"><b>Языковая модель</b></button>
+        <button class="step" data-step="stt" type="button"><b>Распознавание</b></button>
+        <button class="step" data-step="tts" type="button"><b>Синтез речи</b></button>
         <button class="step" data-step="music" type="button"><b>Музыка</b></button>
       </div>
-      <div class="journey-track"><span id="journeyFill"></span></div>
+      <div class="journey-track" aria-hidden="true"><span id="journeyFill"></span></div>
     </div>
 
     <div class="workspace">
       <section class="section active" id="welcome">
-  <div class="welcome-layout">
-    <div class="welcome-copy">
-      <span class="welcome-eyebrow">Мастер настройки</span>
-      <h1>OpenAssistant</h1>
-      <p>Выберите модели и настройте подключение сервисов.</p>
-      <button class="primary welcome-action" data-next="llm" type="button">Начать <span>→</span></button>
-    </div>
-    <div class="welcome-index">
-      <div><span>LLM</span><strong>Языковая модель</strong></div>
-      <div><span>STT</span><strong>Распознавание речи</strong></div>
-      <div><span>TTS</span><strong>Синтез речи</strong></div>
-      <div><span>Музыка</span><strong>Музыка</strong></div>
-    </div>
-  </div>
-</section>
+        <div class="welcome-layout">
+          <div class="welcome-copy">
+            <span class="welcome-eyebrow">OpenAssistant</span>
+            <h1>Настройка сервера</h1>
+            <p>Выберите языковую модель, распознавание и синтез речи. Музыкальные сервисы можно подключить на последнем этапе.</p>
+            <button class="primary welcome-action" data-next="llm" type="button">Продолжить <span data-icon="arrow-right"></span></button>
+          </div>
+        </div>
+      </section>
 
-<section class="section" id="llm">
+      <section class="section" id="llm">
         <div class="intro">
           
           <h1>Выбор модели</h1>
@@ -85,7 +80,7 @@
               </div>
             </div>
             <div class="install-steps" id="stepsLlm"></div>
-            <details class="log-details" open><summary>Журнал <span class="chevron">⌄</span></summary><pre id="logsLlm" class="install-log">Ожидание…</pre></details>
+            <details class="log-details"><summary>Журнал <span class="chevron"></span></summary><pre id="logsLlm" class="install-log">Ожидание…</pre></details>
           </div>
 
           <div class="result" id="resultLlm">
@@ -112,7 +107,7 @@
           <div class="progress-main"><div class="ring" id="ringStt"></div><div><h3 id="titleStt">Подготовка</h3><p id="descStt">Ожидаем ответ сервера</p></div><span class="progress-stage" id="stageStt">—</span></div>
           <div class="bar"><div id="barStt"></div></div><div class="progress-footer"><span>Ход установки</span><span id="bytesStt">—</span></div>
           <div class="install-steps" id="stepsStt"></div>
-          <details class="log-details" open><summary>Подробный журнал установки <span class="chevron">⌄</span></summary><pre id="logsStt" class="install-log">Ожидание…</pre></details>
+          <details class="log-details"><summary>Подробный журнал установки <span class="chevron"></span></summary><pre id="logsStt" class="install-log">Ожидание…</pre></details>
         </div>
         <div class="result" id="resultStt">
           <div class="result-head"><span class="result-check">✓</span><div><h3>Модель загружена</h3><p>Проверьте распознавание на собственной записи.</p></div></div>
@@ -136,7 +131,7 @@
           <div class="progress-main"><div class="ring" id="ringTts"></div><div><h3 id="titleTts">Подготовка</h3><p id="descTts">Ожидаем ответ сервера</p></div><span class="progress-stage" id="stageTts">—</span></div>
           <div class="bar"><div id="barTts"></div></div><div class="progress-footer"><span>Ход установки</span><span id="bytesTts">—</span></div>
           <div class="install-steps" id="stepsTts"></div>
-          <details class="log-details" open><summary>Подробный журнал установки <span class="chevron">⌄</span></summary><pre id="logsTts" class="install-log">Ожидание…</pre></details>
+          <details class="log-details"><summary>Подробный журнал установки <span class="chevron"></span></summary><pre id="logsTts" class="install-log">Ожидание…</pre></details>
         </div>
         <div class="result" id="resultTts">
           <div class="result-head"><span class="result-check">✓</span><div><h3>Синтез готов</h3><p id="ttsMetrics">Проверьте звучание на тестовой фразе.</p></div></div>
@@ -169,11 +164,11 @@
         <div class="panel"><div class="card">
           <div class="service-stubs">
   <div class="service-stub future"><span class="stub-icon">VK</span><strong>VK Музыка</strong><small>Нет подключения</small><span class="stub-status">Недоступно</span></div>
-  <div class="service-stub future"><span class="stub-icon">◉</span><strong>Spotify</strong><small>Нет подключения</small><span class="stub-status">Недоступно</span></div>
-  <div class="service-stub future"><span class="stub-icon">⌁</span><strong>Локальная библиотека</strong><small>NAS и локальные файлы</small><span class="stub-status">Недоступно</span></div>
-  <div class="service-stub future"><span class="stub-icon">♫</span><strong>Apple Music</strong><small>Нет подключения</small><span class="stub-status">Недоступно</span></div>
-  <div class="service-stub future"><span class="stub-icon">▶</span><strong>YouTube Music</strong><small>Нет подключения</small><span class="stub-status">Недоступно</span></div>
-  <div class="service-stub future"><span class="stub-icon">◌</span><strong>Интернет-радио</strong><small>Поиск станций доступен в панели</small><span class="stub-status">В ПАНЕЛИ</span></div>
+  <div class="service-stub future"><span class="stub-icon">S</span><strong>Spotify</strong><small>Нет подключения</small><span class="stub-status">Недоступно</span></div>
+  <div class="service-stub future"><span class="stub-icon">NAS</span><strong>Локальная библиотека</strong><small>NAS и локальные файлы</small><span class="stub-status">Недоступно</span></div>
+  <div class="service-stub future"><span class="stub-icon">AM</span><strong>Apple Music</strong><small>Нет подключения</small><span class="stub-status">Недоступно</span></div>
+  <div class="service-stub future"><span class="stub-icon">YM</span><strong>YouTube Music</strong><small>Нет подключения</small><span class="stub-status">Недоступно</span></div>
+  <div class="service-stub future"><span class="stub-icon">FM</span><strong>Интернет-радио</strong><small>Поиск станций доступен в панели</small><span class="stub-status">В ПАНЕЛИ</span></div>
   </div>
           <div class="card-heading"><div><h2 class="card-title">Яндекс Музыка</h2><p id="setupMusicState" class="card-sub">Проверка подключения…</p></div></div>
           <div class="button-row"><button id="setupMusicLogin" class="primary" type="button">Подключить аккаунт</button><button id="setupMusicSkip" class="secondary" type="button">Пропустить</button></div>
@@ -187,9 +182,9 @@
         <div class="inline-actions center"><a href="/" class="primary">Перейти на главную <span>→</span></a><a class="secondary" href="/chat.html">Проверить диалог</a></div></div>
       </section>
     </div>
-    <footer><a href="/">Панель управления</a> · <a href="/logs.html">Журнал</a></footer>
+
   </div>
   <script src="/audio-test.js" defer></script>
-  <script src="/setup.js?v=mono-1" defer></script>
+  <script src="/setup.js?v=20261106" defer></script>
 </body>
 </html>

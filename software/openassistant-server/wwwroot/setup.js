@@ -9,16 +9,10 @@ async function api(url,method="GET",data){const init={method,cache:"no-store"};i
 function show(step){
  if(!steps.includes(step))return;
  const outgoing=document.querySelector(".section.active"),incoming=document.getElementById(step);
- if(outgoing&&outgoing!==incoming){
-   outgoing.classList.remove("active");
-   if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches){
-     outgoing.classList.add("leaving");
-     setTimeout(()=>outgoing.classList.remove("leaving"),360);
-   }
- }
+ if(outgoing&&outgoing!==incoming)outgoing.classList.remove("active");
  incoming.classList.add("active");
  state.step=step;
- for(const elem of document.querySelectorAll(".step")){const ix=steps.indexOf(elem.dataset.step),now=steps.indexOf(step);elem.classList.toggle("current",ix===now);elem.classList.toggle("done",ix<now)}
+ for(const elem of document.querySelectorAll(".step")){const ix=steps.indexOf(elem.dataset.step),now=steps.indexOf(step),selected=ix===now;elem.classList.toggle("current",selected);elem.classList.toggle("done",ix<now);if(selected)elem.setAttribute("aria-current","step");else elem.removeAttribute("aria-current")}
  const position=steps.indexOf(step);
  const progress=el("journeyFill");
  if(progress)progress.style.width=Math.max(0,Math.min(100,position/4*100))+"%";
