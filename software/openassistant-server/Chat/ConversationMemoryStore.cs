@@ -80,7 +80,7 @@ public sealed class ConversationMemoryStore(IWebHostEnvironment env)
         {
             Directory.CreateDirectory(Root);
             if (OperatingSystem.IsLinux())
-                Directory.SetUnixFileMode(Root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                File.SetUnixFileMode(Root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             var turns = await ReadUnsafeAsync(profile, ct);
             var now = DateTimeOffset.UtcNow;
             turns.Add(new Turn(now, "user", user[..Math.Min(user.Length, 4000)]));
