@@ -8,4 +8,5 @@
   <Content Include="WakeDetector/target/release/openassistant-wake.exe"
            Link="openassistant-wake.exe" CopyToOutputDirectory="PreserveNewest" />
 </ItemGroup>
+<ItemGroup><Using Include="System.IO" /></ItemGroup>
 </Project>
