@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using Microsoft.Extensions.Options;
 using OpenAssistant.Server.Configuration;
 using OpenAssistant.Server.Models;
 
@@ -10,7 +9,7 @@ public sealed record LlamaSetupInput(
     int ContextSize, int GpuLayers, int Threads, int Port, int Parallel);
 
 /// <summary>Настройка сервера и подключаемых устройств без shell и установки стороннего runtime.</summary>
-public sealed class SetupService(SettingsStore store, ModelProcessManager manager, IOptionsMonitor<ServerOptions> options)
+public sealed class SetupService(SettingsStore store, ModelProcessManager manager)
 {
     public object LlamaExecutables()
     {
