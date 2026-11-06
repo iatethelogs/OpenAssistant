@@ -69,6 +69,7 @@
     });
     const tabs=[...document.querySelectorAll("[data-settings-tab]")];
     function setTab(value,focus=false){
+      if(!tabs.some(tab=>tab.dataset.settingsTab===value))return;
       tabs.forEach(tab=>{
         const chosen=tab.dataset.settingsTab===value;
         tab.classList.toggle("selected",chosen);
@@ -79,6 +80,8 @@
       document.querySelectorAll("[data-settings-panel]").forEach(panel=>{
         panel.hidden=panel.dataset.settingsPanel!==value;
       });
+      document.querySelector("#settingsForm>.form-footer")?.toggleAttribute("hidden",value==="storage");
+      window.dispatchEvent(new CustomEvent("openassistant:settings-tab",{detail:{value}}));
     }
     if(tabs.length){
       tabs.forEach((tab,i)=>{
@@ -90,7 +93,8 @@
           setTab(tabs[next].dataset.settingsTab,true);
         });
       });
-      setTab(tabs[0].dataset.settingsTab);
+      window.OpenAssistantUI={selectTab:setTab};
+      setTab(location.hash==="#models"?"storage":tabs[0].dataset.settingsTab);
     }
   });
 })();

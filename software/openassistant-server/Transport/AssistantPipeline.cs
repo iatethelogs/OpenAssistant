@@ -82,7 +82,7 @@ public sealed class AssistantPipeline(
         }
 
         /// <summary>формирует ответ; генерация токенов идёт параллельно синтезу фраз.</summary>
-        async Task RespondAsync(string text, bool fromAudio, CancellationToken ct)
+        async Task RespondAsync(string text, bool fromAudio, bool synthesize, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -102,9 +102,12 @@ public sealed class AssistantPipeline(
                 await JsonAsync(new { type = "text", delta = verified }, ct);
                 conversationLog.Add("llm", verified);
                 await memory.SaveExchangeAsync(profile, text, verified, ct);
-                byte[] audio = await speech.SynthesizeAsync(verified, voice,
-                    settings.CurrentValue.OutputSampleRate, ct);
-                await AudioAsync(audio, settings.CurrentValue.OutputSampleRate, ct);
+                if (synthesize)
+                {
+                    byte[] audio = await speech.SynthesizeAsync(verified, voice,
+                        settings.CurrentValue.OutputSampleRate, ct);
+                    await AudioAsync(audio, settings.CurrentValue.OutputSampleRate, ct);
+                }
                 await JsonAsync(new { type = "done" }, ct);
                 return;
             }
@@ -140,7 +143,7 @@ public sealed class AssistantPipeline(
             }
 
             
-            Task speaker = SpeakAsync();
+            Task speaker = synthesize ? SpeakAsync() : Task.CompletedTask;
             // если синтезатор упал, разбудим ожидающего запись в заполненную очередь.
             _ = speaker.ContinueWith(task =>
             {
@@ -162,10 +165,10 @@ public sealed class AssistantPipeline(
                     complete.Append(delta.Text);
                     await JsonAsync(new { type = "text", delta = delta.Text }, ct);
                     string? sentence = segmenter.Push(delta.Text);
-                    if (sentence is not null) await phrases.Writer.WriteAsync(sentence, ct);
+                    if (synthesize && sentence is not null) await phrases.Writer.WriteAsync(sentence, ct);
                 }
                 string? tail = segmenter.Flush();
-                if (tail is not null) await phrases.Writer.WriteAsync(tail, ct);
+                if (synthesize && tail is not null) await phrases.Writer.WriteAsync(tail, ct);
                 phrases.Writer.TryComplete();
                 await speaker;
                 ct.ThrowIfCancellationRequested();
@@ -300,9 +303,18 @@ public sealed class AssistantPipeline(
                         pendingWakeWord = null;
                         input.SetLength(0);
                         current = RunRequestAsync(async inner =>
-                            await RespondAsync(RemoveActivationWord(await speech.TranscribeAsync(pcm, inner), activation), true, inner), token);
+                            await RespondAsync(RemoveActivationWord(await speech.TranscribeAsync(pcm, inner), activation), true, true, inner), token);
                     }
-                    else if (kind == "text") { input.SetLength(0); rejectingOversizedAudio = false; pendingWakeWord = null; current = RunRequestAsync(inner => RespondAsync(text ?? "", false, inner), token); }
+                    else if (kind == "text")
+                    {
+                        input.SetLength(0);
+                        rejectingOversizedAudio = false;
+                        pendingWakeWord = null;
+                        // Existing voice clients keep speech; web chat requests text-only explicitly.
+                        bool audio = !root.TryGetProperty("audio", out var audioOption) ||
+                            audioOption.ValueKind != JsonValueKind.False;
+                        current = RunRequestAsync(inner => RespondAsync(text ?? "", false, audio, inner), token);
+                    }
                     else current = RunRequestAsync(async inner =>
                     {
                         if (string.Equals(toolName, "home_assistant", StringComparison.OrdinalIgnoreCase))

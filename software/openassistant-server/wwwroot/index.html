@@ -3,8 +3,8 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#17181b"><meta name="color-scheme" content="dark light">
 <title>OpenAssistant — Панель управления</title>
-<script src="/ui.js?v=20261106"></script>
-<link rel="stylesheet" href="/dashboard.css?v=20261106"></head>
+<script src="/ui.js?v=20261106b"></script>
+<link rel="stylesheet" href="/dashboard.css?v=20261106b"><link rel="stylesheet" href="/settings-manager.css?v=20261106b"></head>
 <body>
 <div class="layout">
 <aside class="sidebar">
@@ -78,12 +78,9 @@
 </section>
 
 <section class="view" id="settings">
-   <div class="page-title"><h1>Поведение ассистента</h1></div>
+   <div class="page-title"><h1>Настройки</h1></div>
    <form id="settingsForm" class="panel settings-panel">
-    <div class="settings-tabbar" role="tablist" aria-label="Группы настроек">
-      <button type="button" class="settings-tab selected" data-settings-tab="assistant" id="settings-tab-assistant" role="tab" aria-controls="settings-assistant" aria-selected="true">Ассистент и LLM</button>
-      <button type="button" class="settings-tab" data-settings-tab="voice" id="settings-tab-voice" role="tab" aria-controls="settings-voice" aria-selected="false">Синтез речи</button>
-    </div>
+    <div class="settings-tabbar" role="tablist" aria-label="Настройки моделей"><button class="settings-tab" type="button" data-settings-tab="assistant" id="settings-tab-assistant" role="tab" aria-controls="settings-assistant" aria-selected="false">Ассистент</button><button class="settings-tab" type="button" data-settings-tab="llm" id="settings-tab-llm" role="tab" aria-controls="settings-llm" aria-selected="false">LLM</button><button class="settings-tab" type="button" data-settings-tab="stt" id="settings-tab-stt" role="tab" aria-controls="settings-stt" aria-selected="false">STT</button><button class="settings-tab" type="button" data-settings-tab="tts" id="settings-tab-tts" role="tab" aria-controls="settings-tts" aria-selected="false">TTS</button><button class="settings-tab" type="button" data-settings-tab="storage" id="settings-tab-storage" role="tab" aria-controls="settings-storage" aria-selected="false">Хранилище</button></div>
     <section class="settings-pane" id="settings-assistant" data-settings-panel="assistant" role="tabpanel" aria-labelledby="settings-tab-assistant">
     <div class="panel-heading"><div><h2>Системная инструкция</h2><p>Определяет поведение языковой модели</p></div>
         <button id="assistantDefaults" type="button" class="button secondary">Профиль ассистента</button></div>
@@ -95,7 +92,7 @@
       <div><label for="language">Язык озвучивания</label><input id="language" maxlength="150" placeholder="Russian"></div>
     </div>
     </section>
-    <section class="settings-pane" id="settings-voice" data-settings-panel="voice" role="tabpanel" aria-labelledby="settings-tab-voice" hidden>
+    <section class="settings-pane" id="settings-tts" data-settings-panel="tts" role="tabpanel" aria-labelledby="settings-tab-tts" hidden>
     <div class="panel-heading"><div><h2>Голос и повторяемость синтеза</h2><p>Профиль используется и мастером, и обычными ответами ассистента</p></div></div>
     <div class="field-grid">
       <div><label for="voiceModeSetting">Тип загруженной модели (меняется в мастере)</label><select id="voiceModeSetting" disabled><option value="custom">Готовый голос (CustomVoice)</option><option value="design">VoiceDesign по описанию</option></select></div>
@@ -109,9 +106,33 @@
     <label for="voiceStyleSetting">Манера речи (CustomVoice 1.7B)</label><textarea id="voiceStyleSetting" rows="2" maxlength="600"></textarea>
     <label for="voiceDescriptionSetting">Описание тембра (VoiceDesign)</label><textarea id="voiceDescriptionSetting" rows="3" maxlength="1200"></textarea>
     <p class="minor">Режим с фиксированным seed повторяет случайный выбор токенов. Строгий режим отключает sampling; он может звучать менее естественно. Изменение параметров не требует перезагрузки модели.</p>
+    <details class="advanced-settings"><summary>Подключение к API</summary>
+      <div class="field-grid">
+        <div><label for="ttsUrl">Адрес TTS</label><input id="ttsUrl" type="url"></div>
+        <div><label for="ttsModel">Имя модели</label><input id="ttsModel"></div>
+      </div>
+    </details>
+    <div id="roleMountTts" class="role-mount"></div>
+    <div class="role-inventory"><div class="panel-heading"><h2>Установленные TTS</h2></div><div id="roleInstalledTts" class="installed-role-list"></div></div>
     </section>
-    <div class="form-footer"><span class="minor" id="settingsNote">Изменения применяются к новым запросам.</span><button type="submit" id="saveSettings" class="button primary">Сохранить настройки</button></div>
-   </form>
+    <section class="settings-pane" id="settings-llm" data-settings-panel="llm" role="tabpanel" aria-labelledby="settings-tab-llm" hidden>
+<div class="model-settings-heading"><div><h2>Языковая модель</h2><span id="roleStatusLlm" class="minor"></span></div><button type="button" class="button secondary" data-view="tests">Диагностика</button></div>
+<div class="settings-params"><div class="panel-heading"><h2>Параметры генерации</h2></div><div class="field-grid three" id="llmSamplingFields"></div>
+<details class="advanced-settings"><summary>Подключение к API</summary><div class="field-grid"><div><label for="llmUrl">Адрес API</label><input id="llmUrl" type="url"></div><div><label for="llmModel">Имя модели</label><input id="llmModel"></div></div></details></div>
+<div id="roleMountLlm" class="role-mount"></div>
+<div class="role-inventory"><div class="panel-heading"><h2>Установленные LLM</h2></div><div id="roleInstalledLlm" class="installed-role-list"></div></div>
+</section>
+<section class="settings-pane" id="settings-stt" data-settings-panel="stt" role="tabpanel" aria-labelledby="settings-tab-stt" hidden>
+<div class="model-settings-heading"><div><h2>Распознавание речи</h2><span id="roleStatusStt" class="minor"></span></div><button type="button" class="button secondary" data-view="tests">Диагностика</button></div>
+<div class="settings-params"><div class="panel-heading"><h2>Подключение STT</h2></div><div class="field-grid"><div><label for="sttUrl">Адрес API</label><input id="sttUrl" type="url"></div><div><label for="sttModel">Имя модели</label><input id="sttModel"></div></div></div>
+<div id="roleMountStt" class="role-mount"></div><div class="role-inventory"><div class="panel-heading"><h2>Установленные STT</h2></div><div id="roleInstalledStt" class="installed-role-list"></div></div>
+</section>
+<section class="settings-pane" id="settings-storage" data-settings-panel="storage" role="tabpanel" aria-labelledby="settings-tab-storage" hidden>
+<div class="storage-heading"><div><h2>Хранилище моделей</h2><span class="minor">Путь на сервере: <code id="storageRoot">—</code></span></div><a class="button secondary" href="/setup.html">Мастер установки</a></div>
+<div id="modelStorageMount"></div><div class="storage-heading"><h2>Установленные модели</h2><div class="storage-filters" role="group" aria-label="Фильтр моделей">
+<button type="button" data-storage-role="all" class="selected">Все</button><button type="button" data-storage-role="llm">LLM</button><button type="button" data-storage-role="stt">STT</button><button type="button" data-storage-role="tts">TTS</button></div></div>
+<div id="storageSummary" class="minor"></div><div id="storageInventoryMount"></div></section><div class="form-footer"><span class="minor" id="settingsNote">Изменения применяются к новым запросам.</span><button type="submit" id="saveSettings" class="button primary">Сохранить настройки</button></div>
+   </form><div id="llmExtraFields" class="llm-extra-fields"><div><label for="topP">Top-p</label><input id="topP" type="number" min="0.01" max="1" step="0.05"></div><div><label for="topK">Top-k</label><input id="topK" type="number" min="0" max="200" step="1"></div><div><label for="repeatPenalty">Штраф за повторения</label><input id="repeatPenalty" type="number" min="0.5" max="2" step="0.05"></div></div>
    <div class="linked-panel"><span>Настройки движков, GPU и загрузки</span><button type="button" class="text-link text-button" data-view="models">Модели и параметры</button></div>
  </section>
 
@@ -213,10 +234,10 @@
       <button id="chatMemoryClear" class="button secondary" type="button">Очистить историю</button>
     </div>
     <p class="minor">Разговоры сохраняются в выбранном профиле. Определения человека по голосу нет.</p>
-    <div class="button-row"><button id="chatConnect" class="button secondary" type="button">Подключиться</button><span id="chatStatus" class="minor">Отключено</span></div>
-   <div id="chatHistory" class="chat-history" aria-live="polite"></div>
+    <div class="chat-connection"><button id="chatConnect" class="button secondary" type="button">Подключиться</button><span id="chatStatus" role="status" class="minor">Отключено</span><input id="chatDeviceToken" type="password" autocomplete="off" aria-label="Ключ устройства" placeholder="Ключ для подключения по сети"></div>
+   <div id="chatHistory" class="chat-history" role="log" aria-live="polite"></div>
    <div class="chat-compose"><input id="chatInput" placeholder="Напишите сообщение"><button id="chatSend" type="button" class="button primary" disabled>Отправить</button><button id="chatCancel" type="button" class="button secondary" disabled>Стоп</button></div>
-   <audio id="chatAudio" controls></audio>
+   <label class="chat-audio-option"><input type="checkbox" id="chatAudioEnabled"> Озвучивать ответы</label><audio id="chatAudio" controls hidden></audio>
   </div>
  </section>
 
@@ -248,5 +269,6 @@
 </main></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/audio-test.js" defer></script>
-<script src="/dashboard.js?v=20261106" defer></script>
+<script src="/dashboard.js?v=20261106b" defer></script>
+<script src="/settings-manager.js?v=20261106b" defer></script>
 </body></html>

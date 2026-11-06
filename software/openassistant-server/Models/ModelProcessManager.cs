@@ -149,7 +149,8 @@ public sealed class ModelProcessManager(
         try
         {
             if (_running.Values.Any(x => !x.Process.HasExited &&
-                    string.Equals(x.ModelPath, full, StringComparison.Ordinal)))
+                    (string.Equals(x.ModelPath, full, StringComparison.Ordinal) ||
+                     x.ModelPath.StartsWith(full + Path.DirectorySeparatorChar, StringComparison.Ordinal))))
                 throw new InvalidOperationException("Остановите модель перед удалением весов");
             var profiles = await ProfilesAsync(ct);
             var result = await downloads.DeleteWeightAsync(full, ct);
@@ -157,7 +158,8 @@ public sealed class ModelProcessManager(
             foreach (var profile in profiles.Values)
             {
                 if (!string.IsNullOrWhiteSpace(profile.ModelPath) &&
-                    string.Equals(Path.GetFullPath(profile.ModelPath), full, StringComparison.Ordinal))
+                    (string.Equals(Path.GetFullPath(profile.ModelPath), full, StringComparison.Ordinal) ||
+                     Path.GetFullPath(profile.ModelPath).StartsWith(full + Path.DirectorySeparatorChar, StringComparison.Ordinal)))
                 {
                     profile.ModelPath = "";
                     changed = true;

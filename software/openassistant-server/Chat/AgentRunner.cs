@@ -25,9 +25,12 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
     {
         var messages = new List<object>(history.Select(x => (object)new { role = x.Role, content = x.Content }));
         int executed = 0;
+        bool toolsSupported = true;
         for (int round = 0; round < 5; round++)
         {
-            var enabled = (await skills.ListAsync(ct)).Where(x => x.Enabled).ToArray();
+            SkillDefinition[] enabled = toolsSupported
+                ? (await skills.ListAsync(ct)).Where(x => x.Enabled).ToArray()
+                : Array.Empty<SkillDefinition>();
             var cfg = options.CurrentValue;
             object payload = enabled.Length > 0
                 ? new {
@@ -43,10 +46,33 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
                     top_p = cfg.LlmTopP, top_k = cfg.LlmTopK, repeat_penalty = cfg.LlmRepeatPenalty,
                     max_tokens = cfg.LlmMaxTokens, messages
                 };
-            using var request = new HttpRequestMessage(HttpMethod.Post, cfg.LlmUrl.TrimEnd('/') + "/v1/chat/completions")
-            { Content = JsonContent.Create(payload) };
-            using var response = await clients.CreateClient("llm").SendAsync(request,
-                HttpCompletionOption.ResponseHeadersRead, ct);
+            var client = clients.CreateClient("llm");
+            var endpoint = cfg.LlmUrl.TrimEnd('/') + "/v1/chat/completions";
+            HttpResponseMessage candidate;
+            using (var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+                { Content = JsonContent.Create(payload) })
+            {
+                candidate = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            }
+            // Some OpenAI-compatible local engines cannot parse tool_calls. Keep
+            // ordinary chat usable, but never claim actions were executed.
+            if (enabled.Length > 0 &&
+                (candidate.StatusCode == System.Net.HttpStatusCode.BadRequest ||
+                 candidate.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity))
+            {
+                candidate.Dispose();
+                toolsSupported = false;
+                var simple = new {
+                    model = cfg.LlmModel, stream = true, temperature = cfg.LlmTemperature,
+                    top_p = cfg.LlmTopP, top_k = cfg.LlmTopK,
+                    repeat_penalty = cfg.LlmRepeatPenalty, max_tokens = cfg.LlmMaxTokens,
+                    messages
+                };
+                using var retry = new HttpRequestMessage(HttpMethod.Post, endpoint)
+                    { Content = JsonContent.Create(simple) };
+                candidate = await client.SendAsync(retry, HttpCompletionOption.ResponseHeadersRead, ct);
+            }
+            using var response = candidate;
             response.EnsureSuccessStatusCode();
             await using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var reader = new StreamReader(stream, Encoding.UTF8);

@@ -417,16 +417,27 @@ app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline, Microsoft.Ext
             || origin.Port != (ctx.Request.Host.Port ?? (ctx.Request.IsHttps ? 443 : 80)))
         { ctx.Response.StatusCode = 403; return; }
     }
+    // Browser WebSocket cannot set custom headers. It sends the device key in an
+    // explicitly offered subprotocol; the server only selects the non-secret name.
+    string[] protocols = ctx.Request.Headers["Sec-WebSocket-Protocol"].ToString()
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     if (!localOnly(ctx))
     {
-        var token = options.CurrentValue.DeviceToken;
-        var supplied = ctx.Request.Headers["X-OpenAssistant-Token"].ToString();
+        string token = options.CurrentValue.DeviceToken;
+        string supplied = ctx.Request.Headers["X-OpenAssistant-Token"].ToString();
+        if (supplied.Length == 0)
+        {
+            string? offered = protocols.FirstOrDefault(p =>
+                p.StartsWith("oa.auth.", StringComparison.Ordinal));
+            if (offered is not null) supplied = offered["oa.auth.".Length..];
+        }
         if (string.IsNullOrEmpty(token) || supplied.Length != token.Length ||
             !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
                 System.Text.Encoding.UTF8.GetBytes(supplied), System.Text.Encoding.UTF8.GetBytes(token)))
         { ctx.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
     }
-    using var socket = await ctx.WebSockets.AcceptWebSocketAsync();
+    using var socket = await ctx.WebSockets.AcceptWebSocketAsync(
+        protocols.Contains("openassistant", StringComparer.Ordinal) ? "openassistant" : null);
     await pipeline.RunAsync(socket, ctx.RequestAborted, ctx.Connection.RemoteIpAddress?.ToString());
 });
 app.Lifetime.ApplicationStarted.Register(() =>

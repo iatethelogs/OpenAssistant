@@ -6,14 +6,14 @@ function toast(msg,error=false){const box=el("toast");box.textContent=msg;box.cl
 async function api(url,method="GET",data){const init={method,cache:"no-store"};if(data!==undefined){init.headers={"Content-Type":"application/json"};init.body=JSON.stringify(data)}const r=await fetch(url,init),v=await r.json().catch(()=>({}));if(!r.ok)throw Error(v.error||v.message||"HTTP "+r.status);return v}
 function textNode(tag,text,className){const e=document.createElement(tag);e.textContent=String(text??"");if(className)e.className=className;return e}
 function busy(btn,fn){return async()=>{btn.disabled=true;try{await fn()}catch(e){toast(e.message,true)}finally{btn.disabled=false}}}
-function show(view){if(!(view in names))return;for(const node of document.querySelectorAll(".view"))node.classList.toggle("active",node.id===view);for(const node of document.querySelectorAll("#navigation [data-view]")){const selected=node.dataset.view===view;node.classList.toggle("active",selected);if(selected)node.setAttribute("aria-current","page");else node.removeAttribute("aria-current")}el("pageName").textContent=names[view];history.replaceState(null,"","#"+view)}
+function show(view){if(!(view in names))return;const storage=view==="models";if(storage)view="settings";for(const node of document.querySelectorAll(".view"))node.classList.toggle("active",node.id===view);for(const node of document.querySelectorAll("#navigation [data-view]")){const selected=node.dataset.view===(storage?"models":view);node.classList.toggle("active",selected);if(selected)node.setAttribute("aria-current","page");else node.removeAttribute("aria-current")}el("pageName").textContent=storage?names.models:names[view];history.replaceState(null,"","#"+(storage?"models":view));if(storage)window.OpenAssistantModelUI?.select("storage");if(view==="chat")queueMicrotask(()=>connectChat(true));}
 for(const b of document.querySelectorAll("[data-view]"))b.onclick=()=>show(b.dataset.view);
 function pct(a,b){return b>0?Math.min(100,Math.max(0,100*a/b)):0}
 function setService(role){const status=state.models?.status||{},proc=status.running?.[role],health=status.api?.[role]?.state||"unreachable";const live=health==="ready";const running=proc?.running;const flag=el(role+"Flag");flag.textContent=live?"API готов":running?"Загрузка":health==="unknown"?"Нет проверки":"Недоступен";flag.className="state-tag "+(live?"good":running?"neutral":"bad");el(role+"Status").textContent=live?"Работает":running?"Запущен":"Остановлен";el(role+"Info").textContent=(proc?.pid?"PID "+proc.pid+" · ":"")+"HTTP: "+health}
 function renderGpus(){const box=el("gpus");box.replaceChildren();const gpus=state.models?.status?.gpus||[];if(!gpus.length){box.append(textNode("div","Нет телеметрии NVIDIA. Проверьте драйвер и nvidia-smi.","empty"));return}for(const gpu of gpus){const card=textNode("div","","gpu-card");const head=textNode("div","","gpu-top");head.append(textNode("strong","GPU "+gpu.index+" · "+gpu.name),textNode("span",(gpu.temperature??"—")+" °C · "+(gpu.utilization??"—")+"%"));const bar=textNode("div","","gpu-bar"),fill=document.createElement("div");fill.style.width=pct(gpu.usedMiB,gpu.totalMiB)+"%";bar.append(fill);const foot=textNode("div","","gpu-bottom");foot.append(textNode("span",(gpu.usedMiB??"—")+"/"+(gpu.totalMiB??"—")+" MiB"),textNode("span",(gpu.powerWatts??"—")+" Вт"));card.append(head,bar,foot);box.append(card)}}
 function renderDevices(){el("devicesCount").textContent=state.devices?.count??"—";el("onlineBadge").textContent=(state.devices?.count??0)+" онлайн";const box=el("connections");box.replaceChildren();const list=state.devices?.connections||[];if(!list.length){box.append(textNode("div","Подключённых устройств нет. После установки и настройки колонки она появится здесь.","empty"));return}
 for(const entry of list){const row=textNode("div","","connection-entry");row.append(textNode("strong",entry.remote+" · "+entry.id),textNode("small","Подключение: "+new Date(entry.connectedAt).toLocaleString("ru-RU")+" · последний пакет: "+new Date(entry.lastPacketAt).toLocaleTimeString("ru-RU")));box.append(row)}}
-function render(){for(const role of ["llm","stt","tts"])setService(role);renderGpus();renderDevices();el("updatedAt").textContent="Обновлено "+new Date().toLocaleTimeString("ru-RU");
+function render(){for(const role of ["llm","stt","tts"])setService(role);renderGpus();renderDevices();window.OpenAssistantModelUI?.refreshStatuses?.();el("updatedAt").textContent="Обновлено "+new Date().toLocaleTimeString("ru-RU");
 const sys=state.system||{};el("cpuValue").textContent=sys.cpuThreads??"—";el("memoryValue").textContent=sys.serverMemoryMiB==null?"—":sys.serverMemoryMiB+" МиБ";el("storageValue").textContent=sys.diskFreeGiB==null?"—":sys.diskFreeGiB+" ГиБ";el("downloadsValue").textContent=(state.downloads?.jobs||[]).filter(j=>["queued","downloading"].includes(j.state)).length;
 el("serverChip").textContent="Подключено";el("sideStatus").textContent="Сервер доступен"}
 async function poll(){if(state.loading)return;state.loading=true;try{const [models,system,devices,downloads]=await Promise.all([api("/api/models"),api("/api/control/system"),api("/api/control/devices"),api("/api/models/downloads")]);Object.assign(state,{models,system,devices,downloads});render()}catch(e){el("serverChip").textContent="Нет соединения";el("sideStatus").textContent="Нет подключения";}finally{state.loading=false}}
@@ -28,6 +28,8 @@ function loadSettings(){
  el("prompt").value=s.systemPrompt??"";
  el("temperature").value=s.llmTemperature??.5;
  el("maxTokens").value=s.llmMaxTokens??512;
+ for(const [id,key,fallback] of [["topP","llmTopP",.9],["topK","llmTopK",40],["repeatPenalty","llmRepeatPenalty",1.1]])el(id).value=s[key]??fallback;
+ for(const [id,key] of [["llmUrl","llmUrl"],["llmModel","llmModel"],["sttUrl","sttUrl"],["sttModel","sttModel"],["ttsUrl","ttsUrl"],["ttsModel","ttsModel"]])el(id).value=s[key]??"";
  el("voice").value=p.speaker??s.ttsVoice??"Ryan";
  el("language").value=s.ttsLanguage??"Russian";
  el("voiceModeSetting").value=p.mode||"custom";
@@ -53,6 +55,10 @@ el("settingsForm").onsubmit=async event=>{
   const savedProfile=await api("/api/setup/voice","PUT",profile);
   const settings={...state.settings,systemPrompt:el("prompt").value.trim(),
    llmTemperature:Number(el("temperature").value),llmMaxTokens:Number(el("maxTokens").value),
+   llmTopP:Number(el("topP").value),llmTopK:Number(el("topK").value),llmRepeatPenalty:Number(el("repeatPenalty").value),
+   llmUrl:el("llmUrl").value.trim(),llmModel:el("llmModel").value.trim(),
+   sttUrl:el("sttUrl").value.trim(),sttModel:el("sttModel").value.trim(),
+   ttsUrl:el("ttsUrl").value.trim(),ttsModel:el("ttsModel").value.trim(),
    ttsVoice:savedProfile.speaker,ttsLanguage:el("language").value.trim()};
   delete settings.hasDeviceToken;delete settings.hasHomeAssistantToken;
   await api("/api/settings","POST",settings);
@@ -72,7 +78,7 @@ el("createKey").onclick=busy(el("createKey"),async()=>{if(!confirm("Перевы
 function renderSkills(){const box=el("skillsList");box.replaceChildren();for(const skill of state.skills){const label=textNode("label","","skill-option");const check=document.createElement("input");check.type="checkbox";check.dataset.skill=skill.name;check.checked=skill.enabled;const section=document.createElement("div");section.append(textNode("strong",skill.title),textNode("small",skill.description+(skill.sensitive?" · Действие требует разрешения":"")));label.append(check,section);box.append(label)}}
 el("saveSkills").onclick=busy(el("saveSkills"),async()=>{const changes={};for(const input of document.querySelectorAll("#skillsList input"))changes[input.dataset.skill]=input.checked;state.skills=await api("/api/control/skills","PUT",changes);renderSkills();toast("Разрешения навыков обновлены")});
 async function init(){const page=location.hash.slice(1);show(page in names?page:"overview");try{const [settings,skills,voiceProfile]=await Promise.all([api("/api/settings"),api("/api/control/skills"),api("/api/setup/voice")]);state.settings=settings;state.skills=skills;state.voiceProfile=voiceProfile;loadSettings();renderSkills()}catch(e){toast("Настройки: "+e.message,true)}await poll();await refreshConnections().catch(()=>{});await refreshModels().catch(()=>{})}
-init();setInterval(poll,6000);setInterval(()=>{if(document.getElementById("logs").classList.contains("active"))refreshServerLogs().catch(()=>{});if(document.getElementById("models").classList.contains("active"))refreshModels().catch(()=>{})},5000);
+init();setInterval(poll,6000);setInterval(()=>{if(document.getElementById("logs").classList.contains("active"))refreshServerLogs().catch(()=>{});if(document.getElementById("settings")?.classList.contains("active")&&!document.getElementById("settings-storage")?.hidden)refreshModels().catch(()=>{})},5000);
 
 
 /* Additional sections share the same layout and API. No nested pages or iframes. */
@@ -84,11 +90,11 @@ function renderModelCards(){
   const card=textNode("article","","service");const head=textNode("div",role.toUpperCase(),"service-type");
   const model=state.models?.profiles?.[role];
   const modelName=(current?.modelPath||model?.modelPath||"").split("/").pop();
-  card.append(head,textNode("div",current?.running?"Запущена":"Не запущена","service-value"),
+  card.append(head,textNode("div",current?.running?"Запущена":state.models?.status?.api?.[role]?.state==="ready"?"API доступен":"Остановлена","service-value"),
     textNode("div",modelName||"Модель не выбрана","service-caption"));
   const actions=textNode("div","","model-card-actions");
   const edit=textNode("button","Параметры","button secondary");
-  edit.onclick=()=>{el("profileRole").value=role;loadProfile();el("profileRole").scrollIntoView({behavior:"smooth",block:"center"})};
+  edit.onclick=()=>{show("settings");window.OpenAssistantModelUI?.select(role);window.OpenAssistantModelUI?.mountRole(role);el("profileModel").scrollIntoView({behavior:"smooth",block:"center"})};
   actions.append(edit);
   if(current?.running){
     const stop=textNode("button","Остановить","button secondary");
@@ -149,7 +155,7 @@ async function refreshModels(){
   const actions=textNode("div","","installed-actions");
   if(item.role==="llm"){
    const select=textNode("button","Выбрать","button secondary");
-   select.onclick=()=>{el("profileRole").value="llm";loadProfile();el("profileModel").value=item.path;el("profileModel").scrollIntoView({behavior:"smooth",block:"center"});toast("Модель выбрана. Сохраните профиль перед запуском.")};
+   select.onclick=()=>{show("settings");window.OpenAssistantModelUI?.select("llm");window.OpenAssistantModelUI?.mountRole("llm");el("profileModel").value=item.path;el("profileModel").scrollIntoView({behavior:"smooth",block:"center"});toast("Сохраните профиль для запуска.")};
    actions.append(select);
    if(item.removable){
     const del=textNode("button","Удалить веса","button danger");
@@ -163,7 +169,7 @@ async function refreshModels(){
   }else actions.append(textNode("span",item.source==="manual-download"?"Файлы в каталоге":item.role==="tts"?"Кеш Hugging Face":"Кеш GigaAM","minor"));
   row.append(name,actions);files.append(row);
  }
- if(!files.children.length)files.textContent="Файлов пока нет";
+ if(!files.children.length)files.textContent="Файлов пока нет";window.OpenAssistantModelUI?.renderIndex();
 }
 el("profileRole").onchange=loadProfile;
 el("profileSave").onclick=busy(el("profileSave"),async()=>{
@@ -250,7 +256,7 @@ async function refreshMemoryCount(){
 }
 el("chatProfile").value=localStorage.getItem("openassistant-chat-profile")||"Общий";
 el("chatProfileSet").onclick=()=>{
- const name=activeProfile();if(!/^[\\p{L}\\p{N} _.-]{1,48}$/u.test(name)){toast("Некорректное имя профиля",true);return}
+ const name=activeProfile();if(!/^[\p{L}\p{N} _.-]{1,48}$/u.test(name)){toast("Некорректное имя профиля",true);return}
  localStorage.setItem("openassistant-chat-profile",name);
  el("chatHistory").textContent="";
  if(chatSocket?.readyState===1)chatSocket.send(JSON.stringify({type:"profile",name}));
@@ -264,40 +270,75 @@ el("chatMemoryClear").onclick=busy(el("chatMemoryClear"),async()=>{
  toast("История профиля удалена");
 });
 refreshMemoryCount().catch(()=>{});
-el("chatConnect").onclick=()=>{
- if(chatSocket?.readyState===1){chatSocket.close();return}
+function connectChat(auto=false){
+ if(chatSocket?.readyState===WebSocket.OPEN){if(!auto)chatSocket.close();return}
+ if(chatSocket?.readyState===WebSocket.CONNECTING)return;
+ const host=location.hostname.toLowerCase();
+ const local=host==="localhost"||host==="127.0.0.1"||host==="::1"||host==="[::1]";
+ const key=el("chatDeviceToken").value.trim();
+ if(!local&&!key){el("chatStatus").textContent="Введите ключ устройства для подключения";return}
+ if(!local&&location.protocol!=="https:"){
+   el("chatStatus").textContent="Для подключения используйте HTTPS или SSH-туннель";return
+ }
  const uri=(location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws";
- chatSocket=new WebSocket(uri);chatSocket.binaryType="arraybuffer";el("chatStatus").textContent="Подключение";
- chatSocket.onopen=()=>{chatSocket.send(JSON.stringify({type:"profile",name:activeProfile()}));el("chatStatus").textContent="Подключено";el("chatConnect").textContent="Отключиться";el("chatSend").disabled=false;el("chatCancel").disabled=false};
- chatSocket.onclose=()=>{el("chatStatus").textContent="Отключено";el("chatConnect").textContent="Подключиться";el("chatSend").disabled=true;el("chatCancel").disabled=true};
- chatSocket.onerror=()=>el("chatStatus").textContent="Ошибка соединения";
- chatSocket.onmessage=event=>{
-  if(event.data instanceof ArrayBuffer){chatBuffer.push(new Uint8Array(event.data));return}
-  const msg=JSON.parse(event.data);
-  if(msg.type==="transcript")chatAppend("\nВы: "+msg.text+"\nАссистент: ");
-  else if(msg.type==="profile"){el("chatStatus").textContent="Подключено · "+msg.name;refreshMemoryCount().catch(()=>{})}
-  else if(msg.type==="text")chatAppend(msg.delta||"");
-  else if(msg.type==="audio_start"){chatBuffer=[];chatSampleRate=msg.sampleRate||24000}
-  else if(msg.type==="audio_end"){
-   const size=chatBuffer.reduce((n,x)=>n+x.length,0);const audio=new Uint8Array(size);let offset=0;
-   for(const x of chatBuffer){audio.set(x,offset);offset+=x.length}
-   const wav=new Uint8Array(44+audio.length),view=new DataView(wav.buffer);
-   const write=(n,t)=>{for(let i=0;i<t.length;i++)wav[n+i]=t.charCodeAt(i)};
-   write(0,"RIFF");view.setUint32(4,wav.length-8,true);write(8,"WAVE");write(12,"fmt ");
-   view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);
-   view.setUint32(24,chatSampleRate,true);view.setUint32(28,chatSampleRate*2,true);
-   view.setUint16(32,2,true);view.setUint16(34,16,true);write(36,"data");view.setUint32(40,audio.length,true);wav.set(audio,44);
-   if(el("chatAudio").dataset.url)URL.revokeObjectURL(el("chatAudio").dataset.url);
-   const url=URL.createObjectURL(new Blob([wav],{type:"audio/wav"}));el("chatAudio").dataset.url=url;el("chatAudio").src=url;el("chatAudio").play().catch(()=>{});chatBuffer=[];
-  }else if(msg.type==="error")chatAppend("\nОшибка: "+msg.message+"\n");
-  else if(msg.type==="done"){chatAppend("\n");refreshMemoryCount().catch(()=>{})}
+ let socket;
+ try{socket=new WebSocket(uri,key?["openassistant","oa.auth."+key]:["openassistant"])}
+ catch(e){el("chatStatus").textContent=e.message;return}
+ chatSocket=socket;socket.binaryType="arraybuffer";el("chatStatus").textContent="Подключение…";
+ socket.onopen=()=>{
+   if(socket!==chatSocket)return;
+   socket.send(JSON.stringify({type:"profile",name:activeProfile()}));
+   el("chatStatus").textContent="Подключено";
+   el("chatConnect").textContent="Отключиться";
+   el("chatSend").disabled=false;el("chatCancel").disabled=false;
  };
-};
-function sendChat(){const s=el("chatInput").value.trim();if(!s||chatSocket?.readyState!==1)return;chatSocket.send(JSON.stringify({type:"text",text:s}));el("chatInput").value=""}
+ socket.onclose=()=>{
+   if(socket!==chatSocket)return;
+   el("chatStatus").textContent="Отключено";
+   el("chatConnect").textContent="Подключиться";
+   el("chatSend").disabled=true;el("chatCancel").disabled=true;
+ };
+ socket.onerror=()=>{if(socket===chatSocket)el("chatStatus").textContent="Ошибка соединения. Проверьте ключ и адрес."};
+ socket.onmessage=event=>{
+   if(socket!==chatSocket)return;
+   if(event.data instanceof ArrayBuffer){chatBuffer.push(new Uint8Array(event.data));return}
+   let msg;try{msg=JSON.parse(event.data)}catch{return}
+   if(msg.type==="transcript")chatAppend("\nВы: "+msg.text+"\nАссистент: ");
+   else if(msg.type==="profile")el("chatStatus").textContent="Подключено · "+msg.name;
+   else if(msg.type==="text")chatAppend(msg.delta||"");
+   else if(msg.type==="audio_start"){chatBuffer=[];chatSampleRate=msg.sampleRate||24000}
+   else if(msg.type==="audio_end"){
+     const size=chatBuffer.reduce((n,x)=>n+x.length,0),pcm=new Uint8Array(size);let offset=0;
+     for(const x of chatBuffer){pcm.set(x,offset);offset+=x.length}
+     const wav=new Uint8Array(44+pcm.length),view=new DataView(wav.buffer);
+     const write=(n,t)=>{for(let i=0;i<t.length;i++)wav[n+i]=t.charCodeAt(i)};
+     write(0,"RIFF");view.setUint32(4,wav.length-8,true);write(8,"WAVE");write(12,"fmt ");
+     view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);
+     view.setUint32(24,chatSampleRate,true);view.setUint32(28,chatSampleRate*2,true);
+     view.setUint16(32,2,true);view.setUint16(34,16,true);write(36,"data");view.setUint32(40,size,true);wav.set(pcm,44);
+     const player=el("chatAudio");
+     if(player.dataset.url)URL.revokeObjectURL(player.dataset.url);
+     player.dataset.url=URL.createObjectURL(new Blob([wav],{type:"audio/wav"}));
+     player.src=player.dataset.url;player.hidden=!el("chatAudioEnabled").checked;
+     if(!player.hidden)player.play().catch(()=>{});
+     chatBuffer=[];
+   }else if(msg.type==="error"){
+     chatAppend("\nОшибка: "+(msg.message||"Ошибка обработки")+"\n");
+     el("chatSend").disabled=false;el("chatStatus").textContent="Подключено";
+   }else if(msg.type==="done"||msg.type==="cancelled"){
+     chatAppend("\n");el("chatSend").disabled=false;
+     el("chatStatus").textContent="Подключено";
+     refreshMemoryCount().catch(()=>{});
+   }
+ };
+}
+el("chatConnect").onclick=()=>connectChat(false);
+el("chatAudioEnabled").onchange=()=>{el("chatAudio").hidden=!el("chatAudioEnabled").checked};
+function sendChat(){const s=el("chatInput").value.trim();if(!s||chatSocket?.readyState!==1)return;chatSocket.send(JSON.stringify({type:"text",text:s,audio:el("chatAudioEnabled").checked}));el("chatSend").disabled=true;el("chatInput").value=""}
 el("chatSend").onclick=sendChat;el("chatInput").onkeydown=e=>{if(e.key==="Enter")sendChat()};el("chatCancel").onclick=()=>{if(chatSocket?.readyState===1)chatSocket.send(JSON.stringify({type:"cancel"}))};
 el("assistantDefaults").onclick=busy(el("assistantDefaults"),async()=>{
  const p=await api("/api/control/assistant-defaults");
- el("prompt").value=p.systemPrompt;el("temperature").value=p.llmTemperature;el("maxTokens").value=p.llmMaxTokens;
+ el("prompt").value=p.systemPrompt;el("temperature").value=p.llmTemperature;el("maxTokens").value=p.llmMaxTokens;el("topP").value=p.llmTopP;el("topK").value=p.llmTopK;el("repeatPenalty").value=p.llmRepeatPenalty;
  toast("Параметры выставлены. Нажмите «Сохранить настройки».");
 });
 el("haRefreshEntities").onclick=busy(el("haRefreshEntities"),async()=>{

@@ -1,0 +1,77 @@
+/* Unified model settings and repository. */
+#settingsForm.settings-panel{max-width:none;padding:0;border:0;border-radius:0;background:transparent}
+#settingsForm>.settings-tabbar{display:flex;flex-wrap:wrap;gap:4px;width:max-content;max-width:100%;margin-bottom:17px;padding:4px}
+#settingsForm>.settings-pane{max-width:1190px;animation:surfaceIn .16s ease}
+#settingsForm>.settings-pane[hidden]{display:none!important}
+#settingsForm>.settings-pane#settings-assistant,#settingsForm>.settings-pane#settings-tts{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+#settingsForm .settings-pane .panel-heading{margin-bottom:14px}
+#settingsForm .settings-pane label{margin:0 0 6px}
+#settingsForm .settings-pane .field-grid{margin:10px 0 13px;gap:12px 14px}
+#settingsForm .settings-pane .field-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+#settingsForm>.form-footer{max-width:1190px;margin:15px 0 0;padding:12px 0;border:0;background:transparent;border-radius:0}
+#settingsForm #prompt{min-height:240px;font-size:13px}
+#settings-assistant .panel-heading{margin-bottom:14px}
+.settings-params,.role-inventory{padding:18px 20px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);margin:0 0 15px}
+.role-inventory{margin-top:15px}
+.role-mount .model-editor{margin-top:0}
+#settingsForm>.settings-pane .role-mount{margin:15px 0}
+.model-settings-heading,.storage-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.model-settings-heading h2,.storage-heading h2{margin:0 0 3px;font-size:17px;font-weight:640}
+.storage-heading .minor{font-size:11px}
+.storage-heading code{font-size:11px;overflow-wrap:anywhere;color:var(--secondary)}
+.model-settings-heading .button{flex:none}
+.advanced-settings{border-top:1px solid var(--border-subtle);margin-top:15px;padding-top:12px}
+.advanced-settings summary{cursor:pointer;font-size:12px;font-weight:560;color:var(--secondary)}
+.advanced-settings[open] summary{color:var(--text);margin-bottom:10px}
+.advanced-settings #profileArgs{width:100%;min-height:120px}
+#settingsForm .model-editor{max-width:none;padding:17px 20px}
+.model-editor .field-grid{margin-top:8px}
+.model-editor .button-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:16px}
+.model-editor #profileLogs{max-height:250px;min-height:95px;overflow:auto}
+.installed-role-list{max-height:300px;overflow-y:auto;scrollbar-width:thin}
+.model-file-label{display:flex;flex-direction:column;gap:3px;min-width:0;overflow:hidden}
+.model-file-label strong{font-size:12px;font-weight:580}
+.model-file-label small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tertiary);font-size:10px}
+.storage-filters{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);border-radius:8px;padding:3px;background:var(--surface-alt)}
+.storage-filters button{border:0;border-radius:5px;background:none;color:var(--secondary);padding:6px 11px;font-size:11px}
+.storage-filters button:hover{background:var(--surface-hover)}
+.storage-filters button.selected{background:var(--raised);color:var(--text);font-weight:620}
+#settings-storage .service-grid.three{margin-bottom:16px}
+#settings-storage .overview-grid.wide{grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:14px}
+#settings-storage .overview-grid.wide .panel{min-height:0}
+#settings-storage .scroll-list{min-height:80px;max-height:265px}
+#storageInventoryMount{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);padding:3px 20px}
+#storageInventoryMount .scroll-list{max-height:490px;overflow:auto}
+#storageInventoryMount .installed-row{padding:12px 0}
+#storageInventoryMount .installed-name{font-size:12px}
+#storageSummary{margin:8px 0 12px;font-size:11px}
+#settings-tts .field-grid:first-of-type{grid-template-columns:repeat(3,minmax(0,1fr))}
+#settings-tts .field-grid>div{min-width:0}
+#settings-tts textarea{min-height:65px}
+#models{display:none!important}
+#llmExtraFields{display:none!important}
+#settingsForm .form-footer[hidden]{display:none!important}
+#settingsForm>.settings-pane .linked-panel{display:none}
+.chat-connection{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0 13px}
+.chat-connection #chatDeviceToken{margin-left:auto;width:min(360px,100%);font-size:11px}
+.chat-connection #chatStatus{font-size:11px;overflow-wrap:anywhere}
+.chat-history{height:min(52vh,460px);min-height:260px;padding:18px;font:13px/1.65 var(--font);white-space:pre-wrap;overflow-y:auto}
+.chat-compose{display:flex;gap:8px;margin:12px 0 4px}
+.chat-audio-option{display:flex!important;gap:9px;align-items:center;width:max-content;font-size:11px!important;color:var(--secondary);cursor:pointer;margin:12px 0!important}
+.chat-audio-option input{margin:0!important;min-height:0}
+#chatAudio[hidden]{display:none!important}
+#chatAudio{max-width:600px}
+@media(max-width:1040px){
+ #settingsForm .settings-pane .field-grid.three,#settings-tts .field-grid:first-of-type{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #settings-storage .overview-grid.wide{grid-template-columns:1fr}
+}
+@media(max-width:690px){
+ #settingsForm>.settings-pane#settings-assistant,#settingsForm>.settings-pane#settings-tts,.settings-params,.role-inventory{padding:13px}
+ #settingsForm .settings-pane .field-grid.three,#settings-tts .field-grid:first-of-type{grid-template-columns:1fr}
+ #settingsForm>.settings-tabbar{width:100%;overflow:auto;flex-wrap:nowrap;justify-content:flex-start}
+ .settings-tab{flex:none}
+ .storage-heading{flex-wrap:wrap;align-items:flex-start}
+ .chat-connection #chatDeviceToken{margin-left:0}
+ .chat-compose{flex-wrap:wrap}
+ .chat-compose input{flex-basis:100%}
+}
