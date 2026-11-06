@@ -58,7 +58,8 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
             // ordinary chat usable, but never claim actions were executed.
             if (enabled.Length > 0 &&
                 (candidate.StatusCode == System.Net.HttpStatusCode.BadRequest ||
-                 candidate.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity))
+                 candidate.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity ||
+                 candidate.StatusCode == System.Net.HttpStatusCode.InternalServerError))
             {
                 candidate.Dispose();
                 toolsSupported = false;
@@ -73,7 +74,13 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
                 candidate = await client.SendAsync(retry, HttpCompletionOption.ResponseHeadersRead, ct);
             }
             using var response = candidate;
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                string body = await response.Content.ReadAsStringAsync(ct);
+                string detail = body.Length > 600 ? body[..600] : body;
+                throw new InvalidOperationException(
+                    $"LLM HTTP {(int)response.StatusCode}: {detail}");
+            }
             await using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var reader = new StreamReader(stream, Encoding.UTF8);
 
@@ -117,7 +124,42 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
                         }
                     }
             }
-            if (pending.Count == 0) yield break;
+            if (pending.Count == 0)
+            {
+                if (answer.Length > 0) yield break;
+
+                // A few OpenAI-compatible runtimes acknowledge an SSE request
+                // without emitting content. Retry once as a non-streaming chat,
+                // with no tool calls, instead of silently returning an empty answer.
+                using var retryRequest = new HttpRequestMessage(HttpMethod.Post, endpoint)
+                {
+                    Content = JsonContent.Create(new {
+                        model = cfg.LlmModel, stream = false,
+                        temperature = cfg.LlmTemperature, top_p = cfg.LlmTopP,
+                        top_k = cfg.LlmTopK, repeat_penalty = cfg.LlmRepeatPenalty,
+                        max_tokens = cfg.LlmMaxTokens, messages
+                    })
+                };
+                using var retryResponse = await client.SendAsync(retryRequest,
+                    HttpCompletionOption.ResponseHeadersRead, ct);
+                if (!retryResponse.IsSuccessStatusCode)
+                    throw new InvalidOperationException(
+                        $"LLM не ответила: HTTP {(int)retryResponse.StatusCode}");
+                using var retryJson = JsonDocument.Parse(
+                    await retryResponse.Content.ReadAsStringAsync(ct));
+                string? fallbackText = null;
+                if (retryJson.RootElement.TryGetProperty("choices", out var resultChoices) &&
+                    resultChoices.ValueKind == JsonValueKind.Array && resultChoices.GetArrayLength() > 0 &&
+                    resultChoices[0].TryGetProperty("message", out var reply) &&
+                    reply.TryGetProperty("content", out var bodyText) &&
+                    bodyText.ValueKind == JsonValueKind.String)
+                    fallbackText = bodyText.GetString();
+                if (string.IsNullOrWhiteSpace(fallbackText))
+                    throw new InvalidOperationException(
+                        "LLM вернула пустой ответ. Проверьте модель, контекст и шаблон чата.");
+                yield return new AgentDelta(Text: fallbackText);
+                yield break;
+            }
             if (executed + pending.Count > 8 || round == 4)
                 throw new InvalidOperationException("Превышен лимит вызовов инструментов");
             var callsForHistory = pending.Values.Select((t, index) => new {

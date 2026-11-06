@@ -13,7 +13,7 @@ function setService(role){const status=state.models?.status||{},proc=status.runn
 function renderGpus(){const box=el("gpus");box.replaceChildren();const gpus=state.models?.status?.gpus||[];if(!gpus.length){box.append(textNode("div","Нет телеметрии NVIDIA. Проверьте драйвер и nvidia-smi.","empty"));return}for(const gpu of gpus){const card=textNode("div","","gpu-card");const head=textNode("div","","gpu-top");head.append(textNode("strong","GPU "+gpu.index+" · "+gpu.name),textNode("span",(gpu.temperature??"—")+" °C · "+(gpu.utilization??"—")+"%"));const bar=textNode("div","","gpu-bar"),fill=document.createElement("div");fill.style.width=pct(gpu.usedMiB,gpu.totalMiB)+"%";bar.append(fill);const foot=textNode("div","","gpu-bottom");foot.append(textNode("span",(gpu.usedMiB??"—")+"/"+(gpu.totalMiB??"—")+" MiB"),textNode("span",(gpu.powerWatts??"—")+" Вт"));card.append(head,bar,foot);box.append(card)}}
 function renderDevices(){el("devicesCount").textContent=state.devices?.count??"—";el("onlineBadge").textContent=(state.devices?.count??0)+" онлайн";const box=el("connections");box.replaceChildren();const list=state.devices?.connections||[];if(!list.length){box.append(textNode("div","Подключённых устройств нет. После установки и настройки колонки она появится здесь.","empty"));return}
 for(const entry of list){const row=textNode("div","","connection-entry");row.append(textNode("strong",entry.remote+" · "+entry.id),textNode("small","Подключение: "+new Date(entry.connectedAt).toLocaleString("ru-RU")+" · последний пакет: "+new Date(entry.lastPacketAt).toLocaleTimeString("ru-RU")));box.append(row)}}
-function render(){for(const role of ["llm","stt","tts"])setService(role);renderGpus();renderDevices();window.OpenAssistantModelUI?.refreshStatuses?.();el("updatedAt").textContent="Обновлено "+new Date().toLocaleTimeString("ru-RU");
+function render(){for(const role of ["llm","stt","tts"])setService(role);renderGpus();renderDevices();window.OpenAssistantModelUI?.refreshStatuses?.();if(el("settings")?.classList.contains("active"))window.OpenAssistantModelUI?.renderIndex?.();el("updatedAt").textContent="Обновлено "+new Date().toLocaleTimeString("ru-RU");
 const sys=state.system||{};el("cpuValue").textContent=sys.cpuThreads??"—";el("memoryValue").textContent=sys.serverMemoryMiB==null?"—":sys.serverMemoryMiB+" МиБ";el("storageValue").textContent=sys.diskFreeGiB==null?"—":sys.diskFreeGiB+" ГиБ";el("downloadsValue").textContent=(state.downloads?.jobs||[]).filter(j=>["queued","downloading"].includes(j.state)).length;
 el("serverChip").textContent="Подключено";el("sideStatus").textContent="Сервер доступен"}
 async function poll(){if(state.loading)return;state.loading=true;try{const [models,system,devices,downloads]=await Promise.all([api("/api/models"),api("/api/control/system"),api("/api/control/devices"),api("/api/models/downloads")]);Object.assign(state,{models,system,devices,downloads});render()}catch(e){el("serverChip").textContent="Нет соединения";el("sideStatus").textContent="Нет подключения";}finally{state.loading=false}}
@@ -52,7 +52,12 @@ el("settingsForm").onsubmit=async event=>{
    temperature:Number(el("voiceTemperature").value),topP:Number(el("voiceTopP").value),
    topK:Number(el("voiceTopK").value),repetitionPenalty:Number(el("voicePenalty").value),
    style:el("voiceStyleSetting").value.trim(),description:el("voiceDescriptionSetting").value.trim()};
-  const savedProfile=await api("/api/setup/voice","PUT",profile);
+  // Each settings tab can be saved independently. A broken/unconfigured TTS
+  // runtime must not prevent an LLM or STT settings change.
+  const activePane=document.querySelector("[data-settings-panel]:not([hidden])")?.dataset.settingsPanel;
+  const savedProfile=activePane==="tts"
+    ? await api("/api/setup/voice","PUT",profile)
+    : (state.voiceProfile||profile);
   const settings={...state.settings,systemPrompt:el("prompt").value.trim(),
    llmTemperature:Number(el("temperature").value),llmMaxTokens:Number(el("maxTokens").value),
    llmTopP:Number(el("topP").value),llmTopK:Number(el("topK").value),llmRepeatPenalty:Number(el("repeatPenalty").value),
@@ -63,8 +68,8 @@ el("settingsForm").onsubmit=async event=>{
   delete settings.hasDeviceToken;delete settings.hasHomeAssistantToken;
   await api("/api/settings","POST",settings);
   state.voiceProfile=savedProfile;state.settings=settings;
-  el("settingsNote").textContent="Настройки сохранены.";
-  toast("Настройки голоса и ассистента сохранены");
+  el("settingsNote").textContent="Сохранено";
+  toast("Настройки сохранены")
  })();
 };
 el("runLlm").onclick=busy(el("runLlm"),async()=>{el("llmAnswer").textContent="Генерация ответа…";el("llmBenchmark").textContent="Измерение…";const r=await api("/api/control/test/llm","POST",{prompt:el("testPrompt").value,model:null});el("llmAnswer").textContent=r.text||"(ответ пустой)";el("llmBenchmark").textContent="Первый фрагмент "+r.firstTokenMs+" мс · "+r.totalMs+" мс · "+r.tokensPerSecond+" ток/с"+(r.tokensExact?"":"*");toast("Тест завершён")});
@@ -137,10 +142,12 @@ async function refreshModels(){
  const [models,downloads]=await Promise.all([api("/api/models"),api("/api/models/downloads")]);
  const was=JSON.stringify(state.downloads?.jobs);
  state.models=models;state.downloads=downloads;
- renderModelCards();if(!document.activeElement?.closest(".model-editor"))loadProfile();
+ renderModelCards();
+  if(!window.OpenAssistantModelUI?.hasUnsavedChanges?.() &&
+     !document.activeElement?.closest(".model-editor"))loadProfile();
  const box=el("downloadsList");box.replaceChildren();
  for(const job of downloads.jobs||[]){
-  const row=textNode("div","","download-row");row.append(textNode("strong",job.repo||job.id),
+  const row=textNode("div","","download-row");row.append(textNode("strong",(job.role?job.role.toUpperCase()+" · ":"")+(job.repo||job.id)),
    textNode("span",(job.state||"")+(job.error?" · "+job.error:""),"minor"));
   const percent=job.total?Math.round(job.bytes/job.total*100):0;
   const bar=textNode("div","","progress-line");const fill=document.createElement("span");fill.style.width=Math.min(percent,100)+"%";bar.append(fill);row.append(bar);
@@ -173,7 +180,8 @@ async function refreshModels(){
 }
 el("profileRole").onchange=loadProfile;
 el("profileSave").onclick=busy(el("profileSave"),async()=>{
- await api("/api/models/"+el("profileRole").value,"PUT",readProfile());await refreshModels();toast("Профиль сохранён")});
+ const role=el("profileRole").value;await api("/api/models/"+role,"PUT",readProfile());
+  window.OpenAssistantModelUI?.saved?.(role);await refreshModels();toast("Профиль сохранён")});
 for(const action of ["Start","Restart","Stop"]){const b=el("profile"+action);b.onclick=busy(b,async()=>{await api("/api/models/"+el("profileRole").value+"/"+action.toLowerCase(),"POST");await refreshModels();toast("Команда выполнена")})}
 el("inspectHub").onclick=busy(el("inspectHub"),async()=>{
  const repo=el("hfRepo").value.trim(),rev=el("hfRevision").value.trim()||"main";
@@ -187,7 +195,9 @@ el("inspectHub").onclick=busy(el("inspectHub"),async()=>{
 });
 el("downloadSelected").onclick=busy(el("downloadSelected"),async()=>{
  if(!modelState.selected.size)throw Error("Выберите файлы");
- await api("/api/models/downloads","POST",{repo:el("hfRepo").value.trim(),revision:el("hfRevision").value.trim()||"main",files:[...modelState.selected]});
+ await api("/api/models/downloads","POST",{repo:el("hfRepo").value.trim(),
+    revision:el("hfRevision").value.trim()||"main",files:[...modelState.selected],
+    role:window.OpenAssistantModelUI?.downloadRole?.()||"llm"});
  await refreshModels();toast("Загрузка началась")});
 el("saveHfToken").onclick=busy(el("saveHfToken"),async()=>{
  await api("/api/models/hf-token","POST",{token:el("hfToken").value.trim()});el("hfToken").value="";toast("Токен сохранён")});
@@ -276,10 +286,11 @@ function connectChat(auto=false){
  const host=location.hostname.toLowerCase();
  const local=host==="localhost"||host==="127.0.0.1"||host==="::1"||host==="[::1]";
  const key=el("chatDeviceToken").value.trim();
- if(!local&&!key){el("chatStatus").textContent="Введите ключ устройства для подключения";return}
- if(!local&&location.protocol!=="https:"){
-   el("chatStatus").textContent="Для подключения используйте HTTPS или SSH-туннель";return
- }
+ if(!local&&!key){el("chatStatus").textContent="Укажите ключ из «Устройства» или используйте SSH-туннель";return}
+ // LAN connections require the device key; HTTPS/WSS is recommended for
+ // untrusted networks. Do not silently disable chat on a trusted local LAN.
+ if(!local&&location.protocol!=="https:")
+   el("chatStatus").textContent="Подключение без шифрования · Только доверенная сеть";
  const uri=(location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws";
  let socket;
  try{socket=new WebSocket(uri,key?["openassistant","oa.auth."+key]:["openassistant"])}
@@ -291,10 +302,13 @@ function connectChat(auto=false){
    el("chatStatus").textContent="Подключено";
    el("chatConnect").textContent="Отключиться";
    el("chatSend").disabled=false;el("chatCancel").disabled=false;
+   el("chatInput").focus();
  };
- socket.onclose=()=>{
+ socket.onclose=event=>{
    if(socket!==chatSocket)return;
-   el("chatStatus").textContent="Отключено";
+   const detail=event.code===1006?" · Проверьте адрес, токен и доступность сервера":
+     event.code===1008?" · Доступ запрещён":"";
+   el("chatStatus").textContent="Отключено"+detail;
    el("chatConnect").textContent="Подключиться";
    el("chatSend").disabled=true;el("chatCancel").disabled=true;
  };
@@ -305,7 +319,7 @@ function connectChat(auto=false){
    let msg;try{msg=JSON.parse(event.data)}catch{return}
    if(msg.type==="transcript")chatAppend("\nВы: "+msg.text+"\nАссистент: ");
    else if(msg.type==="profile")el("chatStatus").textContent="Подключено · "+msg.name;
-   else if(msg.type==="text")chatAppend(msg.delta||"");
+   else if(msg.type==="text"){chatAppend(msg.delta||"");el("chatStatus").textContent="Ответ ассистента"}
    else if(msg.type==="audio_start"){chatBuffer=[];chatSampleRate=msg.sampleRate||24000}
    else if(msg.type==="audio_end"){
      const size=chatBuffer.reduce((n,x)=>n+x.length,0),pcm=new Uint8Array(size);let offset=0;
@@ -334,7 +348,16 @@ function connectChat(auto=false){
 }
 el("chatConnect").onclick=()=>connectChat(false);
 el("chatAudioEnabled").onchange=()=>{el("chatAudio").hidden=!el("chatAudioEnabled").checked};
-function sendChat(){const s=el("chatInput").value.trim();if(!s||chatSocket?.readyState!==1)return;chatSocket.send(JSON.stringify({type:"text",text:s,audio:el("chatAudioEnabled").checked}));el("chatSend").disabled=true;el("chatInput").value=""}
+function sendChat(){
+ const s=el("chatInput").value.trim();if(!s)return;
+ if(chatSocket?.readyState!==WebSocket.OPEN){
+   el("chatStatus").textContent="Нет соединения. Нажмите «Подключиться»";
+   return;
+ }
+ chatSocket.send(JSON.stringify({type:"text",text:s,audio:el("chatAudioEnabled").checked}));
+ el("chatSend").disabled=true;el("chatStatus").textContent="Генерация ответа…";
+ el("chatInput").value="";
+}
 el("chatSend").onclick=sendChat;el("chatInput").onkeydown=e=>{if(e.key==="Enter")sendChat()};el("chatCancel").onclick=()=>{if(chatSocket?.readyState===1)chatSocket.send(JSON.stringify({type:"cancel"}))};
 el("assistantDefaults").onclick=busy(el("assistantDefaults"),async()=>{
  const p=await api("/api/control/assistant-defaults");

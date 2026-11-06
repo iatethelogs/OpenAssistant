@@ -37,7 +37,7 @@ builder.Services.AddHttpClient("radio-browser", c => c.DefaultRequestHeaders.Use
 builder.Services.AddHttpClient("yandex-music");
 builder.Services.AddHttpClient("yandex-oauth", c => c.Timeout = TimeSpan.FromSeconds(12));
 builder.Services.Configure<ServerOptions>(builder.Configuration.GetSection("OpenAssistant"));
-builder.Services.AddHttpClient("llm");
+builder.Services.AddHttpClient("llm", c => c.Timeout = TimeSpan.FromMinutes(5));
 builder.Services.AddHttpClient("stt");
 builder.Services.AddHttpClient("tts");
 builder.Services.AddHttpClient("homeassistant");

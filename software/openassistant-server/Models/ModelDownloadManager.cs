@@ -17,13 +17,14 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
 
     public sealed record HubFile(string Path, long Size, string? Sha256);
     public sealed record Repository(string Repo, string Revision, string Commit, HubFile[] Files);
-    public sealed record DownloadRequest(string Repo, string Revision, string[] Files);
+    public sealed record DownloadRequest(string Repo, string Revision, string[] Files, string? Role = null);
     private sealed class Job
     {
         public Guid Id { get; init; } = Guid.NewGuid();
         public required string Repo { get; init; }
         public required string Commit { get; init; }
         public required string Folder { get; init; }
+        public string? Role { get; init; }
         public CancellationTokenSource Stop { get; } = new();
         public DateTimeOffset Started { get; } = DateTimeOffset.UtcNow;
         public long Received;
@@ -170,6 +171,8 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
     {
         if (request.Files is null || request.Files.Length is < 1 or > 800)
             throw new ArgumentException("Выберите от одного до 800 файлов");
+        if (request.Role is not null && request.Role is not ("llm" or "stt" or "tts"))
+            throw new ArgumentException("Тип модели должен быть LLM, STT или TTS");
         var repo = await InspectAsync(request.Repo, request.Revision, ct);
         var available = repo.Files.ToDictionary(f => f.Path, StringComparer.Ordinal);
         var selected = new List<HubFile>();
@@ -184,7 +187,7 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
         {
             if (_jobs.Values.Any(j => j.Folder == folder && j.State is "queued" or "downloading"))
                 throw new InvalidOperationException("Эта модель уже загружается");
-            var job = new Job { Repo = repo.Repo, Commit = repo.Commit, Folder = folder,
+            var job = new Job { Repo = repo.Repo, Commit = repo.Commit, Folder = folder, Role = request.Role,
                 Total = selected.Sum(x => x.Size), FileCount = selected.Count };
             _jobs[job.Id] = job;
             _ = Task.Run(() => DownloadAsync(job, selected));
@@ -252,6 +255,15 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
                 }
                 File.Move(partial, path, true);
                 lock (_sync) job.FilesDone++;
+            }
+            // Role is local metadata, not part of the downloaded model.
+            // It survives a server restart and allows classifying custom STT/TTS repositories.
+            if (job.Role is "stt" or "tts" or "llm")
+            {
+                string marker = Path.Combine(job.Folder, ".openassistant-role");
+                string temp = marker + ".tmp";
+                await File.WriteAllTextAsync(temp, job.Role, job.Stop.Token);
+                File.Move(temp, marker, true);
             }
             lock (_sync) { job.State = "completed"; job.Current = ""; }
         }
@@ -334,12 +346,26 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
     }
 
     /// <summary>Файлы LLM и реальные кеши распознавания/синтеза, без пересчёта копий весов.</summary>
+    private static long SafeSize(string file)
+    {
+        try { return new FileInfo(file).Length; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return 0; }
+    }
+    private static long SafeDirectorySize(string directory)
+    {
+        try { return Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+            .Where(x => !x.EndsWith(".partial", StringComparison.OrdinalIgnoreCase))
+            .Sum(SafeSize); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return 0; }
+    }
+
     private object[] InstalledModels(string[] files)
     {
         var result = new List<object>();
         foreach (string file in files.Where(x => x.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)).Take(500))
             result.Add(new { role = "llm", name = Path.GetFileName(file), path = file,
-                repo = "", source = "local", removable = true });
+                repo = "", source = "local", removable = true,
+                bytes = SafeSize(file) });
 
         // Отдельно учитываем STT/TTS, загруженные вручную через каталог Hugging Face.
         // Они могут ещё не быть подключены к Python runtime, поэтому source отличается от кеша.
@@ -352,13 +378,17 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
             var parts = rel.Split('/');
             if (parts.Length < 4) continue;
             string repo = parts[0] + "/" + parts[1];
-            string role = parts[1].Contains("TTS", StringComparison.OrdinalIgnoreCase) ? "tts" :
+            string marker = Path.Combine(Root, parts[0], parts[1], parts[2], ".openassistant-role");
+            string role = File.Exists(marker) ? File.ReadAllText(marker).Trim() :
+                parts[1].Contains("TTS", StringComparison.OrdinalIgnoreCase) ? "tts" :
                 parts[1].Contains("GigaAM", StringComparison.OrdinalIgnoreCase) ? "stt" : "";
+            if (role is not ("stt" or "tts")) continue;
             if (role.Length == 0) continue;
             string modelDir = Path.Combine(Root, parts[0], parts[1], parts[2]);
             if (!manual.Add(modelDir)) continue;
             result.Add(new { role, name = parts[1], path = modelDir, repo,
-                source = "manual-download", removable = true });
+                source = "manual-download", removable = true,
+                bytes = SafeDirectorySize(modelDir) });
         }
 
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -370,7 +400,7 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
                 foreach (var checkpoint in Directory.EnumerateFiles(gigaam, "*.ckpt").Take(100))
                     result.Add(new { role = "stt", name = Path.GetFileNameWithoutExtension(checkpoint),
                         path = checkpoint, repo = "salute-developers/GigaAM",
-                        source = "gigaam-cache", removable = false });
+                        source = "gigaam-cache", removable = false, bytes = SafeSize(checkpoint) });
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
@@ -395,7 +425,7 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
                             .Any(File.Exists)) continue;
                         string name = dirname.Replace("models--", "", StringComparison.Ordinal).Replace("--", "/");
                         result.Add(new { role = "tts", name = name.Split('/').Last(),
-                            path = snapshot, repo = name, source = "huggingface-cache", removable = false });
+                            path = snapshot, repo = name, source = "huggingface-cache", removable = false, bytes = (long?)null });
                         break;
                     }
                 }
@@ -410,7 +440,7 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
         object[] jobs;
         lock (_sync) jobs = _jobs.Values.OrderByDescending(x => x.Started).Take(30)
             .Select(j => (object)new {
-                id = j.Id, repo = j.Repo, revision = j.Commit, path = j.Folder, state = j.State,
+                id = j.Id, repo = j.Repo, revision = j.Commit, path = j.Folder, role = j.Role, state = j.State,
                 file = j.Current, filesDone = j.FilesDone, filesTotal = j.FileCount,
                 bytes = j.Received, total = j.Total, startedAt = j.Started, error = j.Error
             }).ToArray();
@@ -442,7 +472,9 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
             // Only the exact author/repository/revision folder created by the downloader.
             if (parts.Length != 3 ||
                 !(parts[1].Contains("TTS", StringComparison.OrdinalIgnoreCase) ||
-                  parts[1].Contains("GigaAM", StringComparison.OrdinalIgnoreCase)))
+                  parts[1].Contains("GigaAM", StringComparison.OrdinalIgnoreCase) ||
+                  (File.Exists(Path.Combine(full, ".openassistant-role")) &&
+                   (File.ReadAllText(Path.Combine(full, ".openassistant-role")).Trim() is "stt" or "tts"))))
                 throw new ArgumentException("Можно удалить только скачанный пакет STT/TTS");
         }
         // Защита от симлинков, в том числе промежуточных каталогов.

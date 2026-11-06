@@ -75,3 +75,19 @@
  .chat-compose{flex-wrap:wrap}
  .chat-compose input{flex-basis:100%}
 }
+
+/* Model inventory controls and clear separation between basic and advanced options. */
+.library-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0 8px}
+.library-tools input[type="search"]{flex:1 1 230px;max-width:470px}
+.library-tools .minor{font-variant-numeric:tabular-nums}
+.library-tools .button{margin-left:auto}
+.repository-role{margin:0 0 10px}
+.repository-role select{max-width:380px}
+.installed-role-list .installed-row{min-height:66px}
+.installed-role-list .model-file-label small+small{color:var(--secondary)}
+.role-mount .model-editor .profile-advanced{margin-top:12px;padding-top:11px;border-top:1px solid var(--border-subtle)}
+.role-mount .model-editor .profile-advanced summary{cursor:pointer;color:var(--secondary);font-size:12px;font-weight:580}
+.role-mount .model-editor .profile-advanced[open] summary{margin-bottom:12px}
+.role-mount .model-editor .profile-advanced .field-grid{margin-top:12px}
+#settingsForm #settings-tts .model-settings-heading{margin:8px 0 14px}
+@media(max-width:690px){.library-tools .button{margin-left:0}}

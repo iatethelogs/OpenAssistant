@@ -194,7 +194,14 @@ public sealed class AssistantPipeline(
             catch (Exception ex)
             {
                 logger.LogError(ex, "assistant request failed");
-                try { if (socket.State == WebSocketState.Open) await JsonAsync(new { type = "error", message = ex.Message }, disconnected); }
+                try
+                {
+                    if (socket.State == WebSocketState.Open)
+                    {
+                        await JsonAsync(new { type = "error", message = ex.Message }, disconnected);
+                        await JsonAsync(new { type = "done" }, disconnected);
+                    }
+                }
                 catch { /* клиент мог отключиться */ }
             }
         }

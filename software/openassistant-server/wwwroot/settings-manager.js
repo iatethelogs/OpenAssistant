@@ -3,7 +3,8 @@
 (() => {
  const roles=["llm","stt","tts"],suffix={llm:"Llm",stt:"Stt",tts:"Tts"};
  const $=id=>document.getElementById(id);
- let active="llm",filter="all";
+ let active="llm",filter="all",search="",dirty=false;
+ let downloadingRole="llm";
  const drafts=new Map();
  function status(role){
    const r=state.models?.status?.running?.[role],apiState=state.models?.status?.api?.[role]?.state;
@@ -12,7 +13,7 @@
  }
  function capture(){
    if(!$("sharedRoleEditor")?.isConnected||!state.models?.profiles)return;
-   drafts.set(active,readProfile());
+   if(dirty)drafts.set(active,readProfile());
  }
  function restore(role){
    const d=drafts.get(role);if(!d)return;
@@ -27,23 +28,32 @@
    if(active!==role)capture();
    active=role;$("profileRole").value=role;
    $("roleMount"+suffix[role]).append($("sharedRoleEditor"));
-   loadProfile();restore(role);status(role);
+   loadProfile();restore(role);dirty=drafts.has(role);status(role);
  }
- function select(role){window.OpenAssistantUI?.selectTab?.(role);}
+ function select(role){
+   if(!roles.includes(role)&&role!=="storage")return;
+   const tab=window.OpenAssistantUI?.selectTab;
+   tab?.(role);
+   if(roles.includes(role))mountRole(role);
+ }
  function fileEntry(item){
    const row=document.createElement("div");row.className="installed-row";
    const name=document.createElement("div");name.className="model-file-label";
    const strong=document.createElement("strong");strong.textContent=item.name||"Модель";
    const path=document.createElement("small");path.textContent=item.path||"";path.title=item.path||"";
-   name.append(strong,path);row.append(name);
+   const info=document.createElement("small");
+   const sz=item.bytes==null?"":(item.bytes/1073741824).toFixed(2)+" ГиБ · ";
+   info.textContent=sz+(item.source==="huggingface-cache"||item.source==="gigaam-cache"?"Кеш модели":"Файлы сервера");
+   name.append(strong,path,info);row.append(name);
    const actions=document.createElement("div");actions.className="installed-actions";
    if(roles.includes(item.role)&&item.path){
      const selectButton=document.createElement("button");selectButton.type="button";selectButton.className="button secondary";selectButton.textContent="Выбрать";
      selectButton.onclick=()=>{
        select(item.role);mountRole(item.role);
        $("profileModel").value=item.path;
-       drafts.set(item.role,readProfile());
+       dirty=true;drafts.set(item.role,readProfile());
        $("profileModel").focus();
+       $("profileModel").setAttribute("aria-label","Выбранная модель, сохраните профиль запуска");
      };
      actions.append(selectButton);
    }
@@ -60,13 +70,15 @@
  }
  function renderIndex(){
    const list=state.downloads?.installed||[];
+   const filtered=list.filter(item=>(filter==="all"||item.role===filter)&&
+     (!search||[item.name,item.repo,item.path].some(value=>String(value||"").toLowerCase().includes(search))));
    for(const role of roles){
      status(role);
      const box=$("roleInstalled"+suffix[role]);if(!box)continue;
      box.replaceChildren();
-     const matches=list.filter(x=>x.role===role);
+     const matches=list.filter(x=>x.role===role && (!search||[x.name,x.repo,x.path].some(value=>String(value||"").toLowerCase().includes(search))));
      matches.slice(0,150).forEach(item=>box.append(fileEntry(item)));
-     if(!matches.length)box.textContent="Модели не найдены";
+     if(!matches.length)box.textContent=search?"Нет совпадений":"Нет установленных моделей";
    }
    if($("storageRoot"))$("storageRoot").textContent=state.downloads?.root||"—";
    const inventory=$("installedModels");
@@ -74,11 +86,16 @@
      const rows=[...inventory.querySelectorAll(".installed-row")];
      rows.forEach((row,i)=>{
        const item=list[i];
-       row.hidden=!!item&&filter!=="all"&&item.role!==filter;
+       row.hidden=!item||!filtered.includes(item);
      });
    }
    const summary=$("storageSummary");
-   if(summary)summary.textContent=roles.map(r=>r.toUpperCase()+": "+list.filter(x=>x.role===r).length).join("   ·   ");
+   if(summary){
+     const bytes=list.reduce((total,item)=>total+(typeof item.bytes==="number"?item.bytes:0),0);
+     const known=bytes>0?" · "+(bytes/1073741824).toFixed(2)+" ГиБ учтено":"";
+     summary.textContent=roles.map(r=>r.toUpperCase()+": "+list.filter(x=>x.role===r).length).join("   ·   ")+known;
+   }
+   const found=$("storageFound");if(found)found.textContent=filtered.length+" из "+list.length;
  }
  function mount(){
    const old=$("models"),host=$("modelStorageMount"),inventory=$("storageInventoryMount");
@@ -98,6 +115,21 @@
    if(editor){
      editor.id="sharedRoleEditor";
      $("roleMountLlm").append(editor);
+     const mainFields=editor.querySelector(".field-grid");
+     if(mainFields){
+       const advanced=document.createElement("details");advanced.className="profile-advanced";
+       const summary=document.createElement("summary");summary.textContent="Дополнительные параметры запуска";
+       advanced.append(summary);
+       const advancedFields=document.createElement("div");advancedFields.className="field-grid";
+       for(const id of ["profileExecutable","profileCwd","profileHealth"]){
+         const input=$(id);if(input)advancedFields.append(input.closest("div"));
+       }
+       advanced.append(advancedFields);
+       const argLabel=editor.querySelector('label[for="profileArgs"]'),args=$("profileArgs");
+       if(argLabel&&args)advanced.append(argLabel,args);
+       const buttonRow=editor.querySelector(".button-row");
+       editor.insertBefore(advanced,buttonRow||null);
+     }
      const roleSelect=$("profileRole");
      roleSelect.classList.add("hidden");
      const label=document.querySelector('label[for="profileRole"]');label?.classList.add("hidden");
@@ -108,21 +140,51 @@
    if(extra&&llm){while(extra.firstElementChild)llm.append(extra.firstElementChild);extra.remove()}
    const tts=$("settings-tts")?.querySelector(".field-grid");
    for(const id of ["language","voice"]){const input=$(id);if(input&&tts)tts.prepend(input.parentElement)}
-   // The current settings form wraps all model tabs so user preferences are saved in one place.
+   // Keep existing model operations and API calls, only relocate their UI.
    old.remove();
+   const toolsRow=document.createElement("div");toolsRow.className="library-tools";
+   const query=document.createElement("input");query.type="search";query.placeholder="Поиск по имени, пути или репозиторию";
+   query.setAttribute("aria-label","Поиск моделей");query.autocomplete="off";
+   query.oninput=()=>{search=query.value.trim().toLowerCase();renderIndex()};
+   const found=document.createElement("span");found.id="storageFound";found.className="minor";
+   const refresh=document.createElement("button");refresh.className="button secondary";refresh.type="button";refresh.textContent="Обновить";
+   refresh.onclick=busy(refresh,async()=>{await refreshModels()});
+   toolsRow.append(query,found,refresh);
+   const storageHeading=$("storageSummary");storageHeading?.before(toolsRow);
+   const repoField=$("hfRepo");
+   if(repoField){
+     const roleWrapper=document.createElement("div");roleWrapper.className="repository-role";
+     const label=document.createElement("label");label.htmlFor="downloadRole";label.textContent="Тип загружаемой модели";
+     const select=document.createElement("select");select.id="downloadRole";
+     for(const [value,title] of [["llm","Языковая модель · LLM"],["stt","Распознавание речи · STT"],["tts","Синтез речи · TTS"]]){
+       const opt=document.createElement("option");opt.value=value;opt.textContent=title;select.append(opt);
+     }
+     select.onchange=()=>{downloadingRole=select.value};
+     roleWrapper.append(label,select);
+     repoField.parentElement?.insertBefore(roleWrapper,repoField);
+   }
    document.querySelectorAll("[data-storage-role]").forEach(button=>button.addEventListener("click",()=>{
      filter=button.dataset.storageRole;
      document.querySelectorAll("[data-storage-role]").forEach(x=>x.classList.toggle("selected",x===button));
      renderIndex();
    }));
-   $("profileSave")?.addEventListener("click",()=>drafts.delete(active));
+   const editorRoot=$("sharedRoleEditor");
+   editorRoot?.addEventListener("input",()=>{dirty=true;drafts.set(active,readProfile())});
+   editorRoot?.addEventListener("change",()=>{dirty=true;drafts.set(active,readProfile())});
    for(const role of roles)
      document.querySelector('[data-settings-tab="'+role+'"]')?.addEventListener("click",()=>mountRole(role));
+   if(!$("roleStatusTts")){
+     const statusText=document.createElement("span");statusText.id="roleStatusTts";statusText.className="minor";
+     $("roleMountTts")?.before(statusText);
+   }
    mountRole("llm");
    renderIndex();
    if(location.hash==="#models")select("storage");
  }
  function refreshStatuses(){for(const role of roles)status(role)}
- window.OpenAssistantModelUI={mountRole,select,renderIndex,refreshStatuses};
+ function saved(role){drafts.delete(role);if(active===role)dirty=false}
+ function hasUnsavedChanges(){return dirty}
+ function downloadRole(){return downloadingRole}
+ window.OpenAssistantModelUI={mountRole,select,renderIndex,refreshStatuses,saved,hasUnsavedChanges,downloadRole};
  document.addEventListener("DOMContentLoaded",mount);
 })();
