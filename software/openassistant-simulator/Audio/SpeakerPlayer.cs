@@ -2,43 +2,44 @@ using NAudio.Wave;
 
 namespace OpenAssistant.Simulator.Audio;
 
-/// <summary>воспроизведение голоса и прямых музыкальных URL на стороне колонки.</summary>
+/// <summary>Separate audio outputs for streamed TTS and music (the latter stays stereo).</summary>
 public sealed class SpeakerPlayer : IDisposable
 {
     private readonly object _musicLock = new();
-    private WaveOutEvent? _speechOutput;
+    private WaveOut? _speechOutput;
     private BufferedWaveProvider? _speechBuffer;
     private int _speechRate;
     private long _speechVersion;
-    private WaveOutEvent? _musicOutput;
+    private WaveOut? _musicOutput;
     private MediaFoundationReader? _mediaReader;
     private long _musicVersion;
+    private bool _pausedByAssistant;
+    public bool SpeechActive => _speechOutput is not null;
+    public bool MusicActive
+    {
+        get { lock (_musicLock) return _musicOutput?.PlaybackState == PlaybackState.Playing; }
+    }
 
-    /// <summary>создаёт голосовой PCM-буфер либо продолжает воспроизведение следующей фразы.</summary>
     public void BeginSpeech(int rate)
     {
         if (rate < 8000 || rate > 48000) throw new ArgumentOutOfRangeException(nameof(rate));
         if (_speechOutput is not null && _speechRate == rate) return;
         EndSpeech();
         _speechRate = rate;
-        _speechBuffer = new BufferedWaveProvider(new WaveFormat(rate, 16, 1))
-        {
-            BufferDuration = TimeSpan.FromSeconds(12),
-            DiscardOnBufferOverflow = true
-        };
-        _speechOutput = new WaveOutEvent { DesiredLatency = 120 };
+        _speechBuffer = new BufferedWaveProvider(
+            new WaveFormat(rate, 16, 1), TimeSpan.FromSeconds(12))
+        { DiscardOnBufferOverflow = true };
+        _speechOutput = new WaveOut { BufferMilliseconds = 60, NumberOfBuffers = 3 };
         _speechOutput.Init(_speechBuffer);
         _speechOutput.Play();
     }
 
-    /// <summary>пополняет буфер голосового ответа сырыми PCM16 отсчётами.</summary>
     public void AddSpeech(byte[] pcm)
     {
-        if ((pcm.Length & 1) != 0) throw new InvalidDataException("нечётное число байт PCM16");
+        if ((pcm.Length & 1) != 0) throw new InvalidDataException("Нечётный PCM16");
         _speechBuffer?.AddSamples(pcm, 0, pcm.Length);
     }
 
-    /// <summary>ждёт окончания буфера после done, не обрезая последние слова.</summary>
     public async Task FinishSpeechAsync()
     {
         var buffer = _speechBuffer;
@@ -49,7 +50,7 @@ public sealed class SpeakerPlayer : IDisposable
             if (version != Volatile.Read(ref _speechVersion)) return;
             if (buffer.BufferedBytes == 0)
             {
-                await Task.Delay(180);
+                await Task.Delay(220);
                 if (version == Volatile.Read(ref _speechVersion)) EndSpeech();
                 return;
             }
@@ -57,7 +58,6 @@ public sealed class SpeakerPlayer : IDisposable
         }
     }
 
-    /// <summary>сбрасывает голос, в том числе при новом wake-word или команде cancel.</summary>
     public void EndSpeech()
     {
         Interlocked.Increment(ref _speechVersion);
@@ -67,14 +67,33 @@ public sealed class SpeakerPlayer : IDisposable
         _speechBuffer = null;
     }
 
-    /// <summary>открывает музыкальный URL в фоновом потоке, чтобы интерфейс не зависал на сети.</summary>
+    public void DuckMusic()
+    {
+        lock (_musicLock)
+        {
+            if (_musicOutput?.PlaybackState == PlaybackState.Playing)
+            {
+                _musicOutput.Pause();
+                _pausedByAssistant = true;
+            }
+        }
+    }
+    public void ResumeMusic()
+    {
+        lock (_musicLock)
+        {
+            if (!_pausedByAssistant) return;
+            _pausedByAssistant = false;
+            _musicOutput?.Play();
+        }
+    }
+
     public async Task<MusicStreamInfo?> PlayUrlAsync(string url, CancellationToken ct = default)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var address) ||
             address.Scheme is not ("http" or "https"))
-            throw new ArgumentException("музыкальный URL должен использовать HTTP или HTTPS");
+            throw new ArgumentException("Music URL must use HTTP or HTTPS");
         long version = Interlocked.Increment(ref _musicVersion);
-        // MediaFoundationReader может долго ожидать ответа станции: не блокируем WPF.
         var reader = await Task.Run(() => new MediaFoundationReader(url), ct);
         lock (_musicLock)
         {
@@ -86,12 +105,13 @@ public sealed class SpeakerPlayer : IDisposable
             StopMusicCore();
             try
             {
-                var output = new WaveOutEvent();
+                var output = new WaveOut { BufferMilliseconds = 120 };
                 output.Init(reader);
                 _mediaReader = reader;
                 _musicOutput = output;
                 output.Play();
-                return new MusicStreamInfo(reader.WaveFormat.SampleRate, reader.WaveFormat.Channels, reader.WaveFormat.BitsPerSample);
+                return new MusicStreamInfo(reader.WaveFormat.SampleRate,
+                    reader.WaveFormat.Channels, reader.WaveFormat.BitsPerSample);
             }
             catch
             {
@@ -104,16 +124,14 @@ public sealed class SpeakerPlayer : IDisposable
         }
     }
 
-    /// <summary>останавливает только музыку, отменяя также незавершённое открытие ссылки.</summary>
     public void StopMusic()
     {
         Interlocked.Increment(ref _musicVersion);
         lock (_musicLock) StopMusicCore();
     }
-
-    /// <summary>освобождает текущий музыкальный декодер под блокировкой.</summary>
     private void StopMusicCore()
     {
+        _pausedByAssistant = false;
         _musicOutput?.Stop();
         _musicOutput?.Dispose();
         _musicOutput = null;
@@ -121,13 +139,10 @@ public sealed class SpeakerPlayer : IDisposable
         _mediaReader = null;
     }
 
-    /// <summary>завершает все аудиоканалы.</summary>
     public void Dispose()
     {
         EndSpeech();
         StopMusic();
     }
 }
-
-/// <summary>фактический формат декодированного музыкального потока Windows.</summary>
 public sealed record MusicStreamInfo(int SampleRate, int Channels, int BitsPerSample);

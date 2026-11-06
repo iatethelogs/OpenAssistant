@@ -3,5 +3,9 @@
 <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
 <UseWPF>true</UseWPF><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
 </PropertyGroup>
-<ItemGroup><PackageReference Include="NAudio" Version="2.2.1"/></ItemGroup>
+<ItemGroup><PackageReference Include="NAudio" Version="3.3.0"/></ItemGroup>
+<ItemGroup Condition="Exists('WakeDetector/target/release/openassistant-wake.exe')">
+  <Content Include="WakeDetector/target/release/openassistant-wake.exe"
+           Link="openassistant-wake.exe" CopyToOutputDirectory="PreserveNewest" />
+</ItemGroup>
 </Project>
