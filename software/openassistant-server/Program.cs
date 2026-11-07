@@ -51,14 +51,93 @@ builder.Services.AddSingleton<ToolRegistry>();
 builder.Services.AddSingleton<AssistantPipeline>();
 builder.Services.AddSingleton<ConversationLog>();
 var app = builder.Build();
-// блокируем запросы к локальному api из посторонних веб-страниц.
+
+// Same LAN endpoint for the web panel and WebSocket devices.
+// The public-facing admin API must not become unauthenticated when the LAN is enabled.
+static bool LoopbackClient(HttpContext ctx)
+{
+    var ip = ctx.Connection.RemoteIpAddress;
+    if (ip is null) return false;
+    if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+    return IPAddress.IsLoopback(ip);
+}
+static bool LanClient(HttpContext ctx)
+{
+    var ip = ctx.Connection.RemoteIpAddress;
+    if (ip is null) return false;
+    if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+    if (IPAddress.IsLoopback(ip)) return true;
+    var bytes = ip.GetAddressBytes();
+    return bytes.Length == 4 &&
+        (bytes[0] == 10 ||
+         bytes[0] == 172 && bytes[1] is >= 16 and <= 31 ||
+         bytes[0] == 192 && bytes[1] == 168);
+}
+var localOnly = new Func<HttpContext, bool>(LanClient);
+
+// Password is supplied through an environment variable rather than saved in
+// appsettings or sent to an unauthenticated browser. Localhost remains available
+// for initial setup; remote LAN browsers receive a standard Basic-auth challenge.
 app.Use(async (ctx, next) =>
 {
-    if (ctx.Request.Path.StartsWithSegments("/api") && ctx.Request.Method is "POST" or "PUT" or "DELETE")
+    if (!LanClient(ctx))
     {
-        string expected = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+        ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return;
+    }
+
+    bool isDevice = ctx.Request.Path.StartsWithSegments("/ws");
+    bool health = ctx.Request.Path.StartsWithSegments("/health");
+    if (!isDevice && !health && !LoopbackClient(ctx))
+    {
+        string password = Environment.GetEnvironmentVariable("OPENASSISTANT_PANEL_PASSWORD") ?? "";
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            ctx.Response.ContentType = "text/plain; charset=utf-8";
+            await ctx.Response.WriteAsync(
+                "LAN panel is locked. Set OPENASSISTANT_PANEL_PASSWORD before starting the server.");
+            return;
+        }
+
+        bool authenticated = false;
+        string authorization = ctx.Request.Headers.Authorization.ToString();
+        if (authorization.Length is > 6 and <= 4096 &&
+            authorization.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                string decoded = System.Text.Encoding.UTF8.GetString(
+                    Convert.FromBase64String(authorization[6..].Trim()));
+                int separator = decoded.IndexOf(':');
+                if (separator > 0 &&
+                    string.Equals(decoded[..separator], "admin", StringComparison.Ordinal))
+                {
+                    byte[] given = System.Text.Encoding.UTF8.GetBytes(decoded[(separator + 1)..]);
+                    byte[] expected = System.Text.Encoding.UTF8.GetBytes(password);
+                    authenticated = given.Length == expected.Length &&
+                        System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(given, expected);
+                }
+            }
+            catch (FormatException) { /* malformed Basic credentials */ }
+        }
+        if (!authenticated)
+        {
+            ctx.Response.Headers.WWWAuthenticate = "Basic realm=\"OpenAssistant LAN\", charset=\"UTF-8\"";
+            ctx.Response.Headers.CacheControl = "no-store";
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+    }
+
+    // Reject cross-origin requests that attempt to mutate settings or invoke actions.
+    if (ctx.Request.Path.StartsWithSegments("/api") &&
+        ctx.Request.Method is "POST" or "PUT" or "DELETE")
+    {
+        string expectedOrigin = `${ctx.Request.Scheme}://${ctx.Request.Host}`;
         if (ctx.Request.Headers.Origin.Count > 0 &&
-            !string.Equals(ctx.Request.Headers.Origin.ToString(), expected, StringComparison.OrdinalIgnoreCase))
+            !string.Equals(ctx.Request.Headers.Origin.ToString(), expectedOrigin,
+                StringComparison.OrdinalIgnoreCase))
         {
             ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
             return;
@@ -70,8 +149,7 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "openassistant-server" }));
-// панель доступна только локально; не выдаём конфигурацию и токены по сети.
-var localOnly = new Func<HttpContext, bool>(ctx => ctx.Connection.RemoteIpAddress is { } ip && IPAddress.IsLoopback(ip));
+// API-level checks are kept in addition to the global LAN + password middleware.
 app.MapGet("/api/control/assistant-defaults", (HttpContext ctx) =>
 {
     if (!localOnly(ctx)) return Results.StatusCode(403);
@@ -434,7 +512,7 @@ app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline, Microsoft.Ext
     // explicitly offered subprotocol; the server only selects the non-secret name.
     string[] protocols = ctx.Request.Headers["Sec-WebSocket-Protocol"].ToString()
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    if (!localOnly(ctx))
+    if (!LoopbackClient(ctx))
     {
         string token = options.CurrentValue.DeviceToken;
         string supplied = ctx.Request.Headers["X-OpenAssistant-Token"].ToString();
