@@ -134,7 +134,7 @@ app.Use(async (ctx, next) =>
     if (ctx.Request.Path.StartsWithSegments("/api") &&
         ctx.Request.Method is "POST" or "PUT" or "DELETE")
     {
-        string expectedOrigin = `${ctx.Request.Scheme}://${ctx.Request.Host}`;
+        string expectedOrigin = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
         if (ctx.Request.Headers.Origin.Count > 0 &&
             !string.Equals(ctx.Request.Headers.Origin.ToString(), expectedOrigin,
                 StringComparison.OrdinalIgnoreCase))
