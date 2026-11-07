@@ -49,7 +49,10 @@ builder.Services.AddHttpClient("homeassistant");
 builder.Services.AddSingleton<VoiceProfileStore>();
 builder.Services.AddSingleton<SpeechService>();
 builder.Services.AddSingleton<LlmService>();
-builder.Services.AddSingleton<IAssistantTool, HomeAssistantTool>();
+// AgentToolService depends on the concrete HomeAssistantTool, while ToolRegistry consumes IAssistantTool.
+// Resolve both through the same singleton instance.
+builder.Services.AddSingleton<HomeAssistantTool>();
+builder.Services.AddSingleton<IAssistantTool>(sp => sp.GetRequiredService<HomeAssistantTool>());
 builder.Services.AddSingleton<IAssistantTool, RadioTool>();
 builder.Services.AddSingleton<ToolRegistry>();
 builder.Services.AddSingleton<AssistantPipeline>();
