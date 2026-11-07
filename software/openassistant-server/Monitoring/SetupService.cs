@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using OpenAssistant.Server.Configuration;
 using OpenAssistant.Server.Models;
 
@@ -9,7 +8,7 @@ public sealed record LlamaSetupInput(
     int ContextSize, int GpuLayers, int Threads, int Port, int Parallel);
 
 /// <summary>Настройка сервера и подключаемых устройств без shell и установки стороннего runtime.</summary>
-public sealed class SetupService(SettingsStore store, ModelProcessManager manager)
+public sealed class SetupService(SettingsStore store, ModelProcessManager manager, ServerCredentialStore credentials)
 {
     public object LlamaExecutables()
     {
@@ -52,10 +51,13 @@ public sealed class SetupService(SettingsStore store, ModelProcessManager manage
         return new { configured = true, url = $"http://127.0.0.1:{input.Port}", started = true };
     }
 
-    public async Task<object> GenerateDeviceKeyAsync(CancellationToken ct)
+    public Task<object> GenerateDeviceKeyAsync(CancellationToken ct)
     {
-        string key = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
-        await store.UpdateDeviceTokenAsync(key, ct);
-        return new { token = key, warning = "Предыдущий ключ перестаёт действовать для новых подключений" };
+        ct.ThrowIfCancellationRequested();
+        string key = credentials.RotateDeviceToken();
+        return Task.FromResult<object>(new {
+            token = key,
+            warning = "Предыдущий ключ перестаёт действовать для новых подключений"
+        });
     }
 }

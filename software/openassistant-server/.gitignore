@@ -27,3 +27,7 @@ voice-profile.local.json.tmp
 
 # Conversation history, stored only on the server
 conversation-memory.local/
+
+# Settings for the RGB matrix, stored independently from the device secret
+display.local.json
+display.local.json.*.tmp

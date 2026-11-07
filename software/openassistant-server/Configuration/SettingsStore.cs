@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 namespace OpenAssistant.Server.Configuration;
 
 /// <summary>постоянные настройки без базы данных, через отдельный локальный json.</summary>
-public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<ServerOptions> options)
+public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<ServerOptions> options, ServerCredentialStore credentials)
 {
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
@@ -15,7 +15,7 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
         return new {
             s.LlmUrl, s.LlmModel, s.SystemPrompt,
             s.SttUrl, s.SttModel, s.TtsUrl, s.TtsModel, s.TtsVoice, s.TtsLanguage,
-            s.HomeAssistantUrl, hasDeviceToken = !string.IsNullOrWhiteSpace(s.DeviceToken), hasHomeAssistantToken = !string.IsNullOrWhiteSpace(s.HomeAssistantToken),
+            s.HomeAssistantUrl, hasDeviceToken = !string.IsNullOrWhiteSpace(credentials.DeviceToken), hasHomeAssistantToken = !string.IsNullOrWhiteSpace(s.HomeAssistantToken),
             s.LlmTemperature, s.LlmTopP, s.LlmTopK, s.LlmRepeatPenalty, s.LlmMaxTokens,
             s.InputSampleRate, s.OutputSampleRate, s.RadioStations
         };
@@ -54,7 +54,6 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
     public Task UpdateLlmUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(url, null, null, null, ct);
     public Task UpdateSttUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(null, url, null, null, ct);
     public Task UpdateTtsUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(null, null, url, null, ct);
-    public Task UpdateDeviceTokenAsync(string token, CancellationToken ct) => UpdatePartialAsync(null, null, null, token, ct);
     public Task UpdateLlmTemperatureAsync(double temperature, CancellationToken ct)
     {
         if (temperature is < 0 or > 2) throw new ArgumentException("Температура должна быть от 0 до 2");
@@ -114,7 +113,7 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
                     update.SttUrl, update.SttModel, update.TtsUrl, update.TtsModel,
                     update.TtsVoice, update.TtsLanguage, update.HomeAssistantUrl,
                     HomeAssistantToken = update.HomeAssistantToken is null ? current.HomeAssistantToken : update.HomeAssistantToken,
-                    DeviceToken = update.DeviceToken is null ? current.DeviceToken : update.DeviceToken,
+                    // Device key is now stored in ServerCredentialStore, outside the repository.
                     update.LlmTemperature, update.LlmTopP, update.LlmTopK, update.LlmRepeatPenalty, update.LlmMaxTokens,
                     update.InputSampleRate, update.OutputSampleRate,
                     RadioStations = update.RadioStations ?? current.RadioStations

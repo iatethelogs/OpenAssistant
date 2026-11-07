@@ -21,6 +21,7 @@ builder.Services.AddSingleton<GuidedSetupService>();
 // Models are started only explicitly by the operator or the setup job.
 builder.Configuration.AddJsonFile("settings.local.json", optional: true, reloadOnChange: true);
 builder.Services.AddSingleton<SettingsStore>();
+builder.Services.AddSingleton<ServerCredentialStore>();
 builder.Services.AddSingleton<DisplaySettingsStore>();
 builder.Services.AddSingleton<ModelProcessManager>();
 builder.Services.AddSingleton<ModelDownloadManager>();
@@ -58,6 +59,8 @@ builder.Services.AddSingleton<ToolRegistry>();
 builder.Services.AddSingleton<AssistantPipeline>();
 builder.Services.AddSingleton<ConversationLog>();
 var app = builder.Build();
+// Instantiate credentials once, including one-time migration from the legacy settings file.
+var serverCredentials = app.Services.GetRequiredService<ServerCredentialStore>();
 
 // Same LAN endpoint for the web panel and WebSocket devices.
 // The public-facing admin API must not become unauthenticated when the LAN is enabled.
@@ -97,7 +100,7 @@ app.Use(async (ctx, next) =>
     bool health = ctx.Request.Path.StartsWithSegments("/health");
     if (!isDevice && !health && !LoopbackClient(ctx))
     {
-        string password = Environment.GetEnvironmentVariable("OPENASSISTANT_PANEL_PASSWORD") ?? "";
+        string password = serverCredentials.PanelPassword;
         if (string.IsNullOrWhiteSpace(password))
         {
             ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
@@ -262,8 +265,18 @@ app.MapGet("/api/control/system", (HttpContext ctx, IWebHostEnvironment env) =>
     localOnly(ctx) ? Results.Ok(SystemMetrics.Snapshot(env)) : Results.StatusCode(403));
 app.MapGet("/api/control/devices", (HttpContext ctx, DeviceRegistry devices) =>
     localOnly(ctx) ? Results.Ok(devices.Overview()) : Results.StatusCode(403));
+app.MapGet("/api/control/device/key", (HttpContext ctx, ServerCredentialStore credentials) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    ctx.Response.Headers.CacheControl = "no-store";
+    return Results.Ok(new { token = credentials.DeviceToken });
+});
 app.MapPost("/api/control/device/key", async (HttpContext ctx, SetupService setup, CancellationToken ct) =>
-    localOnly(ctx) ? Results.Ok(await setup.GenerateDeviceKeyAsync(ct)) : Results.StatusCode(403));
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    ctx.Response.Headers.CacheControl = "no-store";
+    return Results.Ok(await setup.GenerateDeviceKeyAsync(ct));
+});
 app.MapPost("/api/control/test/llm", async (
     HttpContext ctx, DiagnosticService.LlmTestInput input, DiagnosticService diagnostic, CancellationToken ct) =>
 {
@@ -504,7 +517,7 @@ app.MapGet("/api/events", (HttpContext ctx, long? after, ConversationLog log) =>
     localOnly(ctx) ? Results.Ok(log.Since(Math.Max(0, after ?? 0))) : Results.StatusCode(403));
 app.MapGet("/tools", (HttpContext ctx, ToolRegistry registry) =>
     localOnly(ctx) ? Results.Ok(registry.Names()) : Results.StatusCode(403));
-app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline, Microsoft.Extensions.Options.IOptionsMonitor<ServerOptions> options) =>
+app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline) =>
 {
     if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
     // браузерный websocket с чужого сайта не должен управлять колонкой в локальной сети.
@@ -521,7 +534,7 @@ app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline, Microsoft.Ext
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     if (!LoopbackClient(ctx))
     {
-        string token = options.CurrentValue.DeviceToken;
+        string token = serverCredentials.DeviceToken;
         string supplied = ctx.Request.Headers["X-OpenAssistant-Token"].ToString();
         if (supplied.Length == 0)
         {
@@ -540,7 +553,11 @@ app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline, Microsoft.Ext
 });
 app.Lifetime.ApplicationStarted.Register(() =>
 {
-    var url = app.Urls.FirstOrDefault() ?? "http://127.0.0.1:5055";
+    // Kestrel's endpoint configuration is authoritative if app.Urls is empty
+    // (the usual case for explicit Kestrel endpoints).
+    var url = app.Configuration["Kestrel:Endpoints:Http:Url"]
+        ?? app.Urls.FirstOrDefault()
+        ?? "http://127.0.0.1:5055";
     StartupBanner.Print(url);
 });
 app.Run();

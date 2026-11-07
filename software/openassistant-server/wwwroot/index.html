@@ -164,9 +164,9 @@
        <label>Адрес подключения</label><div id="wsAddress" class="code-box">ws://SERVER_IP:5055/ws</div>
        <button id="copyAddress" class="button secondary" type="button">Скопировать адрес</button>
        <div class="rule"></div>
-       <label>Ключ для подключения</label><div id="deviceKey" class="code-box">Не создан в этой сессии</div>
-       <div class="button-row"><button id="createKey" class="button primary" type="button">Создать новый ключ</button><button id="copyKey" class="button secondary" type="button">Скопировать ключ</button></div>
-       <p class="small-warning">Новый ключ заменит действующий ключ подключения.</p>
+       <label>Ключ для подключения</label><div id="deviceKey" class="code-box">Загрузка сохранённого ключа…</div>
+       <div class="button-row"><button id="createKey" class="button secondary" type="button">Перевыпустить ключ</button><button id="copyKey" class="button secondary" type="button">Скопировать ключ</button></div>
+       <p class="small-warning">Ключ сохраняется на сервере и не меняется после перезапуска. Перевыпуск отключит старый ключ для новых подключений.</p>
      </article>
      <article class="panel"><div class="panel-heading"><div><h2>Активные подключения</h2><p>Сеансы подключённых клиентов</p></div><span id="onlineBadge" class="state-tag neutral">0 онлайн</span></div>
        <div id="connections" class="connection-list"><div class="empty">Устройств пока нет. После подключения клиент появится здесь.</div></div>
@@ -269,6 +269,6 @@
 </main></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/audio-test.js" defer></script>
-<script src="/dashboard.js?v=20261106c" defer></script>
+<script src="/dashboard.js?v=20261108-credentials" defer></script>
 <script src="/settings-manager.js?v=20261106c" defer></script><script src="/display-editor.js?v=2" defer></script>
 </body></html>

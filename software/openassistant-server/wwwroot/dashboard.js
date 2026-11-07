@@ -78,11 +78,28 @@ function deviceAddress(){let h=el("serverHost").value.trim().replace(/^(ws|wss|h
 el("serverHost").oninput=deviceAddress;
 async function copy(value){if(!navigator.clipboard?.writeText)throw Error("Копирование работает через HTTPS или localhost");await navigator.clipboard.writeText(value);toast("Скопировано")}
 el("copyAddress").onclick=busy(el("copyAddress"),()=>copy(el("wsAddress").textContent));
-el("copyKey").onclick=busy(el("copyKey"),async()=>{if(!state.key)throw Error("Сначала создайте новый ключ");await copy(state.key)});
-el("createKey").onclick=busy(el("createKey"),async()=>{if(!confirm("Перевыпустить общий ключ сервера? Для новых подключений предыдущий ключ перестанет работать."))return;const r=await api("/api/control/device/key","POST");state.key=r.token;el("deviceKey").textContent=r.token;toast("Новый ключ создан")});
+el("copyKey").onclick=busy(el("copyKey"),async()=>{if(!state.key)throw Error("Ключ ещё не загружен");await copy(state.key)});
+async function loadDeviceKey(){
+ const key=await api("/api/control/device/key");
+ if(!key.token)throw Error("Сервер вернул пустой ключ");
+ state.key=key.token;
+ el("deviceKey").textContent=key.token;
+}
+el("createKey").onclick=busy(el("createKey"),async()=>{
+ if(!confirm("Перевыпустить ключ устройства? Старый перестанет работать при следующем подключении."))return;
+ const r=await api("/api/control/device/key","POST");
+ state.key=r.token;
+ el("deviceKey").textContent=r.token;
+ toast("Ключ перевыпущен и сохранён на сервере");
+});
 function renderSkills(){const box=el("skillsList");box.replaceChildren();for(const skill of state.skills){const label=textNode("label","","skill-option");const check=document.createElement("input");check.type="checkbox";check.dataset.skill=skill.name;check.checked=skill.enabled;const section=document.createElement("div");section.append(textNode("strong",skill.title),textNode("small",skill.description+(skill.sensitive?" · Действие требует разрешения":"")));label.append(check,section);box.append(label)}}
 el("saveSkills").onclick=busy(el("saveSkills"),async()=>{const changes={};for(const input of document.querySelectorAll("#skillsList input"))changes[input.dataset.skill]=input.checked;state.skills=await api("/api/control/skills","PUT",changes);renderSkills();toast("Разрешения навыков обновлены")});
-async function init(){const page=location.hash.slice(1);show(page in names?page:"overview");try{const [settings,skills,voiceProfile]=await Promise.all([api("/api/settings"),api("/api/control/skills"),api("/api/setup/voice")]);state.settings=settings;state.skills=skills;state.voiceProfile=voiceProfile;loadSettings();renderSkills()}catch(e){toast("Настройки: "+e.message,true)}await poll();await refreshConnections().catch(()=>{});await refreshModels().catch(()=>{})}
+async function init(){const page=location.hash.slice(1);show(page in names?page:"overview");try{const [settings,skills,voiceProfile]=await Promise.all([api("/api/settings"),api("/api/control/skills"),api("/api/setup/voice")]);state.settings=settings;state.skills=skills;state.voiceProfile=voiceProfile;loadSettings();renderSkills()}catch(e){toast("Настройки: "+e.message,true)}await poll();await refreshConnections().catch(()=>{});await refreshModels().catch(()=>{});
+ await loadDeviceKey().catch(e=>{el("deviceKey").textContent="Не удалось загрузить ключ: "+e.message});
+ if(!el("serverHost").value && location.hostname && location.hostname!=="localhost" && location.hostname!=="127.0.0.1"){
+  el("serverHost").value=location.hostname;deviceAddress();
+ }
+}
 init();setInterval(poll,6000);setInterval(()=>{if(document.getElementById("logs").classList.contains("active"))refreshServerLogs().catch(()=>{});if(document.getElementById("settings")?.classList.contains("active")&&!document.getElementById("settings-storage")?.hidden)refreshModels().catch(()=>{})},5000);
 
 
