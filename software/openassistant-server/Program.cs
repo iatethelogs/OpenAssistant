@@ -12,6 +12,10 @@ var builder = WebApplication.CreateBuilder(args);
 var webLogs = new DashboardLogProvider();
 builder.Logging.ClearProviders();
 builder.Logging.AddProvider(webLogs);
+// Make HTTP 500 and dependency-injection failures visible in the server terminal.
+// Keep routine informational logs in the dashboard.
+builder.Logging.AddConsole();
+builder.Logging.AddFilter<Microsoft.Extensions.Logging.Console.ConsoleLoggerProvider>(null, LogLevel.Error);
 builder.Services.AddSingleton(webLogs);
 builder.Services.AddSingleton<GuidedSetupService>();
 // Models are started only explicitly by the operator or the setup job.
