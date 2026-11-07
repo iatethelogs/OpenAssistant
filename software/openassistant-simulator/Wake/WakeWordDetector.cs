@@ -72,7 +72,7 @@ public sealed class WakeWordDetector : IAsyncDisposable
         var shape=_interpreter.Inputs[0].Dims;
         if (shape.Length!=3 || shape[0]!=1 || shape[2]!=40 || shape[1] is < 1 or > 400)
             throw new InvalidDataException("Ожидается вход [1, шаги, 40] для MicroWakeWord");
-        if (_interpreter.Inputs[0].Type != DataType.Int8)
+        if ((int)_interpreter.Inputs[0].Type != 9)
             throw new InvalidDataException("Нужна INT8-модель");
         _stride=shape[1];
         _worker=Task.Run(ConsumeAsync);
@@ -100,14 +100,20 @@ public sealed class WakeWordDetector : IAsyncDisposable
                     if (_interpreter.Invoke()!=Status.Ok)
                         throw new InvalidOperationException("Ошибка вычисления TensorFlow Lite");
                     var output=_interpreter.Outputs[0];
-                    Array result=output.GetData(false);
-                    if(result.Length<1)throw new InvalidDataException("Пустой результат TFLite");
-                    double prob=Convert.ToDouble(result.GetValue(0),System.Globalization.CultureInfo.InvariantCulture);
-                    if (result is byte[] || result is sbyte[])
+                    int typeId=(int)output.Type;
+                    double prob=typeId switch
                     {
-                        var q=output.QuantizationParams;
-                        if (q.Scale>0) prob=(prob-q.ZeroPoint)*q.Scale;
-                        else prob=(prob+(result is sbyte[]?128:0))/255;
+                        1 => Marshal.PtrToStructure<float>(output.DataPointer), // float32
+                        3 => Marshal.ReadByte(output.DataPointer), // uint8
+                        9 => unchecked((sbyte)Marshal.ReadByte(output.DataPointer)), // int8
+                        _ => throw new InvalidDataException("Неподдерживаемый тип выходного тензора TFLite")
+                    };
+                    if (typeId is 3 or 9)
+                    {
+                        var quant=output.QuantizationParams;
+                        prob=quant.Scale>0
+                            ? (prob-quant.ZeroPoint)*quant.Scale
+                            : (prob+(typeId==9?128:0))/255;
                     }
                     prob=Math.Clamp(prob,0,1);
                     _probabilities.Enqueue(prob);
