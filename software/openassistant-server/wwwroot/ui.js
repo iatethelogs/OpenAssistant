@@ -80,7 +80,7 @@
       document.querySelectorAll("[data-settings-panel]").forEach(panel=>{
         panel.hidden=panel.dataset.settingsPanel!==value;
       });
-      document.querySelector("#settingsForm>.form-footer")?.toggleAttribute("hidden",value==="storage");
+      document.querySelector("#settingsForm>.form-footer")?.toggleAttribute("hidden",value==="storage"||value==="display");
       window.dispatchEvent(new CustomEvent("openassistant:settings-tab",{detail:{value}}));
     }
     if(tabs.length){

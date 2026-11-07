@@ -19,7 +19,7 @@ public partial class MainWindow : Window
     private readonly MicrophoneCapture _microphone = new();
     private readonly NoiseReducer _noise = new();
     private readonly SpeakerPlayer _speaker = new();
-    private readonly ExternalWakeDetector _wake = new();
+    private WakeWordDetector? _wake;
     private readonly VoiceActivityGate _gate = new();
     private readonly AudioUploadQueue _upload;
     private readonly StringBuilder _llmAnswer = new();
@@ -78,15 +78,7 @@ public partial class MainWindow : Window
                 ResumeMusicIfNeeded();
             });
         };
-        _wake.Detected += (word, score) => Ui(() =>
-        {
-            if (!WakeEnabled.IsChecked.GetValueOrDefault() || !_socket.Connected ||
-                _gate.Capturing || _speaker.SpeechActive) return;
-            if (_speaker.MusicActive && BargeInOnMusic.IsChecked != true) return;
-            Log($"Wake: {word} · {score:0.00}");
-            BeginCapture(word);
-        });
-        _wake.Diagnostic += message => Ui(() => Log("Wake: " + message.Trim()));
+        // The in-process C# wake detector is created after a model is selected.
         Closed += async (_, _) =>
         {
             try { await ShutdownAsync(); }
@@ -168,7 +160,7 @@ public partial class MainWindow : Window
             // never a second capture device with drifting timestamps.
             if (!_gate.Capturing && !_speaker.SpeechActive &&
                 (!_speaker.MusicActive || _bargeInEnabled))
-                _wake.Feed(pcm);
+                _wake?.Feed(pcm);
             _gate.Push(processed);
             if (Interlocked.Increment(ref _micTicks) % 3 == 0)
             {
@@ -191,6 +183,27 @@ public partial class MainWindow : Window
             string? type=typeNode.GetString();
             switch(type)
             {
+                case "display_config":
+                    if(packet.TryGetProperty("config",out var display))
+                    {
+                        Matrix.Configure(DisplayProfile.Parse(display));
+                        MatrixDimensionsText.Text=Matrix.Dimensions;
+                        Log("Матрица: "+Matrix.Dimensions);
+                    }
+                    break;
+                case "display_state":
+                    if(packet.TryGetProperty("state",out var stateProperty))
+                    {
+                        if(Enum.TryParse<DisplayMode>(stateProperty.GetString(),true,out var mode))
+                        {
+                            // Playback and recording can continue locally after a server
+                            // "done"; the client's actual audio state takes precedence.
+                            if (mode!=DisplayMode.Idle || (!_speaker.MusicActive && !_gate.Capturing &&
+                                !_speaker.SpeechActive))
+                                Matrix.Mode=mode;
+                        }
+                    }
+                    break;
                 case "profile":
                     Log("Профиль: " + packet.GetProperty("name").GetString());
                     break;
@@ -276,58 +289,52 @@ public partial class MainWindow : Window
         catch(Exception ex){if(!_closing)Log("Аудиовыход: "+ex.Message);}
     }
 
-    private string? WakeCommand(out string arguments)
+    private async Task StopWakeAsync()
     {
-        string external = DetectorExecutable.Text.Trim();
-        if (external.Length > 0)
-        {
-            arguments=DetectorArguments.Text;
-            return external;
-        }
-        string model=WakeModelPath.Text.Trim();
-        if (model.Length == 0) {arguments="";return null;}
-        if (!File.Exists(model)) throw new FileNotFoundException("Модель WakeForge не найдена",model);
-        string[] candidates=[
-            Path.Combine(AppContext.BaseDirectory,"openassistant-wake.exe"),
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"..","..","..","WakeDetector",
-                "target","release","openassistant-wake.exe")),
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"..","..","..","WakeDetector",
-                "target","debug","openassistant-wake.exe"))
-        ];
-        string? exe=candidates.FirstOrDefault(File.Exists);
-        if(exe is null)throw new FileNotFoundException(
-            "Детектор не собран. Выполните build.ps1 (нужен Rust toolchain).");
-        if(!double.TryParse(WakeThreshold.Text.Replace(',','.'),NumberStyles.Float,
-            CultureInfo.InvariantCulture,out var threshold)||threshold is < 0.05 or > 0.999)
-            throw new ArgumentException("Порог Wake должен быть от 0.05 до 0.999");
-        var flag=Path.GetExtension(model).Equals(".json",StringComparison.OrdinalIgnoreCase)
-            ?"--config":"--model";
-        arguments=$"{flag} {Quote(model)} --word {Quote(WakeName.Text.Trim())} --threshold "+
-            threshold.ToString("0.###",CultureInfo.InvariantCulture)+" --window 5 --cooldown 1.5";
-        return exe;
+        if (_wake is null) return;
+        var old=_wake;
+        _wake=null;
+        await old.DisposeAsync();
     }
-    private static string Quote(string text) => "\"" + text.Replace("\"","") + "\"";
+    private void StartWake()
+    {
+        if (WakeEnabled.IsChecked!=true) return;
+        string path=WakeModelPath.Text.Trim();
+        if (path.Length==0)
+        {
+            Log("WakeForge-модель не выбрана. Ручное и тестовое пробуждение доступны.");
+            return;
+        }
+        if(!double.TryParse(WakeThreshold.Text.Replace(',','.'),
+              NumberStyles.Float,CultureInfo.InvariantCulture,out var threshold) ||
+              threshold is < 0.05 or > 0.999)
+            throw new ArgumentException("Порог wake-word должен быть от 0.05 до 0.999.");
+        var detector=new WakeWordDetector(path,WakeName.Text.Trim(),threshold);
+        detector.Detected+=(word,score)=>Ui(()=>
+        {
+            if (!_socket.Connected || !_running || _gate.Capturing || _speaker.SpeechActive ||
+                WakeEnabled.IsChecked!=true ||
+                (_speaker.MusicActive && !_bargeInEnabled))return;
+            Log($"Wake-word: {word} · {score:0.00}");
+            BeginCapture(word);
+        });
+        detector.Error+=message=>Ui(()=>Log("Wake-word: "+message));
+        _wake=detector;
+        Log("Локальный TFLite-детектор готов: "+detector.WakeWord);
+    }
 
     private async void Connect_Click(object sender,RoutedEventArgs e)
     {
         try
         {
-            _running=false;_microphone.Stop();_wake.Stop();_gate.Stop();_noise.Reset();_upload.Reset();
+            _running=false;_microphone.Stop();await StopWakeAsync();_gate.Stop();_noise.Reset();_upload.Reset();
             var profile=ProfileName.Text.Trim();
             if(profile.Length is < 1 or > 48||!Regex.IsMatch(profile,@"^[\p{L}\p{N} _.-]+$"))
                 throw new ArgumentException("Имя профиля должно содержать от 1 до 48 допустимых символов.");
             await _socket.ConnectAsync(ServerAddress.Text.Trim(),DeviceToken.Password.Trim());
             await _socket.SendControlAsync(new {type="profile",name=profile});
-            if(WakeEnabled.IsChecked==true)
-            {
-                try
-                {
-                    var detector=WakeCommand(out var arguments);
-                    if(detector is null) Log("Модель слова активации не выбрана. Доступна ручная запись.");
-                    else{_wake.Start(detector,arguments);Log("Детектор запущен");}
-                }
-                catch(Exception ex){Log("Детектор недоступен: "+ex.Message);}
-            }
+            try { StartWake(); }
+            catch (Exception ex) { Log("Wake-word недоступен: "+ex.Message); }
             _noiseEnabled=NoiseSuppressionEnabled.IsChecked==true;
             _bargeInEnabled=BargeInOnMusic.IsChecked==true;
             _microphone.Start(CommunicationsEnabled.IsChecked==true);
@@ -340,7 +347,7 @@ public partial class MainWindow : Window
         catch(Exception ex)
         {
             _running=false;
-            _microphone.Stop();_wake.Stop();
+            _microphone.Stop();await StopWakeAsync();
             await _socket.DisconnectAsync();
             SetMode(DisplayMode.Error,"Ошибка подключения");
             Log("Подключение: "+ex.Message);
@@ -348,7 +355,7 @@ public partial class MainWindow : Window
     }
     private async void Disconnect_Click(object sender,RoutedEventArgs e)
     {
-        _running=false;_microphone.Stop();_gate.Stop();_wake.Stop();_upload.Reset();
+        _running=false;_microphone.Stop();_gate.Stop();await StopWakeAsync();_upload.Reset();
         _speaker.EndSpeech();_speaker.StopMusic();_resumeMusic=false;
         await _socket.DisconnectAsync();
         SetMode(DisplayMode.Offline,"Не подключено");
@@ -357,6 +364,24 @@ public partial class MainWindow : Window
     {
         if(!_socket.Connected){Log("Сначала подключитесь к серверу");return;}
         BeginCapture();
+    }
+    private void SimulateWake_Click(object sender,RoutedEventArgs e)
+    {
+        if(!_socket.Connected){Log("Сначала подключитесь к серверу");return;}
+        if(_gate.Capturing)return;
+        string name=WakeName.Text.Trim();
+        if(name.Length==0)name="Мартин";
+        Log("Эмуляция wake-word: "+name);
+        BeginCapture(name);
+    }
+    private async void ReloadDisplay_Click(object sender,RoutedEventArgs e)
+    {
+        try
+        {
+            if(!_socket.Connected)throw new InvalidOperationException("Нет соединения с сервером");
+            await _socket.SendControlAsync(new {type="display_get"});
+        }
+        catch(Exception ex){Log("Дисплей: "+ex.Message);}
     }
     private void End_Click(object sender,RoutedEventArgs e)
     {
@@ -395,11 +420,6 @@ public partial class MainWindow : Window
         var dialog=new OpenFileDialog {Filter="WakeForge (*.tflite;*.json)|*.tflite;*.json|Все файлы|*.*"};
         if(dialog.ShowDialog()==true)WakeModelPath.Text=dialog.FileName;
     }
-    private void BrowseDetector_Click(object sender,RoutedEventArgs e)
-    {
-        var dialog=new OpenFileDialog{Filter="Приложение (*.exe)|*.exe"};
-        if(dialog.ShowDialog()==true)DetectorExecutable.Text=dialog.FileName;
-    }
     private void BrowseRgb_Click(object sender,RoutedEventArgs e)
     {
         var dialog=new OpenFileDialog{Filter="RGB888 (32×10)|*.rgb"};
@@ -420,7 +440,6 @@ public partial class MainWindow : Window
         CommunicationsEnabled.IsChecked=c.CommunicationsDsp;
         NoiseSuppressionEnabled.IsChecked=c.NoiseReduction;
         BargeInOnMusic.IsChecked=c.BargeInOnMusic;
-        DetectorExecutable.Text=c.LegacyDetectorExe;DetectorArguments.Text=c.LegacyDetectorArgs;
     }
     private void SavePreferences()
     {
@@ -432,8 +451,7 @@ public partial class MainWindow : Window
             WakeThreshold=threshold,WakeEnabled=WakeEnabled.IsChecked==true,
             CommunicationsDsp=CommunicationsEnabled.IsChecked==true,
             NoiseReduction=NoiseSuppressionEnabled.IsChecked==true,
-            BargeInOnMusic=BargeInOnMusic.IsChecked==true,
-            LegacyDetectorExe=DetectorExecutable.Text.Trim(),LegacyDetectorArgs=DetectorArguments.Text
+            BargeInOnMusic=BargeInOnMusic.IsChecked==true
         }.Save();
     }
     private void SavePreferences_Click(object sender,RoutedEventArgs e)
@@ -445,7 +463,7 @@ public partial class MainWindow : Window
     {
         if(_closing)return;
         _closing=true;_running=false;
-        _microphone.Dispose();_gate.Stop();_wake.Dispose();
+        _microphone.Dispose();_gate.Stop();await StopWakeAsync();
         await _socket.DisconnectAsync();
         await _upload.DisposeAsync();
         await _socket.DisposeAsync();

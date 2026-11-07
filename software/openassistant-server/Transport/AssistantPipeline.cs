@@ -16,7 +16,7 @@ public sealed class AssistantPipeline(
     SpeechService speech, AgentRunner agent, ToolRegistry tools,
     ConversationMemoryStore memory, VerifiedHomeAssistantService homeAssistant,
     AgentToolService skills, ConversationLog conversationLog, DeviceRegistry devices,
-    IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
+    DisplaySettingsStore displaySettings, IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
 {
     /// <summary>принимает аудио и команды клиента до отключения websocket.</summary>
     public async Task RunAsync(WebSocket socket, CancellationToken disconnected, string? remoteAddress = null)
@@ -49,6 +49,12 @@ public sealed class AssistantPipeline(
         Task JsonAsync(object payload, CancellationToken ct) =>
             SendAsync(JsonSerializer.SerializeToUtf8Bytes(payload), WebSocketMessageType.Text, ct);
 
+        Task DisplayStateAsync(string state, CancellationToken ct) =>
+            JsonAsync(new { type = "display_state", state }, ct);
+
+        Task DisplayConfigAsync(CancellationToken ct) =>
+            JsonAsync(new { type = "display_config", config = displaySettings.Current }, ct);
+
         /// <summary>последовательно отправляет одну готовую аудиофразу.</summary>
         async Task AudioAsync(byte[] pcm, int rate, CancellationToken ct)
         {
@@ -57,6 +63,7 @@ public sealed class AssistantPipeline(
             await sendLock.WaitAsync(ct);
             try
             {
+                await socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new { type = "display_state", state = "speaking" }).AsMemory(), WebSocketMessageType.Text, true, ct);
                 await socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new { type = "audio_start", sampleRate = rate }).AsMemory(), WebSocketMessageType.Text, true, ct);
                 foreach (var chunk in AudioChunker.Split(pcm))
                     await socket.SendAsync(chunk, WebSocketMessageType.Binary, true, ct);
@@ -90,6 +97,7 @@ public sealed class AssistantPipeline(
                 return;
             }
             text = text.Trim();
+            await DisplayStateAsync("thinking", ct);
             await JsonAsync(new { type = "transcript", text }, ct);
             conversationLog.Add(fromAudio ? "stt" : "user", text);
 
@@ -198,6 +206,7 @@ public sealed class AssistantPipeline(
                 {
                     if (socket.State == WebSocketState.Open)
                     {
+                        await DisplayStateAsync("error", disconnected);
                         await JsonAsync(new { type = "error", message = ex.Message }, disconnected);
                         await JsonAsync(new { type = "done" }, disconnected);
                     }
@@ -208,6 +217,8 @@ public sealed class AssistantPipeline(
 
         try
         {
+            await DisplayConfigAsync(disconnected);
+            await DisplayStateAsync("idle", disconnected);
             while (socket.State == WebSocketState.Open && !disconnected.IsCancellationRequested)
             {
                 using var frame = new MemoryStream();
@@ -247,6 +258,11 @@ public sealed class AssistantPipeline(
                     if (!root.TryGetProperty("type", out var typeElement) || typeElement.ValueKind != JsonValueKind.String)
                         throw new JsonException("не указана команда type");
                     string? kind = typeElement.GetString();
+                    if (kind == "display_get")
+                    {
+                        await DisplayConfigAsync(disconnected);
+                        continue;
+                    }
                     if (kind == "wake")
                     {
                         string activation = root.GetProperty("word").GetString() ?? "";
@@ -257,6 +273,7 @@ public sealed class AssistantPipeline(
                         input.SetLength(0);
                         rejectingOversizedAudio = false;
                         pendingWakeWord = activation.Trim();
+                        await DisplayStateAsync("listening", disconnected);
                         await JsonAsync(new { type = "listening" }, disconnected);
                         continue;
                     }
@@ -284,6 +301,7 @@ public sealed class AssistantPipeline(
                         input.SetLength(0);
                         rejectingOversizedAudio = false;
                         pendingWakeWord = null;
+                        await DisplayStateAsync("idle", disconnected);
                         await JsonAsync(new { type = "cancelled" }, disconnected);
                         continue;
                     }
@@ -305,6 +323,7 @@ public sealed class AssistantPipeline(
                             await JsonAsync(new { type = "error", message = "запись отклонена, произнесите запрос заново" }, disconnected);
                             continue;
                         }
+                        await DisplayStateAsync("thinking", disconnected);
                         byte[] pcm = input.ToArray();
                         string? activation = pendingWakeWord;
                         pendingWakeWord = null;

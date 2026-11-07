@@ -17,6 +17,7 @@ builder.Services.AddSingleton<GuidedSetupService>();
 // Models are started only explicitly by the operator or the setup job.
 builder.Configuration.AddJsonFile("settings.local.json", optional: true, reloadOnChange: true);
 builder.Services.AddSingleton<SettingsStore>();
+builder.Services.AddSingleton<DisplaySettingsStore>();
 builder.Services.AddSingleton<ModelProcessManager>();
 builder.Services.AddSingleton<ModelDownloadManager>();
 builder.Services.AddSingleton<AgentToolService>();
@@ -89,6 +90,18 @@ app.MapPost("/api/settings", async (HttpContext ctx, SettingsUpdate settings, Se
         !string.Equals(ctx.Request.Headers.Origin.ToString(), $"{ctx.Request.Scheme}://{ctx.Request.Host}", StringComparison.OrdinalIgnoreCase))
         return Results.StatusCode(403);
     try { await store.SaveAsync(settings, ct); return Results.Ok(new { saved = true }); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+// Display settings are separate from general assistant configuration; only local panel can edit.
+app.MapGet("/api/display", (HttpContext ctx, DisplaySettingsStore display) =>
+    localOnly(ctx) ? Results.Ok(display.Current) : Results.StatusCode(403));
+app.MapGet("/api/display/presets", (HttpContext ctx) =>
+    localOnly(ctx) ? Results.Ok(new { states = DisplayConfiguration.StateNames, presets = DisplayConfiguration.Presets })
+                   : Results.StatusCode(403));
+app.MapPut("/api/display", async (HttpContext ctx, DisplayConfiguration value, DisplaySettingsStore display, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await display.SaveAsync(value, ct)); }
     catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 // Hugging Face: запуск задач скачивания не блокирует веб-запрос, весь прогресс доступен через polling.

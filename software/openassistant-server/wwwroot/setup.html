@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#17181b"><meta name="color-scheme" content="dark light">
   <title>Первоначальная настройка · OpenAssistant</title>
   <script src="/ui.js?v=20261106"></script>
-  <link rel="stylesheet" href="/setup.css?v=20261106">
+  <link rel="stylesheet" href="/setup.css?v=20261106"><link rel="stylesheet" href="/display-editor.css?v=2">
 </head>
 <body>
   <div class="shell">
@@ -26,7 +26,7 @@
         <button class="step" data-step="llm" type="button"><b>Языковая модель</b></button>
         <button class="step" data-step="stt" type="button"><b>Распознавание</b></button>
         <button class="step" data-step="tts" type="button"><b>Синтез речи</b></button>
-        <button class="step" data-step="music" type="button"><b>Музыка</b></button>
+        <button class="step" data-step="music" type="button"><b>Музыка</b></button><button class="step" data-step="display" type="button"><b>Дисплей</b></button>
       </div>
       <div class="journey-track" aria-hidden="true"><span id="journeyFill"></span></div>
     </div>
@@ -177,6 +177,14 @@
         </div></div>
       </section>
 
+      <section class="section" id="display">
+        <div class="intro"><h1>Матрица и анимации</h1></div>
+        <div class="panel"><div class="card">
+          <div class="matrix-editor" data-display-editor></div>
+          <div class="buttonrow"><p></p><button class="primary" type="button" data-next="complete">Завершить настройку</button></div>
+        </div></div>
+      </section>
+
       <section class="section" id="complete">
         <div class="complete-panel"><div class="complete-symbol">✓</div><h1>Настройка завершена</h1><p>Параметры сохранены.</p>
         <div class="inline-actions center"><a href="/" class="primary">Перейти на главную <span>→</span></a><a class="secondary" href="/chat.html">Проверить диалог</a></div></div>
@@ -185,6 +193,6 @@
 
   </div>
   <script src="/audio-test.js" defer></script>
-  <script src="/setup.js?v=20261106" defer></script>
+  <script src="/setup.js?v=display2" defer></script><script src="/display-editor.js?v=2" defer></script>
 </body>
 </html>

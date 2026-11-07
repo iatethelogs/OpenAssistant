@@ -18,10 +18,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Build WakeForge inference companion
-        run: cargo build --release --manifest-path software/openassistant-simulator/WakeDetector/Cargo.toml
-      - name: Build WPF client
-        run: dotnet build software/openassistant-simulator/OpenAssistant.Simulator.csproj -c Release
+      - name: Build simulator
+        run: dotnet build software/openassistant-simulator/OpenAssistant.Simulator.csproj -c Release -r win-x64
       - name: Publish Windows client
         run: dotnet publish software/openassistant-simulator/OpenAssistant.Simulator.csproj -c Release -r win-x64 --self-contained true -o software/openassistant-simulator/dist
       - name: Upload Windows build

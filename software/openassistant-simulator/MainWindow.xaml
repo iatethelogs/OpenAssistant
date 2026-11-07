@@ -61,12 +61,12 @@
        <display:RgbMatrixView x:Name="Matrix" Grid.Column="0" Margin="0,0,12,0"
                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
        <StackPanel Grid.Column="1" Margin="10,6,0,0">
-         <TextBlock Text="RGB · 32 × 10" FontWeight="SemiBold" FontSize="14"/>
+         <TextBlock x:Name="MatrixDimensionsText" Text="32 × 10 · 320 RGB" FontWeight="SemiBold" FontSize="14"/>
          <TextBlock x:Name="MatrixModeText" Text="Отключено" Foreground="{StaticResource Secondary}" Margin="0,8,0,0"/>
          <TextBlock x:Name="MicLevelText" Text="Микрофон: —" Foreground="{StaticResource Secondary}" Margin="0,8,0,15"/>
          <Button Content="Загрузить RGB888" Click="BrowseRgb_Click"/>
          <Button Content="Сбросить анимацию" Click="ClearRgb_Click" Margin="0,7,8,0"/>
-         <TextBlock Text="320 адресных пикселей" Foreground="{StaticResource Secondary}" FontSize="10" Margin="0,16,0,0"/>
+         <Button Content="Обновить настройки" Click="ReloadDisplay_Click" Margin="0,7,8,0"/>
        </StackPanel>
      </Grid>
    </Border>
@@ -106,7 +106,7 @@
                    Margin="0,15,0,0" Padding="0,13,0,0">
              <StackPanel>
                <TextBlock Text="Слово активации" FontSize="13" FontWeight="SemiBold"/>
-               <CheckBox x:Name="WakeEnabled" Content="Распознавать локально" IsChecked="True"/>
+               <CheckBox x:Name="WakeEnabled" Content="Распознавать локально (C# / TensorFlow Lite)" IsChecked="True"/>
                <TextBlock Text="Модель WakeForge · .tflite или .json" Style="{StaticResource FieldLabel}"/>
                <DockPanel>
                  <Button Content="…" DockPanel.Dock="Right" Width="36" Click="BrowseWakeModel_Click" Margin="7,0,0,0"/>
@@ -118,18 +118,7 @@
                  <StackPanel Grid.Column="2"><TextBlock Text="Порог" Style="{StaticResource FieldLabel}"/><TextBox x:Name="WakeThreshold" Text="0.87"/></StackPanel>
                </Grid>
                <CheckBox x:Name="BargeInOnMusic" Content="Разрешать активацию во время музыки"/>
-               <Expander Header="Внешний детектор (дополнительно)" Foreground="{StaticResource Secondary}"
-                         Margin="0,13,0,0">
-                 <StackPanel>
-                   <TextBlock Text="Исполняемый файл" Style="{StaticResource FieldLabel}"/>
-                   <DockPanel>
-                     <Button Content="…" DockPanel.Dock="Right" Width="36" Click="BrowseDetector_Click" Margin="7,0,0,0"/>
-                     <TextBox x:Name="DetectorExecutable"/>
-                   </DockPanel>
-                   <TextBlock Text="Аргументы" Style="{StaticResource FieldLabel}"/>
-                   <TextBox x:Name="DetectorArguments"/>
-                 </StackPanel>
-               </Expander>
+               
              </StackPanel>
            </Border>
            <Button Content="Сохранить параметры" Click="SavePreferences_Click" Margin="0,16,0,0" HorizontalAlignment="Left"/>
@@ -148,7 +137,7 @@
          <StackPanel Grid.Row="0">
            <TextBlock Text="Диалог" FontSize="14" FontWeight="SemiBold"/>
            <WrapPanel Margin="0,12,0,10">
-             <Button x:Name="TalkButton" Content="Говорить" Click="Talk_Click"/>
+             <Button x:Name="TalkButton" Content="Говорить" Click="Talk_Click"/><Button x:Name="SimulateWakeButton" Content="Имитировать wake-word" Click="SimulateWake_Click"/>
              <Button Content="Завершить фразу" Click="End_Click"/>
              <Button Content="Отмена" Click="Cancel_Click"/>
            </WrapPanel>

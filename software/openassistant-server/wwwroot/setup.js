@@ -2,7 +2,7 @@
 const el=id=>document.getElementById(id);
 const state={catalog:[],selected:{},jobs:{},step:"welcome",pcm:null,voiceUrl:null,recordUrl:null,key:"",starting:{},shown:{},last:{},installed:[],voiceProfile:null};
 const captions={llm:"Интеллект",stt:"Слух",tts:"Голос"};
-const steps=["welcome","llm","stt","tts","music","complete"];
+const steps=["welcome","llm","stt","tts","music","display","complete"];
 function showError(message){alert(message)}
 async function api(url,method="GET",data){const init={method,cache:"no-store"};if(data!==undefined){init.headers={"Content-Type":"application/json"};init.body=JSON.stringify(data)}
  const r=await fetch(url,init);const body=await r.json().catch(()=>({}));if(!r.ok)throw Error(body.error||body.message||"HTTP "+r.status);return body}
@@ -15,7 +15,7 @@ function show(step){
  for(const elem of document.querySelectorAll(".step")){const ix=steps.indexOf(elem.dataset.step),now=steps.indexOf(step),selected=ix===now;elem.classList.toggle("current",selected);elem.classList.toggle("done",ix<now);if(selected)elem.setAttribute("aria-current","step");else elem.removeAttribute("aria-current")}
  const position=steps.indexOf(step);
  const progress=el("journeyFill");
- if(progress)progress.style.width=Math.max(0,Math.min(100,position/4*100))+"%";
+ if(progress)progress.style.width=Math.max(0,Math.min(100,position/(steps.length-1)*100))+"%";
  document.body.dataset.chapter=step;
  history.replaceState(null,"","#"+step);
  window.scrollTo({top:0,behavior:window.matchMedia("(prefers-reduced-motion:reduce)").matches?"instant":"smooth"});
@@ -289,7 +289,7 @@ async function setupMusicStatus(){
  el("setupMusicState").textContent=v.yandexMusic?.connected?"Аккаунт подключён: "+(v.yandexMusic.account||""):"Не подключено";
  if(v.yandexMusic?.connected)el("setupMusicLogin").textContent="Переподключить";
 }
-el("setupMusicSkip").onclick=()=>{stopSetupAuth();show("complete")};
+el("setupMusicSkip").onclick=()=>{stopSetupAuth();show("display")};
 el("setupMusicLogin").onclick=async()=>{
  const btn=el("setupMusicLogin");btn.disabled=true;stopSetupAuth();
  try{
@@ -302,7 +302,7 @@ el("setupMusicLogin").onclick=async()=>{
    try{
     const result=await api("/api/integrations/yandex/device/poll","POST",{session:setupAuthSession});
     if(epoch!==setupAuthEpoch)return;
-    if(result.state==="connected"){stopSetupAuth();await setupMusicStatus();show("complete");return}
+    if(result.state==="connected"){stopSetupAuth();await setupMusicStatus();show("display");return}
     if(result.state==="expired"||result.state==="error"){el("setupMusicProgress").textContent=result.message;return}
     el("setupMusicProgress").textContent=result.message||"Ожидание подтверждения";
     setupAuthTimer=setTimeout(poll,Math.max(5,Number(result.interval)||5)*1000);
@@ -312,5 +312,5 @@ el("setupMusicLogin").onclick=async()=>{
  }catch(e){alert("Яндекс Музыка: "+e.message)}finally{btn.disabled=false}
 };
 el("setupMusicCancel").onclick=async()=>{stopSetupAuth();await api("/api/integrations/yandex/device/cancel","POST").catch(()=>{})};
-el("setupMusicSaveToken").onclick=async()=>{const b=el("setupMusicSaveToken");b.disabled=true;try{await api("/api/integrations/yandex/token","POST",{token:el("setupMusicToken").value.trim()});el("setupMusicToken").value="";stopSetupAuth();await setupMusicStatus();show("complete")}catch(e){alert(e.message)}finally{b.disabled=false}};
+el("setupMusicSaveToken").onclick=async()=>{const b=el("setupMusicSaveToken");b.disabled=true;try{await api("/api/integrations/yandex/token","POST",{token:el("setupMusicToken").value.trim()});el("setupMusicToken").value="";stopSetupAuth();await setupMusicStatus();show("display")}catch(e){alert(e.message)}finally{b.disabled=false}};
 for(const btn of document.querySelectorAll('[data-step="music"],[data-next="music"]'))btn.addEventListener("click",()=>setupMusicStatus().catch(e=>el("setupMusicState").textContent=e.message));

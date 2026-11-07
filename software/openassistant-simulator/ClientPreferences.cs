@@ -13,8 +13,6 @@ public sealed class ClientPreferences
     public bool CommunicationsDsp { get; set; } = true;
     public bool NoiseReduction { get; set; } = true;
     public bool BargeInOnMusic { get; set; } = false;
-    public string LegacyDetectorExe { get; set; } = "";
-    public string LegacyDetectorArgs { get; set; } = "";
     private static string Location => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "OpenAssistant","simulator.json");

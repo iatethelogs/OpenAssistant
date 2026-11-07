@@ -1,0 +1,21 @@
+.matrix-editor{display:flex;flex-direction:column;gap:13px;max-width:100%;min-width:0}
+.matrix-editor-heading{display:flex;align-items:center;justify-content:space-between}
+.matrix-editor-heading h3{font-size:14px;margin:0}
+.matrix-hint{font-size:11px;color:var(--secondary);margin:-6px 0 0}
+.matrix-fields{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:11px}
+.matrix-field{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:11px;color:var(--secondary);margin:0}
+.matrix-field>input:not([type=checkbox]),.matrix-field>select{width:100%;margin:0}
+.matrix-field input[type="color"]{width:55px;height:33px;border:1px solid var(--border);border-radius:7px;background:var(--input);padding:3px;cursor:pointer}
+.matrix-field input[type="range"]{accent-color:var(--accent);height:23px;padding:0}
+.matrix-field input[type="checkbox"]{margin-top:7px}
+.matrix-value{font-size:11px;font-variant-numeric:tabular-nums}
+.matrix-state-tabs{display:flex;gap:4px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--border-subtle)}
+.matrix-state{padding:7px 11px;border:1px solid transparent;border-radius:7px;color:var(--secondary);background:none;font-size:11px}
+.matrix-state:hover{background:var(--surface-hover)}
+.matrix-state.selected{background:var(--accent-soft);border-color:var(--border);color:var(--accent-text)}
+.matrix-screen{display:grid;place-items:center;min-height:150px;max-height:330px;overflow:hidden;padding:19px;border:1px solid var(--border);border-radius:9px;background:#16191E}
+.matrix-preview{display:block;max-width:100%;max-height:282px;width:100%;height:auto;min-width:0;object-fit:contain;image-rendering:pixelated}
+.matrix-choices{display:grid;grid-template-columns:minmax(130px,1fr) 90px minmax(125px,1fr);gap:12px}
+.matrix-editor-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.matrix-editor-actions .minor{font-size:11px;overflow-wrap:anywhere}
+@media(max-width:800px){.matrix-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.matrix-choices{grid-template-columns:repeat(2,minmax(0,1fr))}}
