@@ -90,7 +90,7 @@ internal sealed class WakeAudioFrontend
                 Complex factor = Complex.One;
                 for (int k = 0; k < len / 2; k++)
                 {
-                    var even = spectrum[i+k], odd = spectrum[i+k+len/2] * factor;
+                    Complex even = spectrum[i+k], odd = spectrum[i+k+len/2] * factor;
                     spectrum[i+k] = even + odd;
                     spectrum[i+k+len/2] = even - odd;
                     factor *= delta;
