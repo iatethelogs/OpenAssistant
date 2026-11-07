@@ -34,28 +34,70 @@ public sealed class WakeWordDetector : IAsyncDisposable
         if (!double.IsFinite(fallbackThreshold) || fallbackThreshold is <= 0 or > 1)
             throw new ArgumentException("Порог должен быть в диапазоне 0–1");
         int windowSize = 5;
-        if (Path.GetExtension(path).Equals(".json",StringComparison.OrdinalIgnoreCase))
+        if (Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase))
         {
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
-            var root=doc.RootElement;
-            if (!root.TryGetProperty("model",out var node) || node.ValueKind != JsonValueKind.String)
-                throw new InvalidDataException("Не найдено поле model в конфигурации MicroWakeWord");
-            string reference = node.GetString() ?? "";
-            if (Uri.TryCreate(reference,UriKind.Absolute,out _))
-                throw new InvalidDataException("Нужна локальная модель, а не URL");
-            path=Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!,reference));
-            if (!File.Exists(path)) throw new FileNotFoundException("В конфигурации нет файла весов",path);
-            if (root.TryGetProperty("wake_word",out var wordNode))
-                fallbackName=wordNode.GetString()??fallbackName;
-            if (root.TryGetProperty("micro",out var mic))
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            var root = document.RootElement;
+
+            // Accept both a simple project-specific config and the standard
+            // micro_wake_word format used by MicroWakeWord/Home Assistant.
+            JsonElement modelConfig = root;
+            JsonElement frontendConfig = root;
+            if (root.TryGetProperty("micro_wake_word", out var micro))
             {
-                if (mic.TryGetProperty("probability_cutoff",out var t) && t.TryGetDouble(out var threshold))
-                    fallbackThreshold=threshold;
-                if (mic.TryGetProperty("sliding_window_size",out var w) && w.TryGetInt32(out var count))
-                    windowSize=count;
-                if (mic.TryGetProperty("feature_step_size",out var step) && step.GetInt32()!=10)
-                    throw new InvalidDataException("Эта модель требует другой частоты спектральных признаков");
+                frontendConfig = micro;
+                if (!micro.TryGetProperty("models", out var models) ||
+                    models.ValueKind != JsonValueKind.Array || models.GetArrayLength() == 0)
+                    throw new InvalidDataException("В micro_wake_word.models отсутствует модель");
+                modelConfig = models[0];
             }
+            else if (root.TryGetProperty("micro", out var oldConfig))
+            {
+                frontendConfig = oldConfig;
+            }
+
+            string? reference = null;
+            if (modelConfig.TryGetProperty("model_path", out var modelPath) &&
+                modelPath.ValueKind == JsonValueKind.String)
+                reference = modelPath.GetString();
+            else if (modelConfig.TryGetProperty("model", out var simpleModel) &&
+                     simpleModel.ValueKind == JsonValueKind.String)
+                reference = simpleModel.GetString();
+            if (string.IsNullOrWhiteSpace(reference))
+                throw new InvalidDataException("В конфигурации нет model_path или model");
+            if (Uri.TryCreate(reference, UriKind.Absolute, out _))
+                throw new InvalidDataException("Нужен локальный файл модели, а не URL");
+
+            path = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, reference));
+            if (!File.Exists(path)) throw new FileNotFoundException("Файл модели из конфигурации не найден", path);
+
+            if (modelConfig.TryGetProperty("wake_word", out var word) &&
+                word.ValueKind == JsonValueKind.String)
+                fallbackName = word.GetString() ?? fallbackName;
+            else if (root.TryGetProperty("wake_word", out var rootWord) &&
+                     rootWord.ValueKind == JsonValueKind.String)
+                fallbackName = rootWord.GetString() ?? fallbackName;
+
+            if (modelConfig.TryGetProperty("probability_cutoff", out var cutoff) &&
+                cutoff.TryGetDouble(out var parsedThreshold))
+                fallbackThreshold = parsedThreshold;
+            else if (frontendConfig.TryGetProperty("probability_cutoff", out cutoff) &&
+                     cutoff.TryGetDouble(out parsedThreshold))
+                fallbackThreshold = parsedThreshold;
+
+            if (modelConfig.TryGetProperty("sliding_window_size", out var window) &&
+                window.TryGetInt32(out var parsedWindow))
+                windowSize = parsedWindow;
+            else if (frontendConfig.TryGetProperty("sliding_window_size", out window) &&
+                     window.TryGetInt32(out parsedWindow))
+                windowSize = parsedWindow;
+
+            if (frontendConfig.TryGetProperty("features_step_size", out var step) &&
+                step.TryGetInt32(out var stepSize) && stepSize != 10)
+                throw new InvalidDataException("Сейчас поддерживается только features_step_size=10 мс");
+            if (frontendConfig.TryGetProperty("feature_step_size", out step) &&
+                step.TryGetInt32(out stepSize) && stepSize != 10)
+                throw new InvalidDataException("Сейчас поддерживается только feature_step_size=10 мс");
         }
         if (fallbackName.Length is < 1 or > 64 || fallbackThreshold is <= 0 or > 1 ||
             windowSize is < 1 or > 30)
