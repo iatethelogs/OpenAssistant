@@ -243,8 +243,7 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
                     }
                     else
                     {
-                        var action = await skills.ExecuteAsync(call.function.name, args.RootElement, limit.Token,
-                            history.LastOrDefault(m => m.Role == "user")?.Content);
+                        var action = await skills.ExecuteAsync(call.function.name, args.RootElement, limit.Token);
                         result = action.Result;
                         media = action.Media;
                     }
