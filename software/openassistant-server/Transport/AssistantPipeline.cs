@@ -84,6 +84,12 @@ public sealed class AssistantPipeline(
             bool canControl = allowed.Any(x => x.Name == "music_control" && x.Enabled);
             if (canControl)
             {
+                if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
+                    @"^(?:что (?:сейчас )?играет|какая (?:сейчас )?(?:песня|музыка) играет|что за (?:трек|песня)(?: играет)?)$"))
+                {
+                    string? title = await player.CurrentTrackAsync(ct);
+                    return title is null ? "Сейчас музыка не воспроизводится." : "Сейчас играет " + title + ".";
+                }
                 string? action = null;
                 if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
                         @"^(?:(?:поставь|поставить|ставь) (?:музыку |трек )?на паузу|пауза|приостанови (?:музыку|трек))$"))
