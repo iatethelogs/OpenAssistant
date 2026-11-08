@@ -529,6 +529,24 @@ el("searchMusic").onclick=busy(el("searchMusic"),async()=>{
  const r=await api("/api/yandex/search?query="+encodeURIComponent(el("musicQuery").value.trim()));
  drawSearch(r,"musicResults",async(_,index)=>{browserQueue=r;await playBrowserTrack(index)});
 });
+el("loadYmPlaylists").onclick=busy(el("loadYmPlaylists"),async()=>{
+ const entries=await api("/api/yandex/playlists"),picker=el("ymPlaylistSelect");
+ picker.replaceChildren(new Option("Выберите плейлист",""),
+   ...entries.map(p=>new Option(p.title+" · "+p.trackCount+" треков",p.kind)));
+ if(entries.length===0)toast("Плейлисты не найдены",true);
+});
+el("playYmPlaylist").onclick=busy(el("playYmPlaylist"),async()=>{
+ const kind=el("ymPlaylistSelect").value;
+ if(!/^\\d{1,12}$/.test(kind))throw Error("Выберите плейлист");
+ const tracks=await api("/api/yandex/playlists/"+kind+"/tracks");
+ if(!tracks.length)throw Error("Плейлист пуст");
+ browserQueue=tracks;await playBrowserTrack(0);
+});
+el("playYmLiked").onclick=busy(el("playYmLiked"),async()=>{
+ const tracks=await api("/api/yandex/liked");
+ if(!tracks.length)throw Error("Понравившихся треков пока нет");
+ browserQueue=tracks;await playBrowserTrack(0);
+});
 /* Chat directly via the device websocket */
 let chatSocket=null,chatBuffer=[],chatSampleRate=24000;
 function chatAppend(s){const box=el("chatHistory");box.textContent+=s;box.scrollTop=box.scrollHeight}
