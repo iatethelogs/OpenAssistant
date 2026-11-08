@@ -107,6 +107,7 @@ public sealed class AssistantPipeline(
             string? verified = await homeAssistant.TryHandleAsync(text, readHa, writeHa, ct);
             if (verified is not null)
             {
+                verified = NoEmoji.Strip(verified);
                 await JsonAsync(new { type = "text", delta = verified }, ct);
                 conversationLog.Add("llm", verified);
                 await memory.SaveExchangeAsync(profile, text, verified, ct);

@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Options;
 using OpenAssistant.Server.Configuration;
+using OpenAssistant.Server.Integrations;
 
 namespace OpenAssistant.Server.Chat;
 
@@ -11,7 +12,7 @@ public sealed record AgentDelta(string? Text = null, string? Tool = null, object
 
 /// <summary>OpenAI-compatible SSE tool_calls: запрос → вызов навыков → ответ модели.</summary>
 public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<ServerOptions> options,
-    AgentToolService skills)
+    AgentToolService skills, CustomToolStore customTools, ToolRegistry toolRegistry)
 {
     private static List<object> NormalizeHistory(IReadOnlyList<ChatMessage> history)
     {
@@ -35,8 +36,7 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
         if (normalized.Count == 0 || normalized[^1].Role != "user")
             throw new ArgumentException("История должна заканчиваться запросом пользователя");
         var result = new List<object>();
-        if (instructions.Length > 0)
-            result.Add(new { role = "system", content = string.Join("\n\n", instructions) });
+        result.Add(new { role = "system", content = string.Join("\n\n", instructions.Append(NoEmoji.Instruction)) });
         result.AddRange(normalized.Select(entry => (object)new {
             role = entry.Role, content = entry.Content
         }));
@@ -64,14 +64,23 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
             SkillDefinition[] enabled = toolsSupported
                 ? (await skills.ListAsync(ct)).Where(x => x.Enabled).ToArray()
                 : Array.Empty<SkillDefinition>();
+            CustomToolDefinition[] custom = toolsSupported
+                ? (await customTools.ListAsync(ct)).Where(x => x.Enabled).ToArray()
+                : Array.Empty<CustomToolDefinition>();
+            var offeredTools = enabled.Select(x => new {
+                type = "function", function = new {
+                    name = x.Name, description = x.Description, parameters = (object)x.Parameters }
+            }).Concat(custom.Select(x => new {
+                type = "function", function = new {
+                    name = x.Name, description = x.Description, parameters = (object)x.Parameters }
+            })).ToArray();
             var cfg = options.CurrentValue;
-            object payload = enabled.Length > 0
+            object payload = offeredTools.Length > 0
                 ? new {
                     model = cfg.LlmModel, stream = true, temperature = cfg.LlmTemperature,
                     top_p = cfg.LlmTopP, top_k = cfg.LlmTopK, repeat_penalty = cfg.LlmRepeatPenalty,
                     max_tokens = cfg.LlmMaxTokens, messages,
-                    tools = enabled.Select(x => new { type = "function", function = new {
-                        name = x.Name, description = x.Description, parameters = x.Parameters } }).ToArray(),
+                    tools = offeredTools,
                     tool_choice = "auto"
                 }
                 : new {
@@ -89,7 +98,7 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
             }
             // Some OpenAI-compatible local engines cannot parse tool_calls. Keep
             // ordinary chat usable, but never claim actions were executed.
-            if (enabled.Length > 0 &&
+            if (offeredTools.Length > 0 &&
                 (candidate.StatusCode == System.Net.HttpStatusCode.BadRequest ||
                  candidate.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity ||
                  candidate.StatusCode == System.Net.HttpStatusCode.InternalServerError))
@@ -117,6 +126,7 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
             await using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var reader = new StreamReader(stream, Encoding.UTF8);
 
+            var noEmoji = new NoEmojiStream();
             var pending = new SortedDictionary<int, ToolParts>();
             var answer = new StringBuilder();
             while (await reader.ReadLineAsync(ct) is { } line)
@@ -132,9 +142,8 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
                     delta.ValueKind != JsonValueKind.Object) continue;
                 if (delta.TryGetProperty("content", out var text) && text.ValueKind == JsonValueKind.String)
                 {
-                    string part = text.GetString() ?? "";
-                    answer.Append(part);
-                    yield return new AgentDelta(Text: part);
+                    string part = noEmoji.Push(text.GetString() ?? "");
+                    if (part.Length > 0) { answer.Append(part); yield return new AgentDelta(Text: part); }
                 }
                 if (delta.TryGetProperty("tool_calls", out var calls) && calls.ValueKind == JsonValueKind.Array)
                     foreach (var call in calls.EnumerateArray())
@@ -190,7 +199,7 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
                 if (string.IsNullOrWhiteSpace(fallbackText))
                     throw new InvalidOperationException(
                         "LLM вернула пустой ответ. Проверьте модель, контекст и шаблон чата.");
-                yield return new AgentDelta(Text: fallbackText);
+                yield return new AgentDelta(Text: NoEmoji.Strip(fallbackText));
                 yield break;
             }
             if (executed + pending.Count > 8 || round == 4)
@@ -211,10 +220,20 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
                     using var args = JsonDocument.Parse(call.function.arguments);
                     using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
                     limit.CancelAfter(TimeSpan.FromSeconds(15));
-                    var action = await skills.ExecuteAsync(call.function.name, args.RootElement, limit.Token,
-                        history.LastOrDefault(m => m.Role == "user")?.Content);
-                    result = action.Result;
-                    media = action.Media;
+                    if (custom.Any(x => x.Name == call.function.name))
+                    {
+                        if (toolRegistry.Names().Contains(call.function.name, StringComparer.OrdinalIgnoreCase))
+                            result = await toolRegistry.InvokeAsync(call.function.name, args.RootElement, limit.Token);
+                        else
+                            result = new { error = "Обработчик этого инструмента ещё не подключён", implemented = false };
+                    }
+                    else
+                    {
+                        var action = await skills.ExecuteAsync(call.function.name, args.RootElement, limit.Token,
+                            history.LastOrDefault(m => m.Role == "user")?.Content);
+                        result = action.Result;
+                        media = action.Media;
+                    }
                 }
                 catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
                     HttpRequestException or JsonException or OperationCanceledException or InvalidDataException)

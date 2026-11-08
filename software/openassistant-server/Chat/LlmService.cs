@@ -20,18 +20,22 @@ public sealed class LlmService(IHttpClientFactory http, IOptionsMonitor<ServerOp
         var options = settings.CurrentValue;
         using var request = new HttpRequestMessage(HttpMethod.Post,
             options.LlmUrl.TrimEnd('/') + "/v1/chat/completions");
+        var filteredHistory = history.Where(m => m.Role != "system").ToList();
+        var systemText = string.Join("\n\n", history.Where(m => m.Role == "system").Select(m => m.Content));
+        filteredHistory.Insert(0, new ChatMessage("system", systemText + "\n\n" + NoEmoji.Instruction));
         request.Content = JsonContent.Create(new {
             model = string.IsNullOrWhiteSpace(modelOverride) ? options.LlmModel : modelOverride,
             stream = true, temperature = options.LlmTemperature, top_p = options.LlmTopP,
             top_k = options.LlmTopK, repeat_penalty = options.LlmRepeatPenalty,
             max_tokens = options.LlmMaxTokens,
-            messages = history.Select(m => new { role = m.Role, content = m.Content })
+            messages = filteredHistory.Select(m => new { role = m.Role, content = m.Content })
         });
         using var response = await http.CreateClient("llm").SendAsync(request,
             HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream, Encoding.UTF8);
+        var noEmoji = new NoEmojiStream();
         while (await reader.ReadLineAsync(ct) is { } line)
         {
             if (!line.StartsWith("data: ", StringComparison.Ordinal)) continue;
@@ -43,7 +47,7 @@ public sealed class LlmService(IHttpClientFactory http, IOptionsMonitor<ServerOp
             if (choices[0].TryGetProperty("delta", out var delta)
                 && delta.TryGetProperty("content", out var content)
                 && content.ValueKind == JsonValueKind.String)
-                yield return content.GetString() ?? "";
+                yield return noEmoji.Push(content.GetString() ?? "");
         }
     }
 }

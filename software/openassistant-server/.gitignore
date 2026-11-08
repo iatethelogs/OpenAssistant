@@ -31,3 +31,7 @@ conversation-memory.local/
 # Settings for the RGB matrix, stored independently from the device secret
 display.local.json
 display.local.json.*.tmp
+
+# User-defined LLM tool contracts (never tracked in Git)
+custom-tools.local.json
+custom-tools.local.json.*.tmp

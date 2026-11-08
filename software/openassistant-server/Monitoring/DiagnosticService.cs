@@ -32,7 +32,7 @@ public sealed class DiagnosticService(IHttpClientFactory http, SpeechService spe
             top_p = cfg.LlmTopP, top_k = cfg.LlmTopK, repeat_penalty = cfg.LlmRepeatPenalty,
             max_tokens = cfg.LlmMaxTokens,
             messages = new object[] {
-                new { role = "system", content = "Отвечай кратко и по-русски. Это тест скорости." },
+                new { role = "system", content = "Отвечай кратко и по-русски. Это тест скорости. " + NoEmoji.Instruction },
                 new { role = "user", content = prompt }
             }
         });
@@ -64,7 +64,7 @@ public sealed class DiagnosticService(IHttpClientFactory http, SpeechService spe
                 delta.ValueKind != JsonValueKind.Object ||
                 !delta.TryGetProperty("content", out var text) || text.ValueKind != JsonValueKind.String)
                 continue;
-            string part = text.GetString() ?? "";
+            string part = NoEmoji.Strip(text.GetString() ?? "");
             if (part.Length == 0) continue;
             first ??= sw.ElapsedMilliseconds;
             fragments++;

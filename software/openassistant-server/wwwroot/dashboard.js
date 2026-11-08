@@ -1,12 +1,13 @@
 "use strict";
 const el=id=>document.getElementById(id);
 const state={settings:null,models:null,devices:null,system:null,downloads:null,skills:[],voiceProfile:null,voiceUrl:null,key:"",loading:false};
-const names={overview:"Обзор системы",settings:"Настройки ассистента",tests:"Проверка работы",devices:"Подключение устройства",integrations:"Интеграции",models:"Модели и загрузки",chat:"Диалог",media:"Музыка и радио",events:"События",logs:"Журнал сервера"};
+const names={overview:"Обзор системы",settings:"Настройки ассистента",tests:"Проверка работы",devices:"Подключение устройства",integrations:"Интеграции",tools:"Инструменты",models:"Модели и загрузки",chat:"Диалог",media:"Музыка и радио",events:"События",logs:"Журнал сервера"};
 function toast(msg,error=false){const box=el("toast");box.textContent=msg;box.className="toast show"+(error?" error":"");clearTimeout(toast.timer);toast.timer=setTimeout(()=>box.className="toast",5000)}
 async function api(url,method="GET",data){const init={method,cache:"no-store"};if(data!==undefined){init.headers={"Content-Type":"application/json"};init.body=JSON.stringify(data)}const r=await fetch(url,init),v=await r.json().catch(()=>({}));if(!r.ok)throw Error(v.error||v.message||"HTTP "+r.status);return v}
+function numericDecimal(id,min,max){const raw=el(id).value.trim().replace(",",".");const n=Number(raw);if(!raw||!Number.isFinite(n)||n<=min||n>max)throw Error("Параметр "+id+": число больше "+min+" и не больше "+max);return n}
 function textNode(tag,text,className){const e=document.createElement(tag);e.textContent=String(text??"");if(className)e.className=className;return e}
 function busy(btn,fn){return async()=>{btn.disabled=true;try{await fn()}catch(e){toast(e.message,true)}finally{btn.disabled=false}}}
-function show(view){if(!(view in names))return;const storage=view==="models";if(storage)view="settings";for(const node of document.querySelectorAll(".view"))node.classList.toggle("active",node.id===view);for(const node of document.querySelectorAll("#navigation [data-view]")){const selected=node.dataset.view===(storage?"models":view);node.classList.toggle("active",selected);if(selected)node.setAttribute("aria-current","page");else node.removeAttribute("aria-current")}el("pageName").textContent=storage?names.models:names[view];history.replaceState(null,"","#"+(storage?"models":view));if(storage)window.OpenAssistantModelUI?.select("storage");if(view==="chat")queueMicrotask(()=>connectChat(true));}
+function show(view){if(!(view in names))return;const storage=view==="models";if(storage)view="settings";for(const node of document.querySelectorAll(".view"))node.classList.toggle("active",node.id===view);for(const node of document.querySelectorAll("#navigation [data-view]")){const selected=node.dataset.view===(storage?"models":view);node.classList.toggle("active",selected);if(selected)node.setAttribute("aria-current","page");else node.removeAttribute("aria-current")}el("pageName").textContent=storage?names.models:names[view];history.replaceState(null,"","#"+(storage?"models":view));if(storage)window.OpenAssistantModelUI?.select("storage");if(view==="chat")queueMicrotask(()=>connectChat(true));if(view==="tools")queueMicrotask(()=>refreshCustomTools().catch(e=>toast(e.message,true)));}
 for(const b of document.querySelectorAll("[data-view]"))b.onclick=()=>show(b.dataset.view);
 function pct(a,b){return b>0?Math.min(100,Math.max(0,100*a/b)):0}
 function serviceState(role){
@@ -72,7 +73,7 @@ el("settingsForm").onsubmit=async event=>{
   const profile={...state.voiceProfile,
    mode:el("voiceModeSetting").value,speaker:el("voice").value.trim(),
    generationMode:el("voiceGenerationMode").value,seed:Number(el("voiceSeed").value),
-   temperature:Number(el("voiceTemperature").value),topP:Number(el("voiceTopP").value),
+   temperature:Number(el("voiceTemperature").value),topP:numericDecimal("voiceTopP",0,1),
    topK:Number(el("voiceTopK").value),repetitionPenalty:Number(el("voicePenalty").value),
    style:el("voiceStyleSetting").value.trim(),description:el("voiceDescriptionSetting").value.trim()};
   // Each settings tab can be saved independently. A broken/unconfigured TTS
@@ -83,7 +84,7 @@ el("settingsForm").onsubmit=async event=>{
     : (state.voiceProfile||profile);
   const settings={...state.settings,systemPrompt:el("prompt").value.trim(),
    llmTemperature:Number(el("temperature").value),llmMaxTokens:Number(el("maxTokens").value),
-   llmTopP:Number(el("topP").value),llmTopK:Number(el("topK").value),llmRepeatPenalty:Number(el("repeatPenalty").value),
+   llmTopP:numericDecimal("topP",0,1),llmTopK:Number(el("topK").value),llmRepeatPenalty:Number(el("repeatPenalty").value),
    llmUrl:el("llmUrl").value.trim(),llmModel:el("llmModel").value.trim(),
    sttUrl:el("sttUrl").value.trim(),sttModel:el("sttModel").value.trim(),
    ttsUrl:el("ttsUrl").value.trim(),ttsModel:el("ttsModel").value.trim(),
@@ -121,6 +122,59 @@ el("createKey").onclick=busy(el("createKey"),async()=>{
  el("deviceKey").textContent=r.token;
  toast("Ключ перевыпущен и сохранён на сервере");
 });
+
+const emptyToolSchema=()=>({type:"object",properties:{},required:[],additionalProperties:false});
+let customTools=[],editingTool=null;
+function resetToolEditor(){
+ editingTool=null;el("toolName").disabled=false;el("toolName").value="";el("toolTitle").value="";
+ el("toolDescription").value="";el("toolSchema").value=JSON.stringify(emptyToolSchema(),null,2);
+ el("toolEnabled").checked=false;el("toolDelete").disabled=true;el("toolMode").textContent="Новый инструмент";
+ el("toolSaveStatus").textContent="";
+}
+function editTool(item){
+ editingTool=item.name;el("toolName").value=item.name;el("toolName").disabled=true;
+ el("toolTitle").value=item.title;el("toolDescription").value=item.description;
+ el("toolSchema").value=JSON.stringify(item.parameters,null,2);
+ el("toolEnabled").checked=!!item.enabled;el("toolDelete").disabled=false;
+ el("toolMode").textContent=item.implemented?"Обработчик подключён":"Описание без обработчика";
+ el("toolSaveStatus").textContent="";
+}
+function renderCustomTools(){
+ const box=el("customToolsList");box.replaceChildren();
+ if(!customTools.length){box.append(textNode("p","Инструментов пока нет. Создайте первое описание.","muted"));return}
+ for(const item of customTools){
+  const button=textNode("button","","tool-item");button.type="button";
+  button.classList.toggle("selected",item.name===editingTool);
+  button.append(textNode("strong",item.title),textNode("code",item.name),
+   textNode("small",item.implemented?"Обработчик подключён":item.enabled?"Схема активна · нет обработчика":"Схема отключена"));
+  button.onclick=()=>{editTool(item);renderCustomTools()};box.append(button);
+ }
+}
+async function refreshCustomTools(){
+ customTools=await api("/api/tools");renderCustomTools();
+ if(editingTool){const previous=customTools.find(x=>x.name===editingTool);if(previous)editTool(previous);else resetToolEditor()}
+}
+el("toolNew").onclick=()=>{resetToolEditor();renderCustomTools();el("toolName").focus()};
+el("customToolForm").onsubmit=async event=>{
+ event.preventDefault();const btn=el("toolSave");
+ await busy(btn,async()=>{
+  let schema;
+  try{schema=JSON.parse(el("toolSchema").value)}
+  catch(e){throw Error("Ошибка JSON Schema: "+e.message)}
+  const name=el("toolName").value.trim();
+  const entry={name,title:el("toolTitle").value.trim(),description:el("toolDescription").value.trim(),
+   parameters:schema,enabled:el("toolEnabled").checked};
+  await api("/api/tools/"+encodeURIComponent(name),"PUT",entry);
+  editingTool=name;await refreshCustomTools();renderCustomTools();
+  el("toolSaveStatus").textContent="Сохранено";toast("Описание инструмента сохранено");
+ })
+};
+el("toolDelete").onclick=busy(el("toolDelete"),async()=>{
+ if(!editingTool||!confirm("Удалить инструмент "+editingTool+"?"))return;
+ await api("/api/tools/"+encodeURIComponent(editingTool),"DELETE");
+ resetToolEditor();await refreshCustomTools();toast("Инструмент удалён");
+});
+resetToolEditor();
 function renderSkills(){const box=el("skillsList");box.replaceChildren();for(const skill of state.skills){const label=textNode("label","","skill-option");const check=document.createElement("input");check.type="checkbox";check.dataset.skill=skill.name;check.checked=skill.enabled;const section=document.createElement("div");section.append(textNode("strong",skill.title),textNode("small",skill.description+(skill.sensitive?" · Действие требует разрешения":"")));label.append(check,section);box.append(label)}}
 el("saveSkills").onclick=busy(el("saveSkills"),async()=>{const changes={};for(const input of document.querySelectorAll("#skillsList input"))changes[input.dataset.skill]=input.checked;state.skills=await api("/api/control/skills","PUT",changes);renderSkills();toast("Разрешения навыков обновлены")});
 async function init(){const page=location.hash.slice(1);show(page in names?page:"overview");loadDeviceKey().catch(e=>{el("deviceKey").textContent="Не удалось загрузить ключ: "+e.message});try{const [settings,skills,voiceProfile]=await Promise.all([api("/api/settings"),api("/api/control/skills"),api("/api/setup/voice")]);state.settings=settings;state.skills=skills;state.voiceProfile=voiceProfile;loadSettings();renderSkills()}catch(e){toast("Настройки: "+e.message,true)}await poll();await refreshConnections().catch(()=>{});await refreshModels().catch(()=>{});

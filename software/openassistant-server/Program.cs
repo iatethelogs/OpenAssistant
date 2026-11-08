@@ -26,6 +26,7 @@ builder.Services.AddSingleton<DisplaySettingsStore>();
 builder.Services.AddSingleton<ModelProcessManager>();
 builder.Services.AddSingleton<ModelDownloadManager>();
 builder.Services.AddSingleton<AgentToolService>();
+builder.Services.AddSingleton<CustomToolStore>();
 builder.Services.AddSingleton<AgentRunner>();
 builder.Services.AddSingleton<ConversationMemoryStore>();
 builder.Services.AddSingleton<VerifiedHomeAssistantService>();
@@ -194,6 +195,33 @@ app.MapPut("/api/control/skills", async (
 {
     if (!localOnly(ctx)) return Results.StatusCode(403);
     try { return Results.Ok(await skills.SaveAsync(enabled, ct)); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+// Descriptions-only custom tools; the model can inspect and request them but
+// no handler is executed unless registered separately as an IAssistantTool.
+app.MapGet("/api/tools", async (HttpContext ctx, CustomToolStore custom,
+    ToolRegistry registry, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    var tools = await custom.ListAsync(ct);
+    string[] handlers = registry.Names();
+    return Results.Ok(tools.Select(x => new {
+        x.Name, x.Title, x.Description, x.Parameters, x.Enabled,
+        implemented = handlers.Contains(x.Name, StringComparer.OrdinalIgnoreCase)
+    }));
+});
+app.MapPut("/api/tools/{name}", async (HttpContext ctx, string name,
+    CustomToolDefinition input, CustomToolStore custom, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await custom.UpsertAsync(name, input, ct)); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapDelete("/api/tools/{name}", async (HttpContext ctx, string name,
+    CustomToolStore custom, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await custom.DeleteAsync(name, ct)); }
     catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 app.MapGet("/api/control/catalog", (HttpContext ctx) =>

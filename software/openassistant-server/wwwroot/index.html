@@ -4,7 +4,7 @@
 <meta name="theme-color" content="#17181b"><meta name="color-scheme" content="dark light">
 <title>OpenAssistant — Панель управления</title>
 <script src="/ui.js?v=20261106c"></script>
-<link rel="stylesheet" href="/display-editor.css?v=2"><link rel="stylesheet" href="/dashboard.css?v=20261108-startup"><link rel="stylesheet" href="/settings-manager.css?v=20261106c"></head>
+<link rel="stylesheet" href="/display-editor.css?v=2"><link rel="stylesheet" href="/dashboard.css?v=20261108-tools-v2"><link rel="stylesheet" href="/settings-manager.css?v=20261106c"></head>
 <body>
 <div class="layout">
 <aside class="sidebar">
@@ -21,6 +21,7 @@
   <button type="button" class="nav-item" data-view="models"><span class="symbol" data-icon="layers"></span>Модели</button>
   <button type="button" class="nav-item" data-view="tests"><span class="symbol" data-icon="mic"></span>Диагностика</button>
   <button type="button" class="nav-item" data-view="integrations"><span class="symbol" data-icon="plug"></span>Интеграции</button>
+  <button type="button" class="nav-item" data-view="tools"><span class="symbol" data-icon="wrench"></span>Инструменты</button>
   <button type="button" class="nav-item" data-view="settings"><span class="symbol" data-icon="sliders"></span>Настройки</button>
   <div class="nav-divider"></div>
   <button type="button" class="nav-item" data-view="events"><span class="symbol" data-icon="clock"></span>События</button>
@@ -99,7 +100,7 @@
       <div><label for="voiceGenerationMode">Повторяемость</label><select id="voiceGenerationMode"><option value="seeded">Фиксированный seed</option><option value="greedy">Строгая генерация</option><option value="random">Свободная генерация</option></select></div>
       <div><label for="voiceSeed">Seed</label><input id="voiceSeed" type="number" min="0" max="2147483647" step="1"></div>
       <div><label for="voiceTemperature">Температура TTS</label><input id="voiceTemperature" type="number" min="0.1" max="2" step="0.05"></div>
-      <div><label for="voiceTopP">Top-p</label><input id="voiceTopP" type="number" min="0.01" max="1" step="0.05"></div>
+      <div><label for="voiceTopP">Top-p</label><input id="voiceTopP" type="text" inputmode="decimal" maxlength="16" placeholder="0.9"></div>
       <div><label for="voiceTopK">Top-k</label><input id="voiceTopK" type="number" min="1" max="200" step="1"></div>
       <div><label for="voicePenalty">Штраф за повторения</label><input id="voicePenalty" type="number" min="1" max="2" step="0.01"></div>
     </div>
@@ -132,7 +133,7 @@
 <div id="modelStorageMount"></div><div class="storage-heading"><h2>Установленные модели</h2><div class="storage-filters" role="group" aria-label="Фильтр моделей">
 <button type="button" data-storage-role="all" class="selected">Все</button><button type="button" data-storage-role="llm">LLM</button><button type="button" data-storage-role="stt">STT</button><button type="button" data-storage-role="tts">TTS</button></div></div>
 <div id="storageSummary" class="minor"></div><div id="storageInventoryMount"></div></section><section class="settings-pane" id="settings-display" data-settings-panel="display" role="tabpanel" aria-labelledby="settings-tab-display" hidden><div class="matrix-editor" data-display-editor></div></section><div class="form-footer"><span class="minor" id="settingsNote">Изменения применяются к новым запросам.</span><button type="submit" id="saveSettings" class="button primary">Сохранить настройки</button></div>
-   </form><div id="llmExtraFields" class="llm-extra-fields"><div><label for="topP" title="Отбор токенов по суммарной вероятности">Top-p</label><input id="topP" type="number" min="0.01" max="1" step="0.05"></div><div><label for="topK" title="Число наиболее вероятных вариантов для выбора">Top-k</label><input id="topK" type="number" min="0" max="200" step="1"></div><div><label for="repeatPenalty" title="Повышает вероятность разнообразных формулировок">Штраф за повторы</label><input id="repeatPenalty" type="number" min="0.5" max="2" step="0.05"></div></div>
+   </form><div id="llmExtraFields" class="llm-extra-fields"><div><label for="topP" title="Отбор токенов по суммарной вероятности">Top-p</label><input id="topP" type="text" inputmode="decimal" maxlength="16" placeholder="0.9"></div><div><label for="topK" title="Число наиболее вероятных вариантов для выбора">Top-k</label><input id="topK" type="number" min="0" max="200" step="1"></div><div><label for="repeatPenalty" title="Повышает вероятность разнообразных формулировок">Штраф за повторы</label><input id="repeatPenalty" type="number" min="0.5" max="2" step="0.05"></div></div>
    <div class="linked-panel"><span>Настройки движков, GPU и загрузки</span><button type="button" class="text-link text-button" data-view="models">Модели и параметры</button></div>
  </section>
 
@@ -178,9 +179,7 @@
 
  <section class="view" id="integrations">
     <div class="page-title"><h1>Сервисы и навыки</h1></div>
-    <article class="panel"><div class="panel-heading"><div><h2>Доступные действия</h2><p>Выберите, к каким действиям ассистент может обращаться</p></div></div>
-      <div id="skillsList" class="skills-list"><p class="muted">Загружаем навыки…</p></div><div class="form-footer"><span class="minor"></span><button id="saveSkills" type="button" class="button primary">Сохранить разрешения</button></div>
-    </article>
+
     
  
  <div class="test-grid extra-panel">
@@ -200,6 +199,34 @@
  </div>
 </section>
 
+
+ <section class="view" id="tools">
+  <div class="page-title"><h1>Инструменты модели</h1><p>Описание функций для LLM и подготовка обработчиков.</p></div>
+  <div class="tool-workspace">
+    <article class="panel">
+      <div class="panel-heading"><div><h2>Пользовательские инструменты</h2><p>Определения сохраняются на сервере.</p></div><button id="toolNew" class="button secondary" type="button">Создать</button></div>
+      <div id="customToolsList" class="custom-tools-list"><p class="muted">Загрузка…</p></div>
+    </article>
+    <article class="panel">
+      <div class="panel-heading"><div><h2>Описание инструмента</h2><p id="toolMode">Новый инструмент</p></div></div>
+      <form id="customToolForm">
+        <div class="field-grid">
+          <div><label for="toolName">Имя функции (латиница)</label><input id="toolName" maxlength="64" spellcheck="false" placeholder="get_weather" required pattern="[a-z][a-z0-9_]{2,63}"></div>
+          <div><label for="toolTitle">Название</label><input id="toolTitle" maxlength="100" placeholder="Получить погоду" required></div>
+        </div>
+        <label for="toolDescription">Что делает инструмент — описание для модели</label><textarea id="toolDescription" rows="3" maxlength="1000" required></textarea>
+        <label for="toolSchema">Параметры — JSON Schema</label>
+        <textarea id="toolSchema" rows="9" spellcheck="false" class="tool-schema" required></textarea>
+        <label class="tool-toggle"><input id="toolEnabled" type="checkbox"> Предоставлять схему модели</label>
+        <p class="minor">Если обработчик ещё не написан, модель получит ответ «Обработчик не подключён». Никакие действия не выполняются.</p>
+        <div class="button-row tool-editor-actions"><button id="toolSave" type="submit" class="button primary">Сохранить</button><button id="toolDelete" type="button" class="button secondary" disabled>Удалить</button><span id="toolSaveStatus" class="minor" role="status"></span></div>
+      </form>
+    </article>
+  </div>
+      <article class="panel"><div class="panel-heading"><div><h2>Доступные действия</h2><p>Выберите, к каким действиям ассистент может обращаться</p></div></div>
+      <div id="skillsList" class="skills-list"><p class="muted">Загружаем навыки…</p></div><div class="form-footer"><span class="minor"></span><button id="saveSkills" type="button" class="button primary">Сохранить разрешения</button></div>
+    </article>
+ </section>
 
  <section class="view" id="models">
   <div class="page-title"><h1>Модели и загрузки</h1><p>Загрузка, запуск и выбор моделей.</p></div>

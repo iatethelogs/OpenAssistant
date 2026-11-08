@@ -284,3 +284,17 @@ footer a:hover{text-decoration:underline}
 .model-readiness{margin:12px 0 2px}
 .model-readiness-detail{font-size:11px;color:var(--secondary);line-height:1.5;margin-bottom:6px;font-variant-numeric:tabular-nums}
 @media(prefers-reduced-motion:reduce){.indeterminate .model-readiness-fill{animation:none;width:75%;opacity:.55}}
+
+/* LLM tool contract editor */
+.tool-workspace{display:grid;grid-template-columns:minmax(230px,.85fr) minmax(380px,1.4fr);gap:15px;margin-bottom:16px}
+.custom-tools-list{display:flex;flex-direction:column;gap:6px;max-height:520px;overflow-y:auto}
+.tool-item{width:100%;text-align:left;display:flex;flex-direction:column;gap:4px;padding:12px;
+ border:1px solid var(--border);border-radius:8px;background:var(--surface-alt);color:var(--text);cursor:pointer}
+.tool-item:hover,.tool-item.selected{border-color:var(--secondary)}
+.tool-item strong{font-size:12px;font-weight:650}
+.tool-item code{font-size:11px;color:var(--secondary)}
+.tool-item small{font-size:11px;color:var(--tertiary)}
+.tool-schema{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;min-height:200px;resize:vertical}
+.tool-toggle{display:flex;align-items:center;gap:7px;margin:12px 0}
+.tool-editor-actions{margin-top:15px}
+@media(max-width:850px){.tool-workspace{grid-template-columns:1fr}}
