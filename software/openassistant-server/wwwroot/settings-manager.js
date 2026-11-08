@@ -138,7 +138,7 @@
    for(const id of ["temperature","maxTokens"]){const input=$(id);if(input&&llm)llm.append(input.parentElement)}
    const extra=$("llmExtraFields");
    if(extra&&llm){while(extra.firstElementChild)llm.append(extra.firstElementChild);extra.remove()}
-   const tts=$("settings-tts")?.querySelector(".field-grid");
+   const tts=$("qwenVoiceFields")?.querySelector(".field-grid");
    for(const id of ["language","voice"]){const input=$(id);if(input&&tts)tts.prepend(input.parentElement)}
    // Keep existing model operations and API calls, only relocate their UI.
    old.remove();
