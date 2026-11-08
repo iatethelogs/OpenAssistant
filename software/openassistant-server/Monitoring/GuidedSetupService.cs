@@ -408,7 +408,7 @@ public sealed class GuidedSetupService(
         await processes.SaveAsync(j.Role, profile, ct);
         await processes.RestartAsync(j.Role, ct);
         if (j.Role == "stt") await settings.UpdateSttUrlAsync("http://127.0.0.1:8016", ct);
-        else await settings.UpdateTtsUrlAsync("http://127.0.0.1:8020", ct);
+        else await settings.UpdateTtsBackendAsync("http://127.0.0.1:8020", piper ? choice.File : choice.Repo, ct);
         try { await WaitForHealthAsync(j, profile.HealthUrl, ct, 300); }
         catch (Exception ex) when (gpu is not null && (ex is TimeoutException or InvalidOperationException))
         {
