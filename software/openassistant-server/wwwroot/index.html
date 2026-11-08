@@ -4,7 +4,7 @@
 <meta name="theme-color" content="#17181b"><meta name="color-scheme" content="dark light">
 <title>OpenAssistant — Панель управления</title>
 <script src="/ui.js?v=20261106c"></script>
-<link rel="stylesheet" href="/display-editor.css?v=2"><link rel="stylesheet" href="/dashboard.css?v=20261106c"><link rel="stylesheet" href="/settings-manager.css?v=20261106c"></head>
+<link rel="stylesheet" href="/display-editor.css?v=2"><link rel="stylesheet" href="/dashboard.css?v=20261108-startup"><link rel="stylesheet" href="/settings-manager.css?v=20261106c"></head>
 <body>
 <div class="layout">
 <aside class="sidebar">
@@ -54,15 +54,15 @@
       <header class="workspace-header"><h2>Сервисы</h2><button data-view="models" class="subtle-action" type="button">Управление моделями ↗</button></header>
       <div class="engine-list">
         <button type="button" data-view="models" class="engine-row">
-          <span class="engine-ordinal">LLM</span><span class="engine-title"><strong>Языковая модель</strong><small>Обработка запросов</small></span>
+          <span class="engine-ordinal">LLM</span><span class="engine-title"><strong>Языковая модель</strong><small>Обработка запросов</small><span class="engine-readiness-track" id="llmLoadTrack" role="progressbar" aria-label="Загрузка Языковая модель" hidden><span class="model-readiness-fill"></span></span><small class="engine-readiness-caption" id="llmLoadDescription"></small></span>
           <span class="engine-state" id="llmStatus">—</span><span class="state-tag" id="llmFlag">Проверка</span><span class="engine-detail" id="llmInfo">Ожидаем ответ</span><span class="engine-arrow">↗</span>
         </button>
         <button type="button" data-view="tests" class="engine-row">
-          <span class="engine-ordinal">STT</span><span class="engine-title"><strong>Распознавание</strong><small>Преобразование речи в текст</small></span>
+          <span class="engine-ordinal">STT</span><span class="engine-title"><strong>Распознавание</strong><small>Преобразование речи в текст</small><span class="engine-readiness-track" id="sttLoadTrack" role="progressbar" aria-label="Загрузка Распознавание" hidden><span class="model-readiness-fill"></span></span><small class="engine-readiness-caption" id="sttLoadDescription"></small></span>
           <span class="engine-state" id="sttStatus">—</span><span class="state-tag" id="sttFlag">Проверка</span><span class="engine-detail" id="sttInfo">Ожидаем ответ</span><span class="engine-arrow">↗</span>
         </button>
         <button type="button" data-view="settings" class="engine-row">
-          <span class="engine-ordinal">TTS</span><span class="engine-title"><strong>Синтез речи</strong><small>Генерация голоса</small></span>
+          <span class="engine-ordinal">TTS</span><span class="engine-title"><strong>Синтез речи</strong><small>Генерация голоса</small><span class="engine-readiness-track" id="ttsLoadTrack" role="progressbar" aria-label="Загрузка Синтез речи" hidden><span class="model-readiness-fill"></span></span><small class="engine-readiness-caption" id="ttsLoadDescription"></small></span>
           <span class="engine-state" id="ttsStatus">—</span><span class="state-tag" id="ttsFlag">Проверка</span><span class="engine-detail" id="ttsInfo">Ожидаем ответ</span><span class="engine-arrow">↗</span>
         </button>
       </div>
@@ -269,6 +269,6 @@
 </main></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/audio-test.js" defer></script>
-<script src="/dashboard.js?v=20261108-lan-fix" defer></script>
+<script src="/dashboard.js?v=20261108-startup" defer></script>
 <script src="/settings-manager.js?v=20261106c" defer></script><script src="/display-editor.js?v=2" defer></script>
 </body></html>

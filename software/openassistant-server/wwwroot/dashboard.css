@@ -261,3 +261,26 @@ footer a:hover{text-decoration:underline}
   .chat-compose{flex-wrap:wrap}
   .chat-compose input{flex-basis:100%}
 }
+
+/* Model process is not equivalent to model readiness. An indeterminate
+   progressbar is shown until a successful HTTP health probe. */
+.engine-readiness-track,.model-readiness-track{
+ display:block;position:relative;overflow:hidden;height:5px;background:var(--border);
+ border-radius:8px;width:100%;
+}
+.engine-readiness-track[hidden]{display:none}
+.engine-readiness-track .model-readiness-fill,
+.model-readiness-track .model-readiness-fill{
+ display:block;height:100%;width:100%;background:var(--accent);border-radius:8px
+}
+.engine-readiness-track.indeterminate .model-readiness-fill,
+.model-readiness-track.indeterminate .model-readiness-fill{
+ width:36%;animation:model-load-sweep 1.5s ease-in-out infinite
+}
+@keyframes model-load-sweep{
+ from{transform:translateX(-100%)}to{transform:translateX(280%)}
+}
+.engine-readiness-caption{display:block;max-width:290px;white-space:normal;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.model-readiness{margin:12px 0 2px}
+.model-readiness-detail{font-size:11px;color:var(--secondary);line-height:1.5;margin-bottom:6px;font-variant-numeric:tabular-nums}
+@media(prefers-reduced-motion:reduce){.indeterminate .model-readiness-fill{animation:none;width:75%;opacity:.55}}

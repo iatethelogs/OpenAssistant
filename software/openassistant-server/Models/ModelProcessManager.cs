@@ -222,7 +222,9 @@ public sealed class ModelProcessManager(
                 lock (managed.Log) logs = managed.Log.ToArray();
                 running[role] = new {
                     running = live, pid = p.Id, modelPath = managed.ModelPath, exitCode = live ? (int?)null : p.ExitCode,
-                    startedAt = managed.StartedAt, logs
+                    startedAt = managed.StartedAt, logs,
+                    loadingSeconds = live ? Math.Max(0, (int)(DateTimeOffset.UtcNow - managed.StartedAt).TotalSeconds) : 0,
+                    loadingStage = live ? LoadingStage(logs) : "Процесс завершён"
                 };
             }
         }
@@ -247,6 +249,27 @@ public sealed class ModelProcessManager(
         var api = statuses.ToDictionary(x => x.role, x => x.status);
         var gpus = await gpuTask;
         return new { running, gpus, api };
+    }
+
+    private static string LoadingStage(string[] logs)
+    {
+        foreach (var line in logs.Reverse().Take(28))
+        {
+            if (line.Contains("warmup", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("cuda graph", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("warming", StringComparison.OrdinalIgnoreCase))
+                return "Прогрев вычислителя";
+            if (line.Contains("load_tensors", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("loading weights", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("loading model", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("offload", StringComparison.OrdinalIgnoreCase))
+                return "Загрузка весов модели";
+            if (line.Contains("initializing", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("init CUDA", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("loading tokenizer", StringComparison.OrdinalIgnoreCase))
+                return "Инициализация модели";
+        }
+        return "Ожидание ответа /health";
     }
 
     private async Task<object> CheckHealthAsync(string url, CancellationToken ct)

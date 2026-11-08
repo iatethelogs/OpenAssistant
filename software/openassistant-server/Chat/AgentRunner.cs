@@ -13,6 +13,36 @@ public sealed record AgentDelta(string? Text = null, string? Tool = null, object
 public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<ServerOptions> options,
     AgentToolService skills)
 {
+    private static List<object> NormalizeHistory(IReadOnlyList<ChatMessage> history)
+    {
+        var instructions = history.Where(x => x.Role == "system" &&
+            !string.IsNullOrWhiteSpace(x.Content)).Select(x => x.Content.Trim()).ToArray();
+        var normalized = new List<ChatMessage>();
+        foreach (var entry in history)
+        {
+            if (entry.Role is not ("user" or "assistant") || string.IsNullOrWhiteSpace(entry.Content))
+                continue;
+            if (normalized.Count == 0 && entry.Role != "user") continue;
+            if (normalized.Count > 0 && normalized[^1].Role == entry.Role)
+            {
+                normalized[^1] = normalized[^1] with
+                {
+                    Content = normalized[^1].Content + "\n\n" + entry.Content
+                };
+            }
+            else normalized.Add(entry);
+        }
+        if (normalized.Count == 0 || normalized[^1].Role != "user")
+            throw new ArgumentException("История должна заканчиваться запросом пользователя");
+        var result = new List<object>();
+        if (instructions.Length > 0)
+            result.Add(new { role = "system", content = string.Join("\n\n", instructions) });
+        result.AddRange(normalized.Select(entry => (object)new {
+            role = entry.Role, content = entry.Content
+        }));
+        return result;
+    }
+
     private sealed class ToolParts
     {
         public string Id = "";
@@ -23,7 +53,10 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
     public async IAsyncEnumerable<AgentDelta> GenerateAsync(IReadOnlyList<ChatMessage> history,
         [EnumeratorCancellation] CancellationToken ct)
     {
-        var messages = new List<object>(history.Select(x => (object)new { role = x.Role, content = x.Content }));
+        // llama.cpp strict chat templates reject consecutive system or user messages.
+        // Combine all system context (including recalled snippets) and normalize
+        // prior turns into a true user/assistant alternation before serialization.
+        var messages = NormalizeHistory(history);
         int executed = 0;
         bool toolsSupported = true;
         for (int round = 0; round < 5; round++)

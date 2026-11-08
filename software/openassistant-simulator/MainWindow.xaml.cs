@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private bool _closing;
     private bool _resumeMusic;
     private int _micTicks;
+    private long _chimeUntil;
     private string _musicTitle = "";
 
     public MainWindow()
@@ -67,7 +68,11 @@ public partial class MainWindow : Window
         _gate.Finished += () =>
         {
             _upload.EndPhrase();
-            Ui(() => SetMode(DisplayMode.Thinking, "Распознавание на сервере"));
+            Ui(() =>
+            {
+                SetMode(DisplayMode.Thinking, "Распознавание на сервере");
+                _ = PlayActivationChimeAsync(completed:true);
+            });
         };
         _gate.TimedOut += () =>
         {
@@ -126,6 +131,12 @@ public partial class MainWindow : Window
         }
         return Math.Sqrt(energy/count);
     }
+    private async Task PlayActivationChimeAsync(bool completed = false)
+    {
+        try { await ActivationChime.PlayAsync(completed); }
+        catch (Exception ex) { Log("Звуковое подтверждение: " + ex.Message); }
+    }
+
     private void BeginCapture(string? wake = null)
     {
         if (!_socket.Connected) { Log("Нет соединения с сервером"); return; }
@@ -140,6 +151,9 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(wake)) _upload.QueueWake(wake);
         _gate.Activate();
         SetMode(DisplayMode.Listening, "Слушаю команду");
+        // Do not feed the cue coming from our own speaker into STT/VAD.
+        Interlocked.Exchange(ref _chimeUntil, Environment.TickCount64 + 260);
+        _ = PlayActivationChimeAsync();
     }
     private void ResumeMusicIfNeeded()
     {
@@ -161,7 +175,10 @@ public partial class MainWindow : Window
             if (!_gate.Capturing && !_speaker.SpeechActive &&
                 (!_speaker.MusicActive || _bargeInEnabled))
                 _wake?.Feed(pcm);
-            _gate.Push(processed);
+            if (_gate.Capturing && Environment.TickCount64 < Interlocked.Read(ref _chimeUntil))
+                _gate.Push(new byte[processed.Length]);
+            else
+                _gate.Push(processed);
             if (Interlocked.Increment(ref _micTicks) % 3 == 0)
             {
                 var rms = _noise.LastRms;
@@ -388,6 +405,7 @@ public partial class MainWindow : Window
         if(!_gate.Capturing)return;
         _gate.Stop();_upload.EndPhrase();
         SetMode(DisplayMode.Thinking,"Распознавание на сервере");
+        _ = PlayActivationChimeAsync(completed:true);
     }
     private void Cancel_Click(object sender,RoutedEventArgs e)
     {

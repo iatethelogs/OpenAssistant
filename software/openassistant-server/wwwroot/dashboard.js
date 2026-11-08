@@ -9,11 +9,34 @@ function busy(btn,fn){return async()=>{btn.disabled=true;try{await fn()}catch(e)
 function show(view){if(!(view in names))return;const storage=view==="models";if(storage)view="settings";for(const node of document.querySelectorAll(".view"))node.classList.toggle("active",node.id===view);for(const node of document.querySelectorAll("#navigation [data-view]")){const selected=node.dataset.view===(storage?"models":view);node.classList.toggle("active",selected);if(selected)node.setAttribute("aria-current","page");else node.removeAttribute("aria-current")}el("pageName").textContent=storage?names.models:names[view];history.replaceState(null,"","#"+(storage?"models":view));if(storage)window.OpenAssistantModelUI?.select("storage");if(view==="chat")queueMicrotask(()=>connectChat(true));}
 for(const b of document.querySelectorAll("[data-view]"))b.onclick=()=>show(b.dataset.view);
 function pct(a,b){return b>0?Math.min(100,Math.max(0,100*a/b)):0}
-function setService(role){const status=state.models?.status||{},proc=status.running?.[role],health=status.api?.[role]?.state||"unreachable";const live=health==="ready";const running=proc?.running;const flag=el(role+"Flag");flag.textContent=live?"API готов":running?"Загрузка":health==="unknown"?"Нет проверки":"Недоступен";flag.className="state-tag "+(live?"good":running?"neutral":"bad");el(role+"Status").textContent=live?"Работает":running?"Запущен":"Остановлен";el(role+"Info").textContent=(proc?.pid?"PID "+proc.pid+" · ":"")+"HTTP: "+health}
+function serviceState(role){
+ const status=state.models?.status||{}, proc=status.running?.[role];
+ const health=status.api?.[role]?.state||"unreachable";
+ const ready=health==="ready", loading=!!proc?.running&&!ready;
+ const failed=!!proc&&!proc.running&&!ready;
+ const label=loading?"Загружается":ready?"Готова":failed?"Ошибка запуска":"Остановлена";
+ const elapsed=proc?.loadingSeconds||0;
+ const details=loading?(proc.loadingStage||"Загрузка модели")+" · "+elapsed+" с":
+   ready?("HTTP API готов"+(proc?.pid?" · PID "+proc.pid:"")):
+   failed?("Процесс завершён"+(proc.exitCode!=null?" · код "+proc.exitCode:"")):
+   health==="unknown"?"HTTP ответил, но готовность не подтверждена":"API недоступен";
+ return {proc,ready,loading,failed,label,details,health};
+}
+function setService(role){
+ const svc=serviceState(role),flag=el(role+"Flag");
+ flag.textContent=svc.ready?"API готов":svc.loading?"Загрузка":svc.failed?"Ошибка":"Недоступен";
+ flag.className="state-tag "+(svc.ready?"good":svc.loading?"neutral":"bad");
+ el(role+"Status").textContent=svc.label;
+ el(role+"Info").textContent=svc.details;
+ const track=el(role+"LoadTrack"),description=el(role+"LoadDescription");
+ if(track){track.hidden=!(svc.loading||svc.ready);track.classList.toggle("indeterminate",svc.loading);
+   track.setAttribute("aria-valuetext",svc.details);if(svc.ready)track.setAttribute("aria-valuenow","100");else track.removeAttribute("aria-valuenow");}
+ if(description)description.textContent=svc.loading?svc.details:svc.ready?"Готова к запросам":"";
+}
 function renderGpus(){const box=el("gpus");box.replaceChildren();const gpus=state.models?.status?.gpus||[];if(!gpus.length){box.append(textNode("div","Нет телеметрии NVIDIA. Проверьте драйвер и nvidia-smi.","empty"));return}for(const gpu of gpus){const card=textNode("div","","gpu-card");const head=textNode("div","","gpu-top");head.append(textNode("strong","GPU "+gpu.index+" · "+gpu.name),textNode("span",(gpu.temperature??"—")+" °C · "+(gpu.utilization??"—")+"%"));const bar=textNode("div","","gpu-bar"),fill=document.createElement("div");fill.style.width=pct(gpu.usedMiB,gpu.totalMiB)+"%";bar.append(fill);const foot=textNode("div","","gpu-bottom");foot.append(textNode("span",(gpu.usedMiB??"—")+"/"+(gpu.totalMiB??"—")+" MiB"),textNode("span",(gpu.powerWatts??"—")+" Вт"));card.append(head,bar,foot);box.append(card)}}
 function renderDevices(){el("devicesCount").textContent=state.devices?.count??"—";el("onlineBadge").textContent=(state.devices?.count??0)+" онлайн";const box=el("connections");box.replaceChildren();const list=state.devices?.connections||[];if(!list.length){box.append(textNode("div","Подключённых устройств нет. После установки и настройки колонки она появится здесь.","empty"));return}
 for(const entry of list){const row=textNode("div","","connection-entry");row.append(textNode("strong",entry.remote+" · "+entry.id),textNode("small","Подключение: "+new Date(entry.connectedAt).toLocaleString("ru-RU")+" · последний пакет: "+new Date(entry.lastPacketAt).toLocaleTimeString("ru-RU")));box.append(row)}}
-function render(){for(const role of ["llm","stt","tts"])setService(role);renderGpus();renderDevices();window.OpenAssistantModelUI?.refreshStatuses?.();if(el("settings")?.classList.contains("active"))window.OpenAssistantModelUI?.renderIndex?.();el("updatedAt").textContent="Обновлено "+new Date().toLocaleTimeString("ru-RU");
+function render(){for(const role of ["llm","stt","tts"])setService(role);renderModelCards();renderGpus();renderDevices();window.OpenAssistantModelUI?.refreshStatuses?.();if(el("settings")?.classList.contains("active"))window.OpenAssistantModelUI?.renderIndex?.();el("updatedAt").textContent="Обновлено "+new Date().toLocaleTimeString("ru-RU");
 const sys=state.system||{};el("cpuValue").textContent=sys.cpuThreads??"—";el("memoryValue").textContent=sys.serverMemoryMiB==null?"—":sys.serverMemoryMiB+" МиБ";el("storageValue").textContent=sys.diskFreeGiB==null?"—":sys.diskFreeGiB+" ГиБ";el("downloadsValue").textContent=(state.downloads?.jobs||[]).filter(j=>["queued","downloading"].includes(j.state)).length;
 el("serverChip").textContent="Подключено";el("sideStatus").textContent="Сервер доступен"}
 async function poll(){if(state.loading)return;state.loading=true;try{const [models,system,devices,downloads]=await Promise.all([api("/api/models"),api("/api/control/system"),api("/api/control/devices"),api("/api/models/downloads")]);Object.assign(state,{models,system,devices,downloads});render()}catch(e){el("serverChip").textContent="Нет соединения";el("sideStatus").textContent="Нет подключения";}finally{state.loading=false}}
@@ -80,10 +103,16 @@ async function copy(value){if(!navigator.clipboard?.writeText)throw Error("Ко�
 el("copyAddress").onclick=busy(el("copyAddress"),()=>copy(el("wsAddress").textContent));
 el("copyKey").onclick=busy(el("copyKey"),async()=>{if(!state.key)throw Error("Ключ ещё не загружен");await copy(state.key)});
 async function loadDeviceKey(){
- const key=await api("/api/control/device/key");
- if(!key.token)throw Error("Сервер вернул пустой ключ");
- state.key=key.token;
- el("deviceKey").textContent=key.token;
+ const controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),7000);
+ try{
+  const response=await fetch("/api/control/device/key",{cache:"no-store",signal:controller.signal});
+  if(!response.ok)throw Error("HTTP "+response.status);
+  const key=await response.json();
+  if(!key.token)throw Error("Сервер вернул пустой ключ");
+  state.key=key.token;
+  el("deviceKey").textContent=key.token;
+ }finally{clearTimeout(timeout)}
 }
 el("createKey").onclick=busy(el("createKey"),async()=>{
  if(!confirm("Перевыпустить ключ устройства? Старый перестанет работать при следующем подключении."))return;
@@ -111,8 +140,21 @@ function renderModelCards(){
   const card=textNode("article","","service");const head=textNode("div",role.toUpperCase(),"service-type");
   const model=state.models?.profiles?.[role];
   const modelName=(current?.modelPath||model?.modelPath||"").split("/").pop();
-  card.append(head,textNode("div",current?.running?"Запущена":state.models?.status?.api?.[role]?.state==="ready"?"API доступен":"Остановлена","service-value"),
+  const svc=serviceState(role);
+  card.append(head,textNode("div",svc.label,"service-value"),
     textNode("div",modelName||"Модель не выбрана","service-caption"));
+  if(svc.loading||svc.ready||svc.failed){
+   const progress=textNode("div","","model-readiness");progress.setAttribute("role","status");
+   progress.append(textNode("div",svc.details,"model-readiness-detail"));
+   if(svc.loading||svc.ready){
+    const track=textNode("div","","model-readiness-track"+(svc.loading?" indeterminate":""));
+    track.setAttribute("role","progressbar");track.setAttribute("aria-label","Готовность "+role.toUpperCase());
+    if(svc.ready)track.setAttribute("aria-valuenow","100");
+    track.append(textNode("span","","model-readiness-fill"));
+    progress.append(track);
+   }
+   card.append(progress);
+  }
   const actions=textNode("div","","model-card-actions");
   const edit=textNode("button","Параметры","button secondary");
   edit.onclick=()=>{show("settings");window.OpenAssistantModelUI?.select(role);window.OpenAssistantModelUI?.mountRole(role);el("profileModel").scrollIntoView({behavior:"smooth",block:"center"})};

@@ -137,10 +137,11 @@
          <StackPanel Grid.Row="0">
            <TextBlock Text="Диалог" FontSize="14" FontWeight="SemiBold"/>
            <WrapPanel Margin="0,12,0,10">
-             <Button x:Name="TalkButton" Content="Говорить" Click="Talk_Click"/><Button x:Name="SimulateWakeButton" Content="Имитировать wake-word" Click="SimulateWake_Click"/>
+             <Button x:Name="TalkButton" Content="Записать без wake-word" ToolTip="Начать запись напрямую, без отправки слова активации" Click="Talk_Click"/><Button x:Name="SimulateWakeButton" Content="Имитировать «Мартин»" ToolTip="То же событие, что срабатывание детектора: wake → запись команды → сервер" Click="SimulateWake_Click"/>
              <Button Content="Завершить фразу" Click="End_Click"/>
              <Button Content="Отмена" Click="Cancel_Click"/>
            </WrapPanel>
+<TextBlock Text="Обе кнопки записывают голос до паузы. Имитация дополнительно отправляет wake-событие на сервер." Foreground="{StaticResource Secondary}" TextWrapping="Wrap" FontSize="10" Margin="0,0,0,5"/>
            <TextBlock Text="Текстовый запрос" Style="{StaticResource FieldLabel}"/>
            <DockPanel>
              <Button Content="Отправить" DockPanel.Dock="Right" Click="Text_Click" Margin="8,0,0,0"/>
