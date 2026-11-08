@@ -13,6 +13,8 @@ public sealed class ClientPreferences
     public bool CommunicationsDsp { get; set; } = true;
     public bool NoiseReduction { get; set; } = true;
     public bool BargeInOnMusic { get; set; } = true;
+    public bool FollowUpEnabled { get; set; } = true;
+    public int FollowUpTimeoutSeconds { get; set; } = 15;
     // Null means older preferences: default volume ducking to enabled.
     public bool? DuckMusicOnWake { get; set; }
     private static string Location => Path.Combine(
