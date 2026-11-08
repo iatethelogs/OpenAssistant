@@ -62,7 +62,8 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
         // subsequent control without any command-word matching in C#.
         for (int step = 0; step < 4 && (enabled.Length > 0 || custom.Length > 0); step++)
         {
-            ToolIntentPlanner.Plan? decision;
+            ToolIntentPlanner.Plan? decision = null;
+            string? planFailure = null;
             try
             {
                 decision = await planner.DecideAsync(history, enabled, custom, observations, ct);
@@ -71,8 +72,11 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
                 ex is HttpRequestException or InvalidOperationException or JsonException or TaskCanceledException)
             {
                 logger.LogWarning(ex, "Intent classifier unavailable");
-                yield return new AgentDelta(Text:
-                    "Не удалось определить действие: модель классификации сейчас недоступна.");
+                planFailure = "Не удалось определить действие: модель классификации сейчас недоступна.";
+            }
+            if (planFailure is not null)
+            {
+                yield return new AgentDelta(Text: planFailure);
                 yield break;
             }
 
