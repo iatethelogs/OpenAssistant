@@ -17,6 +17,38 @@ public sealed class ToolIntentPlanner(
 {
     public sealed record Plan(string Name, JsonElement Arguments);
 
+    private static string Short(string? value, int max) =>
+        string.IsNullOrWhiteSpace(value) ? "" :
+        value.Length <= max ? value : value[..max];
+
+    // Send a compact tool signature, NOT the complete JSON Schemas. Passing
+    // detailed definitions previously inflated a one-sentence request to
+    // 7200+ tokens and llama.cpp rejected it at context=4096.
+    private static string Arguments(object schema)
+    {
+        var node = JsonSerializer.SerializeToElement(schema);
+        if (node.ValueKind != JsonValueKind.Object ||
+            !node.TryGetProperty("properties", out var props) ||
+            props.ValueKind != JsonValueKind.Object) return "";
+        var fields = new List<string>();
+        foreach (var property in props.EnumerateObject().Take(6))
+        {
+            string types = "string";
+            if (property.Value.ValueKind == JsonValueKind.Object)
+            {
+                if (property.Value.TryGetProperty("enum", out var allowed) &&
+                    allowed.ValueKind == JsonValueKind.Array)
+                    types = string.Join("|", allowed.EnumerateArray().Take(8)
+                        .Select(v => v.ValueKind == JsonValueKind.String ? v.GetString() : v.GetRawText()));
+                else if (property.Value.TryGetProperty("type", out var type) &&
+                    type.ValueKind == JsonValueKind.String)
+                    types = type.GetString() ?? "string";
+            }
+            fields.Add(property.Name + ":" + types);
+        }
+        return string.Join(", ", fields);
+    }
+
     private const string Instructions = """
         Ты диспетчер инструментов голосового ассистента. Ты НЕ отвечаешь пользователю.
         Твоя задача — определить, нужно ли ВЫПОЛНИТЬ действие через доступный инструмент.
@@ -62,23 +94,25 @@ public sealed class ToolIntentPlanner(
     {
         if (skills.Count == 0 && custom.Count == 0)
             return new Plan("none", default);
-        var catalog = skills.Select(x => new
-        {
-            name = x.Name, description = x.Description, parameters = x.Parameters
-        }).Concat(custom.Select(x => new
-        {
-            name = x.Name, description = x.Description, parameters = (object)x.Parameters
+        var catalog = skills.Select(x => new {
+            name = x.Name, description = Short(x.Description, 155),
+            args = Arguments(x.Parameters)
+        }).Concat(custom.Take(16).Select(x => new {
+            name = x.Name, description = Short(x.Description, 120),
+            args = Arguments(x.Parameters)
         })).ToArray();
         var names = catalog.Select(x => x.name).ToHashSet(StringComparer.Ordinal);
-        // Keep the planner compact and independent from the main streaming
-        // response; previous tool results are provided for multi-step actions.
         var recent = history.Where(x => x.Role is "user" or "assistant")
-            .TakeLast(5).Select(x => new { role = x.Role, text = x.Content }).ToArray();
-        var input = JsonSerializer.Serialize(new
-        {
-            conversation = recent, available_tools = catalog,
-            already_executed = observations
+            .TakeLast(3).Select(x => new { role = x.Role, text = Short(x.Content, 220) }).ToArray();
+        var previous = observations.TakeLast(2).Select(x =>
+            Short(JsonSerializer.Serialize(x), 2500)).ToArray();
+        var input = JsonSerializer.Serialize(new {
+            conversation = recent,
+            available_tools = catalog,
+            already_executed = previous
         });
+        logger.LogDebug("Intent planner prompt: {Characters} chars, {Tools} tools",
+            input.Length, catalog.Length);
         var messages = new object[]
         {
             new { role = "system", content = Instructions },
@@ -93,7 +127,7 @@ public sealed class ToolIntentPlanner(
         {
             object requestBody = attempt == 0
                 ? new { model = cfg.LlmModel, messages, stream = false,
-                    temperature = 0, max_tokens = 320,
+                    temperature = 0, max_tokens = 256,
                     response_format = new { type = "json_object" } }
                 : new { model = cfg.LlmModel, messages, stream = false,
                     temperature = 0, max_tokens = 320 };
@@ -102,13 +136,26 @@ public sealed class ToolIntentPlanner(
                 Content = JsonContent.Create(requestBody)
             };
             using var response = await client.SendAsync(request, ct);
-            if (attempt == 0 && response.StatusCode is
-                HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity)
+            if (!response.IsSuccessStatusCode)
             {
-                logger.LogInformation("LLM doesn't support JSON response_format; trying plain JSON");
-                continue;
+                string detail = await response.Content.ReadAsStringAsync(ct);
+                bool overflow = detail.Contains("exceeds the available context", StringComparison.OrdinalIgnoreCase) ||
+                    detail.Contains("context size", StringComparison.OrdinalIgnoreCase) ||
+                    detail.Contains("context_window_exceeded", StringComparison.OrdinalIgnoreCase) ||
+                    detail.Contains("too many tokens", StringComparison.OrdinalIgnoreCase);
+                if (overflow)
+                    throw new InvalidOperationException("Контекст LLM переполнен: " +
+                        Short(detail, 220));
+                if (attempt == 0 && response.StatusCode is
+                    HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity)
+                {
+                    logger.LogInformation("JSON response_format unsupported; retrying once without it");
+                    continue;
+                }
+                throw new HttpRequestException(
+                    "Сервер LLM отклонил выбор навыка: HTTP " +
+                    (int)response.StatusCode + ": " + Short(detail, 250));
             }
-            response.EnsureSuccessStatusCode();
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             if (!doc.RootElement.TryGetProperty("choices", out var choices) ||
                 choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0 ||
