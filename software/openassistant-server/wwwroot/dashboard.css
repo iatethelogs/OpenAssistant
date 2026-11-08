@@ -298,3 +298,9 @@ footer a:hover{text-decoration:underline}
 .tool-toggle{display:flex;align-items:center;gap:7px;margin:12px 0}
 .tool-editor-actions{margin-top:15px}
 @media(max-width:850px){.tool-workspace{grid-template-columns:1fr}}
+
+/* Responsive LAN discovery card */
+#discoveredClients{margin-top:10px}
+#discoveredClients .connection-entry{padding:10px 0;border-bottom:1px solid var(--border-subtle)}
+#discoveredClients .connection-entry strong{display:block;margin-bottom:4px;font-size:12px}
+#discoveredClients .connection-entry small{font-size:11px;color:var(--secondary)}

@@ -4,7 +4,7 @@
 <meta name="theme-color" content="#17181b"><meta name="color-scheme" content="dark light">
 <title>OpenAssistant — Панель управления</title>
 <script src="/ui.js?v=20261106c"></script>
-<link rel="stylesheet" href="/display-editor.css?v=2"><link rel="stylesheet" href="/dashboard.css?v=20261108-tools-v2"><link rel="stylesheet" href="/settings-manager.css?v=20261106c"></head>
+<link rel="stylesheet" href="/display-editor.css?v=2"><link rel="stylesheet" href="/dashboard.css?v=20261108-discovery"><link rel="stylesheet" href="/settings-manager.css?v=20261106c"></head>
 <body>
 <div class="layout">
 <aside class="sidebar">
@@ -172,7 +172,12 @@
      <article class="panel"><div class="panel-heading"><div><h2>Активные подключения</h2><p>Сеансы подключённых клиентов</p></div><span id="onlineBadge" class="state-tag neutral">0 онлайн</span></div>
        <div id="connections" class="connection-list"><div class="empty">Устройств пока нет. После подключения клиент появится здесь.</div></div>
        <div class="rule"></div>
-       <p class="muted">В Windows-эмуляторе укажите WebSocket-адрес и выданный ключ. Для реальной колонки ESP32-P4 потребуется совместимая прошивка.</p>
+       <p class="muted">Windows-симулятор может сам обнаружить этот сервер. Для ESP32-P4 потребуется поддержка протокола обнаружения в прошивке.</p>
+     </article>
+     <article class="panel">
+       <div class="panel-heading"><div><h2>Поиск колонок в LAN</h2><p>Обнаружение симуляторов до подключения</p></div></div>
+       <div class="button-row"><button id="discoverClients" class="button primary" type="button">Найти устройства</button><span class="minor">UDP 5057</span></div>
+       <div id="discoveredClients" class="connection-list"><p class="muted">Нажмите «Найти устройства», чтобы обнаружить запущенные симуляторы.</p></div>
      </article>
     </div>
  </section>

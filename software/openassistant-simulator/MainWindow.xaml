@@ -80,9 +80,15 @@
        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
          <StackPanel>
            <TextBlock Text="Подключение" FontWeight="SemiBold" FontSize="14"/>
-           <TextBlock Text="Адрес сервера" Style="{StaticResource FieldLabel}"/>
-           <TextBox x:Name="ServerAddress" Text="ws://127.0.0.1:5055/ws"/>
-           <TextBlock Text="Ключ устройства" Style="{StaticResource FieldLabel}"/>
+           <TextBlock Text="Сервер OpenAssistant" Style="{StaticResource FieldLabel}"/>
+           <TextBox x:Name="ServerAddress" Text="ws://127.0.0.1:5055/ws" IsReadOnly="True"/>
+           <WrapPanel Margin="0,8,0,0">
+             <Button x:Name="FindServerButton" Content="Найти и подключиться" Click="FindServer_Click"/>
+             <TextBlock x:Name="DiscoverStatus" Text="UDP-поиск по локальной сети"
+                        VerticalAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource Secondary}"
+                        FontSize="11"/>
+           </WrapPanel>
+           <TextBlock Text="Ключ устройства (для LAN не требуется)" Style="{StaticResource FieldLabel}"/>
            <PasswordBox x:Name="DeviceToken" Background="#191C21" Foreground="#EFF1F5"
                         BorderBrush="#434A54" Padding="9,6" MinHeight="33"/>
            <TextBlock Text="Профиль собеседника" Style="{StaticResource FieldLabel}"/>

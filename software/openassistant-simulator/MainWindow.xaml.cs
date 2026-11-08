@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -16,6 +17,7 @@ namespace OpenAssistant.Simulator;
 public partial class MainWindow : Window
 {
     private readonly DeviceSocket _socket = new();
+    private LanDiscoveryClient? _lanDiscovery;
     private readonly MicrophoneCapture _microphone = new();
     private readonly NoiseReducer _noise = new();
     private readonly SpeakerPlayer _speaker = new();
@@ -37,6 +39,11 @@ public partial class MainWindow : Window
         InitializeComponent();
         _upload = new AudioUploadQueue(_socket);
         ApplyPreferences(ClientPreferences.Load());
+        try { _lanDiscovery = new LanDiscoveryClient(() => _socket.Connected); }
+        catch (SocketException ex)
+        {
+            Log("UDP 5057 недоступен для поиска симулятора сервером: " + ex.Message);
+        }
         SetMode(DisplayMode.Offline, "Не подключено");
 
         _socket.State += message => Ui(() =>
@@ -340,6 +347,40 @@ public partial class MainWindow : Window
         Log("Локальный TFLite-детектор готов: "+detector.WakeWord);
     }
 
+    private async void FindServer_Click(object sender, RoutedEventArgs e)
+    {
+        if (FindServerButton.IsEnabled == false) return;
+        FindServerButton.IsEnabled = false;
+        DiscoverStatus.Text = "Поиск в локальной сети…";
+        try
+        {
+            var servers = await LanDiscoveryClient.FindServersAsync();
+            if (servers.Length == 0)
+            {
+                DiscoverStatus.Text = "Сервер не найден";
+                Log("Поиск: сервер не отвечает по UDP 5056. Проверьте одну подсеть и брандмауэр.");
+                return;
+            }
+            string previous = ServerAddress.Text.Trim();
+            var selected = servers.FirstOrDefault(x => x.Url == previous) ?? servers[0];
+            ServerAddress.Text = selected.Url;
+            DiscoverStatus.Text = servers.Length == 1
+                ? "Найден: " + selected.Address
+                : "Найдено серверов: " + servers.Length + " · выбран " + selected.Address;
+            Log("Поиск: " + DiscoverStatus.Text);
+            SavePreferences();
+            // A found server is selected by its responding IP, then an ordinary
+            // WebSocket session is established using the existing client code.
+            Connect_Click(sender, e);
+        }
+        catch (Exception ex)
+        {
+            DiscoverStatus.Text = "Ошибка поиска";
+            Log("Поиск сервера: " + ex.Message);
+        }
+        finally { FindServerButton.IsEnabled = true; }
+    }
+
     private async void Connect_Click(object sender,RoutedEventArgs e)
     {
         try
@@ -485,6 +526,7 @@ public partial class MainWindow : Window
         await _socket.DisconnectAsync();
         await _upload.DisposeAsync();
         await _socket.DisposeAsync();
+        if (_lanDiscovery is not null) await _lanDiscovery.DisposeAsync();
         _speaker.Dispose();Matrix.Dispose();
     }
 }

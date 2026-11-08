@@ -98,6 +98,23 @@ el("settingsForm").onsubmit=async event=>{
 };
 el("runLlm").onclick=busy(el("runLlm"),async()=>{el("llmAnswer").textContent="Генерация ответа…";el("llmBenchmark").textContent="Измерение…";const r=await api("/api/control/test/llm","POST",{prompt:el("testPrompt").value,model:null});el("llmAnswer").textContent=r.text||"(ответ пустой)";el("llmBenchmark").textContent="Первый фрагмент "+r.firstTokenMs+" мс · "+r.totalMs+" мс · "+r.tokensPerSecond+" ток/с"+(r.tokensExact?"":"*");toast("Тест завершён")});
 el("runTts").onclick=busy(el("runTts"),async()=>{el("ttsBenchmark").textContent="Генерация WAV…";const response=await fetch("/api/control/test/tts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:el("testPhrase").value,voice:null,model:null})});if(!response.ok){const x=await response.json().catch(()=>({}));throw Error(x.error||"HTTP "+response.status)}const wav=await response.blob();if(state.voiceUrl)URL.revokeObjectURL(state.voiceUrl);state.voiceUrl=URL.createObjectURL(wav);el("ttsPlayer").src=state.voiceUrl;el("downloadAudio").href=state.voiceUrl;el("downloadAudio").classList.remove("hidden");el("ttsBenchmark").textContent=response.headers.get("X-Synthesis-Ms")+" мс · RTF "+response.headers.get("X-RTF");await el("ttsPlayer").play().catch(()=>{});toast("Аудио готово")});
+
+el("discoverClients").onclick=busy(el("discoverClients"),async()=>{
+ const container=el("discoveredClients");container.textContent="Идёт UDP-поиск симуляторов…";
+ const discovered=await api("/api/discovery/clients","POST");
+ container.replaceChildren();
+ if(!discovered.length){
+  container.append(textNode("p","Устройства не найдены. Проверьте, что симулятор запущен, разрешён UDP 5057 и оба компьютера в одной подсети.","muted"));
+  return;
+ }
+ for(const found of discovered){
+  const row=textNode("div","","connection-entry");
+  row.append(textNode("strong",found.name+" · "+found.address),
+   textNode("small",found.connected?"WebSocket уже подключён":"Ожидает подключения"));
+  container.append(row);
+ }
+ toast("Найдено устройств: "+discovered.length);
+});
 function deviceAddress(){let h=el("serverHost").value.trim().replace(/^(ws|wss|http|https):\/\//,"").replace(/\/.*$/,"").replace(/:\d+$/,"");el("wsAddress").textContent="ws://"+(h||"SERVER_IP")+":5055/ws"}
 el("serverHost").oninput=deviceAddress;
 async function copy(value){if(!navigator.clipboard?.writeText)throw Error("Копирование работает через HTTPS или localhost");await navigator.clipboard.writeText(value);toast("Скопировано")}

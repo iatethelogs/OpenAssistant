@@ -32,6 +32,8 @@ builder.Services.AddSingleton<ConversationMemoryStore>();
 builder.Services.AddSingleton<VerifiedHomeAssistantService>();
 builder.Services.AddSingleton<DiagnosticService>();
 builder.Services.AddSingleton<DeviceRegistry>();
+builder.Services.AddSingleton<LanDiscoveryService>();
+builder.Services.AddHostedService<LanDiscoveryService>(sp => sp.GetRequiredService<LanDiscoveryService>());
 builder.Services.AddSingleton<SetupService>();
 builder.Services.AddHttpClient("model-health", c => c.Timeout = TimeSpan.FromSeconds(4));
 builder.Services.AddHttpClient("hf-metadata", c => c.Timeout = TimeSpan.FromSeconds(65));
@@ -246,6 +248,12 @@ app.MapPost("/api/control/llama/start", async (
 });
 app.MapGet("/api/control/system", (HttpContext ctx, IWebHostEnvironment env) =>
     localOnly(ctx) ? Results.Ok(SystemMetrics.Snapshot(env)) : Results.StatusCode(403));
+app.MapPost("/api/discovery/clients", async (HttpContext ctx,
+    LanDiscoveryService discovery, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    return Results.Ok(await discovery.FindClientsAsync(ct));
+});
 app.MapGet("/api/control/devices", (HttpContext ctx, DeviceRegistry devices) =>
     localOnly(ctx) ? Results.Ok(devices.Overview()) : Results.StatusCode(403));
 app.MapGet("/api/control/device/key", (HttpContext ctx, ServerCredentialStore credentials) =>
