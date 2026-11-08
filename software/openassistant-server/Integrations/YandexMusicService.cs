@@ -152,6 +152,11 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
 
         if (kind == "artist")
         {
+            // Clean the entity name within an already selected artist search.
+            // This does not classify the user's request or route any commands.
+            query = Regex.Replace(query, @"^(?:группа|исполнитель|артист|певец|певица)\s+",
+                "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant).Trim();
+            if (query.Length == 0) throw new ArgumentException("Не указано имя исполнителя");
             string path = "/search?text=" + Uri.EscapeDataString(query) +
                 "&type=artist&page=0&nocorrect=False";
             using var request = await AuthorizedRequestAsync(path, ct);
@@ -159,7 +164,9 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
             response.EnsureSuccessStatusCode();
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             if (!document.RootElement.TryGetProperty("result", out var result) ||
+                result.ValueKind != JsonValueKind.Object ||
                 !result.TryGetProperty("artists", out var artists) ||
+                artists.ValueKind != JsonValueKind.Object ||
                 !artists.TryGetProperty("results", out var candidates) ||
                 candidates.ValueKind != JsonValueKind.Array)
                 return new YandexMusicSelection("artist", query, []);
