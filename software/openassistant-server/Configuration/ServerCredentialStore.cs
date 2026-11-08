@@ -13,7 +13,6 @@ public sealed class ServerCredentialStore
     private sealed class Secrets
     {
         public string DeviceToken { get; set; } = "";
-        public string PanelPassword { get; set; } = "";
     }
 
     private readonly object _sync = new();
@@ -69,27 +68,18 @@ public sealed class ServerCredentialStore
             _current = new Secrets
             {
                 DeviceToken = string.IsNullOrWhiteSpace(existingKey)
-                    ? NewDeviceToken() : existingKey,
-                PanelPassword = ""
+                    ? NewDeviceToken() : existingKey
             };
             Persist(_current);
         }
 
-        // One-time setup: the operator supplies a password through the process
-        // environment. Subsequent restarts use the securely persisted value.
-        // An explicitly supplied *different* password changes it on startup.
-        string? suppliedPassword = Environment.GetEnvironmentVariable("OPENASSISTANT_PANEL_PASSWORD");
-        if (!string.IsNullOrWhiteSpace(suppliedPassword) &&
-            !string.Equals(_current.PanelPassword, suppliedPassword, StringComparison.Ordinal))
-        {
-            var next = new Secrets { DeviceToken = _current.DeviceToken, PanelPassword = suppliedPassword };
-            Persist(next);
-            _current = next;
-        }
+        // Strip obsolete panel password from legacy credentials.json, preserving device key.
+        using (var document = JsonDocument.Parse(File.ReadAllText(_path)))
+            if (document.RootElement.TryGetProperty("PanelPassword", out _))
+                Persist(_current);
     }
 
     public string DeviceToken { get { lock (_sync) return _current.DeviceToken; } }
-    public string PanelPassword { get { lock (_sync) return _current.PanelPassword; } }
 
     public string RotateDeviceToken()
     {
@@ -97,8 +87,7 @@ public sealed class ServerCredentialStore
         {
             var next = new Secrets
             {
-                DeviceToken = NewDeviceToken(),
-                PanelPassword = _current.PanelPassword
+                DeviceToken = NewDeviceToken()
             };
             Persist(next);
             _current = next;

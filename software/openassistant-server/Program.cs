@@ -63,7 +63,7 @@ var app = builder.Build();
 var serverCredentials = app.Services.GetRequiredService<ServerCredentialStore>();
 
 // Same LAN endpoint for the web panel and WebSocket devices.
-// The public-facing admin API must not become unauthenticated when the LAN is enabled.
+// LAN-only admin endpoints and device WebSocket share the same port.
 static bool LoopbackClient(HttpContext ctx)
 {
     var ip = ctx.Connection.RemoteIpAddress;
@@ -85,59 +85,14 @@ static bool LanClient(HttpContext ctx)
 }
 var localOnly = new Func<HttpContext, bool>(LanClient);
 
-// Password is supplied through an environment variable rather than saved in
-// appsettings or sent to an unauthenticated browser. Localhost remains available
-// for initial setup; remote LAN browsers receive a standard Basic-auth challenge.
+// No web-panel password: access is restricted to RFC1918 LAN addresses.
+// Do not port-forward 5055 to the internet.
 app.Use(async (ctx, next) =>
 {
     if (!LanClient(ctx))
     {
         ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
         return;
-    }
-
-    bool isDevice = ctx.Request.Path.StartsWithSegments("/ws");
-    bool health = ctx.Request.Path.StartsWithSegments("/health");
-    if (!isDevice && !health && !LoopbackClient(ctx))
-    {
-        string password = serverCredentials.PanelPassword;
-        if (string.IsNullOrWhiteSpace(password))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-            ctx.Response.ContentType = "text/plain; charset=utf-8";
-            await ctx.Response.WriteAsync(
-                "LAN panel is locked. Set OPENASSISTANT_PANEL_PASSWORD before starting the server.");
-            return;
-        }
-
-        bool authenticated = false;
-        string authorization = ctx.Request.Headers.Authorization.ToString();
-        if (authorization.Length is > 6 and <= 4096 &&
-            authorization.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
-        {
-            try
-            {
-                string decoded = System.Text.Encoding.UTF8.GetString(
-                    Convert.FromBase64String(authorization[6..].Trim()));
-                int separator = decoded.IndexOf(':');
-                if (separator > 0 &&
-                    string.Equals(decoded[..separator], "admin", StringComparison.Ordinal))
-                {
-                    byte[] given = System.Text.Encoding.UTF8.GetBytes(decoded[(separator + 1)..]);
-                    byte[] expected = System.Text.Encoding.UTF8.GetBytes(password);
-                    authenticated = given.Length == expected.Length &&
-                        System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(given, expected);
-                }
-            }
-            catch (FormatException) { /* malformed Basic credentials */ }
-        }
-        if (!authenticated)
-        {
-            ctx.Response.Headers.WWWAuthenticate = "Basic realm=\"OpenAssistant LAN\", charset=\"UTF-8\"";
-            ctx.Response.Headers.CacheControl = "no-store";
-            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            return;
-        }
     }
 
     // Reject cross-origin requests that attempt to mutate settings or invoke actions.
@@ -159,7 +114,7 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "openassistant-server" }));
-// API-level checks are kept in addition to the global LAN + password middleware.
+// API-level LAN checks are retained as defense in depth.
 app.MapGet("/api/control/assistant-defaults", (HttpContext ctx) =>
 {
     if (!localOnly(ctx)) return Results.StatusCode(403);
