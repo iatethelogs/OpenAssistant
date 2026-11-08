@@ -14,8 +14,7 @@ namespace OpenAssistant.Server.Transport;
 /// <summary>независимый сеанс устройства: речь, llm, tts и музыкальные команды.</summary>
 public sealed class AssistantPipeline(
     SpeechService speech, AgentRunner agent, ToolRegistry tools,
-    ConversationMemoryStore memory, VerifiedHomeAssistantService homeAssistant,
-    AgentToolService skills, ConversationLog conversationLog, DeviceRegistry devices,
+    ConversationMemoryStore memory, ConversationLog conversationLog, DeviceRegistry devices,
     YandexMusicService music, DisplaySettingsStore displaySettings, IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
 {
     /// <summary>принимает аудио и команды клиента до отключения websocket.</summary>
@@ -133,25 +132,8 @@ public sealed class AssistantPipeline(
             await JsonAsync(new { type = "transcript", text }, ct);
             conversationLog.Add(fromAudio ? "stt" : "user", text);
 
-            var permissions = await skills.ListAsync(ct);
-            bool readHa = permissions.Any(s => s.Name == "ha_get_state" && s.Enabled);
-            bool writeHa = permissions.Any(s => s.Name == "ha_call_service" && s.Enabled);
-            string? verified = await homeAssistant.TryHandleAsync(text, readHa, writeHa, ct);
-            if (verified is not null)
-            {
-                verified = NoEmoji.Strip(verified);
-                await JsonAsync(new { type = "text", delta = verified }, ct);
-                conversationLog.Add("llm", verified);
-                await memory.SaveExchangeAsync(profile, text, verified, ct);
-                if (synthesize)
-                {
-                    byte[] audio = await speech.SynthesizeAsync(verified, voice,
-                        settings.CurrentValue.OutputSampleRate, ct);
-                    await AudioAsync(audio, settings.CurrentValue.OutputSampleRate, ct);
-                }
-                await JsonAsync(new { type = "done" }, ct);
-                return;
-            }
+            // Intent is selected by the LLM through advertised tools.
+            // No keyword dispatch for music or Home Assistant is performed here.
             var recalled = await memory.RecallAsync(profile, text, ct);
             var context = new List<ChatMessage> {
                 new("system", settings.CurrentValue.SystemPrompt),
