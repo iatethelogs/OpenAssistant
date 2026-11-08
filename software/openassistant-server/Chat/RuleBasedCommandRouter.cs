@@ -217,9 +217,16 @@ public sealed class RuleBasedCommandRouter(
             if (hint is not null && hint != "appliance" && domain != hint) continue;
             if ((service is "open_cover" or "close_cover") && domain != "cover") continue;
             string[] name = Tokens(e.Name + " " + e.Id.Replace('_', ' ').Replace('.', ' '));
-            if (!features.All(f => name.Any(n => n.StartsWith(f, StringComparison.Ordinal) ||
-                                                 f.StartsWith(n, StringComparison.Ordinal)))) continue;
-            if (hint is null && features.Length == 0) continue;
+            if (hint is null)
+            {
+                // An unqualified "включи <name>" must match an actual HA
+                // name by complete normalized words. Partial prefixes would
+                // accidentally hijack artist names such as "Кино".
+                if (features.Length == 0 || !features.All(name.Contains)) continue;
+            }
+            else if (!features.All(f => name.Any(n =>
+                n.StartsWith(f, StringComparison.Ordinal) ||
+                f.StartsWith(n, StringComparison.Ordinal)))) continue;
             int score = features.Sum(f => name.Contains(f) ? 3 : 1);
             if (hint is null && features.Length == 1 &&
                 Tokens(e.Name).Length == 1 && Tokens(e.Name)[0] == features[0]) score += 5;
