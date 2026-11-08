@@ -12,6 +12,7 @@ public sealed class VoiceActivityGate
     private int _noSpeechTimeoutMs = 5000;
     private int _totalMs;
     private int _speechMs;
+    private int _speechStartedAtMs = -1;
     private double _noiseFloor = 0.003;
     private bool _capturing;
 
@@ -45,6 +46,8 @@ public sealed class VoiceActivityGate
             {
                 _speechMs += duration;
                 _quietMs = 0;
+                if (_speechMs >= 160 && _speechStartedAtMs < 0)
+                    _speechStartedAtMs = _totalMs;
             }
             else
             {
@@ -52,12 +55,19 @@ public sealed class VoiceActivityGate
                 if (_speechMs > 0) _quietMs += duration;
             }
 
-            if ((_speechMs >= 160 && _totalMs >= 650 && _quietMs >= 1100) || _totalMs >= 12000)
+            // Waiting for a new user sentence can last up to 60 seconds.
+            // The 12-second sentence limit must begin only AFTER actual
+            // speech starts; otherwise a 15-second silent listening window
+            // would incorrectly send empty audio after twelve seconds.
+            bool speechConfirmed = _speechMs >= 160;
+            if (speechConfirmed &&
+                ((_totalMs >= 650 && _quietMs >= 1100) ||
+                 (_speechStartedAtMs >= 0 && _totalMs - _speechStartedAtMs >= 12000)))
             {
                 StopCore();
                 Finished?.Invoke();
             }
-            else if (_totalMs >= _noSpeechTimeoutMs && _speechMs == 0)
+            else if (_totalMs >= _noSpeechTimeoutMs && !speechConfirmed)
             {
                 StopCore();
                 TimedOut?.Invoke();
@@ -74,6 +84,8 @@ public sealed class VoiceActivityGate
             _noSpeechTimeoutMs = Math.Clamp(noSpeechTimeoutMs, 3000, 60000);
             _capturing = true;
             _quietMs = _totalMs = _speechMs = 0;
+        _speechStartedAtMs = -1;
+            _speechStartedAtMs = -1;
             while (_preRoll.TryDequeue(out var chunk)) SendAudio?.Invoke(chunk);
             _preRollBytes = 0;
         }
