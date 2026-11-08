@@ -21,28 +21,47 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--port", type=int, default=8020)
 args = parser.parse_args()
 
-VOICES = {"ru_RU-denis-medium": "denis",
-          "ru_RU-dmitri-medium": "dmitri",
-          "ru_RU-irina-medium": "irina",
-          "ru_RU-ruslan-medium": "ruslan"}
+# Curated, verified Piper-ONNX assets. Each entry provides the exact
+# repository filename; download is restricted to these known voices.
+RHASSPY = "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/"
+COMMUNITY = "https://huggingface.co/rraaww/ru_piper/resolve/main/"
+PURISO = "https://huggingface.co/dhammagift/piper-ru-puriso/resolve/main/"
+VOICES = {
+    "ru_RU-denis-medium": (RHASSPY + "denis/medium/", "ru_RU-denis-medium"),
+    "ru_RU-dmitri-medium": (RHASSPY + "dmitri/medium/", "ru_RU-dmitri-medium"),
+    "ru_RU-irina-medium": (RHASSPY + "irina/medium/", "ru_RU-irina-medium"),
+    "ru_RU-ruslan-medium": (RHASSPY + "ruslan/medium/", "ru_RU-ruslan-medium"),
+    "ru_RU-kat580-medium": (COMMUNITY, "ru_RU-kat580-medium"),
+    "ru_RU-pvo240-medium": (COMMUNITY, "ru_RU-pvo240-medium"),
+    "ru_RU-sushkov_v4-medium": (COMMUNITY, "ru_RU-sushkov_v4-medium"),
+    "ru_RU-terra5862-medium": (COMMUNITY, "ru_RU-terra5862-medium"),
+    "ru_RU-mari-medium_epoch5699": (COMMUNITY, "ru_RU-mari-medium_epoch5699"),
+    "ru_RU-nara426-medium": (COMMUNITY, "ru_RU-nara426-medium"),
+    "ru_puriso2-medium": (PURISO, "ru_puriso2-medium"),
+    "custom": (None, "custom"),
+}
 name = os.environ.get("OPENASSISTANT_MODEL", "ru_RU-denis-medium")
 if name not in VOICES:
-    raise ValueError("Unsupported Russian Piper voice: " + name)
+    raise ValueError("Unknown Piper model: " + name)
 
 directory = Path(os.environ.get("OPENASSISTANT_VOICE_DIR",
                                str(Path(__file__).resolve().parent / "piper-voices")))
 directory.mkdir(parents=True, exist_ok=True)
+source, source_name = VOICES[name]
 model_path = directory / (name + ".onnx")
 config_path = directory / (name + ".onnx.json")
-source = ("https://huggingface.co/rhasspy/piper-voices/resolve/main/"
-          + "ru/ru_RU/" + VOICES[name] + "/medium/")
 
 def ensure_file(path, minimum):
-    if path.exists() and path.stat().st_size >= minimum:
+    if path.is_file() and path.stat().st_size >= minimum:
         return
+    if source is None:
+        raise FileNotFoundError(
+            "Пользовательская модель не найдена. Скопируйте custom.onnx "
+            "и custom.onnx.json в " + str(directory))
     tmp = path.with_suffix(path.suffix + ".download")
+    remote_name = source_name + (".onnx.json" if path.name.endswith(".json") else ".onnx")
     try:
-        with urlopen(source + path.name, timeout=60) as response, open(tmp, "wb") as output:
+        with urlopen(source + remote_name, timeout=60) as response, open(tmp, "wb") as output:
             while block := response.read(1024 * 1024):
                 output.write(block)
         if tmp.stat().st_size < minimum:
