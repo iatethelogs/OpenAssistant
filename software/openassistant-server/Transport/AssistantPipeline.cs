@@ -283,7 +283,10 @@ public sealed class AssistantPipeline(
                         if (activation.Length is < 1 or > 64 ||
                             !System.Text.RegularExpressions.Regex.IsMatch(activation, @"^[\p{L}\p{N} _-]+$"))
                             throw new JsonException("некорректное слово активации");
+                        bool interrupted = current is { IsCompleted: false };
                         await CancelAsync();
+                        if (interrupted)
+                            await JsonAsync(new { type = "interrupted" }, disconnected);
                         input.SetLength(0);
                         rejectingOversizedAudio = false;
                         pendingWakeWord = activation.Trim();
