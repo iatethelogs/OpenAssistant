@@ -133,17 +133,43 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
             entries.ValueKind != JsonValueKind.Array)
             return [];
 
-        return entries.EnumerateArray().Take(25).Select(t =>
-        {
-            string id = PropertyString(t, "id");
-            if (id.Length == 0 && t.TryGetProperty("trackId", out var tid))
-                id = tid.ToString();
-            string title = PropertyString(t, "title");
-            string[] artists = t.TryGetProperty("artists", out var a) && a.ValueKind == JsonValueKind.Array
-                ? a.EnumerateArray().Select(x => PropertyString(x, "name"))
-                    .Where(n => n.Length != 0).ToArray() : [];
-            return new YandexTrack(id, title, artists);
-        }).Where(t => t.Id.Length > 0).ToArray();
+        return entries.EnumerateArray().Take(35).Select(ParseTrack)
+            .Where(t => t.Id.Length > 0).ToArray();
+    }
+
+    private static YandexTrack ParseTrack(JsonElement entry)
+    {
+        string id = PropertyString(entry, "id");
+        if (id.Length == 0) id = PropertyString(entry, "trackId");
+        string title = PropertyString(entry, "title");
+        string[] artists = entry.ValueKind == JsonValueKind.Object &&
+            entry.TryGetProperty("artists", out var a) && a.ValueKind == JsonValueKind.Array
+            ? a.EnumerateArray().Select(x => PropertyString(x, "name"))
+                .Where(n => n.Length != 0).ToArray() : [];
+        return new YandexTrack(id, title, artists);
+    }
+
+    /// <summary>Треки, рекомендованные относительно заданной композиции.</summary>
+    public async Task<YandexTrack[]> SimilarAsync(string trackId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(trackId) ||
+            !Regex.IsMatch(trackId, @"^\d+(?::\d+)?$", RegexOptions.CultureInvariant))
+            throw new ArgumentException("Некорректный ID трека");
+        using var request = await AuthorizedRequestAsync(
+            "/tracks/" + Uri.EscapeDataString(trackId) + "/similar", ct);
+        using var response = await factory.CreateClient("yandex-music").SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        if (!doc.RootElement.TryGetProperty("result", out var result) ||
+            result.ValueKind != JsonValueKind.Object) return [];
+        var tracks = new List<YandexTrack>();
+        if (result.TryGetProperty("track", out var source) && source.ValueKind == JsonValueKind.Object)
+            tracks.Add(ParseTrack(source));
+        if (result.TryGetProperty("similarTracks", out var similar) && similar.ValueKind == JsonValueKind.Array)
+            tracks.AddRange(similar.EnumerateArray().Take(50).Select(ParseTrack));
+        return tracks.Where(t => t.Id.Length > 0 &&
+            Regex.IsMatch(t.Id, @"^\d+(?::\d+)?$"))
+            .DistinctBy(t => t.Id).ToArray();
     }
 
     /// <summary>получает короткоживущую ссылку mp3/aac: трек загружает сам клиент, а не сервер.</summary>
