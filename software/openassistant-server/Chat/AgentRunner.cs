@@ -12,13 +12,13 @@ public sealed record AgentDelta(string? Text = null, string? Tool = null,
     object? Result = null, object? Media = null);
 
 /// <summary>
-/// One semantic tool planner -> execution (possibly several dependent reads)
-/// OR normal conversation. Native tool_choice auto is intentionally not used:
-/// it caused contradictory streamed claims and duplicate actions.
+/// Explicit commands are routed through fixed rules and actual service
+/// catalogs. Unmatched speech is ordinary conversation; no separate LLM
+/// classifier or native tool_choice is used.
 /// </summary>
 public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<ServerOptions> options,
-    AgentToolService skills, CustomToolStore customTools, ToolRegistry registry,
-    ToolIntentPlanner planner, ILogger<AgentRunner> logger)
+    AgentToolService skills, RuleBasedCommandRouter router,
+    ILogger<AgentRunner> logger)
 {
     private static List<object> NormalizeHistory(IReadOnlyList<ChatMessage> history)
     {
@@ -51,99 +51,58 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
     public async IAsyncEnumerable<AgentDelta> GenerateAsync(
         IReadOnlyList<ChatMessage> history, [EnumeratorCancellation] CancellationToken ct)
     {
-        var enabled = (await skills.ListAsync(ct)).Where(x => x.Enabled).ToArray();
-        var custom = (await customTools.ListAsync(ct)).Where(x => x.Enabled).ToArray();
-        var observations = new List<object>();
-        var executed = new HashSet<string>(StringComparer.Ordinal);
-        bool actionAttempted = false;
-
-        // Only the planner chooses a tool. Results of read-only discovery
-        // are fed back to it, allowing Home Assistant entity discovery and
-        // subsequent control without any command-word matching in C#.
-        for (int step = 0; step < 4 && (enabled.Length > 0 || custom.Length > 0); step++)
+        // Tool routing is deterministic and reads only the LAST user
+        // utterance, never previous assistant messages, example prompts, or
+        // generated JSON. "Привет" must go directly to conversation.
+        string utterance = history.LastOrDefault(x => x.Role == "user")?.Content ?? "";
+        RuleBasedCommandRouter.Decision? decision = null;
+        string? routeError = null;
+        try { decision = await router.RouteAsync(utterance, ct); }
+        catch (Exception ex) when (!ct.IsCancellationRequested &&
+            ex is HttpRequestException or InvalidOperationException or
+                ArgumentException or JsonException or TaskCanceledException)
         {
-            ToolIntentPlanner.Plan? decision = null;
-            string? planFailure = null;
-            try
+            logger.LogWarning(ex, "Voice command routing failed");
+            routeError = "Не удалось обработать команду: " + ex.Message;
+        }
+
+        if (routeError is not null)
+        {
+            yield return new AgentDelta(Text: routeError);
+            yield break;
+        }
+        if (decision is not null)
+        {
+            if (decision.Error is { Length: > 0 } failure)
             {
-                decision = await planner.DecideAsync(history, enabled, custom, observations, ct);
-            }
-            catch (Exception ex) when (!ct.IsCancellationRequested &&
-                ex is HttpRequestException or InvalidOperationException or JsonException or TaskCanceledException)
-            {
-                logger.LogWarning(ex, "Intent classifier unavailable");
-                planFailure = "Не удалось определить действие: " +
-                    ex.Message[..Math.Min(ex.Message.Length, 240)];
-            }
-            if (planFailure is not null)
-            {
-                yield return new AgentDelta(Text: planFailure);
+                yield return new AgentDelta(Text: failure);
                 yield break;
             }
-
-            if (decision is null)
-            {
-                logger.LogWarning("Intent classifier returned invalid structured decision");
-                yield return new AgentDelta(Text:
-                    "Не удалось надёжно распознать действие. Повторите запрос.");
-                yield break;
-            }
-            if (decision.Name == "none") break;
-
-            // Prevent duplicate effects, including two identical playback
-            // requests resulting from poor local-model tool planning.
-            var signature = decision.Name + ":" + decision.Arguments.GetRawText();
-            if (!executed.Add(signature))
-            {
-                logger.LogWarning("Repeated tool decision {Tool} stopped", decision.Name);
-                break;
-            }
-            actionAttempted = true;
-            logger.LogInformation("Action selected: {Tool}, args: {Arguments}",
-                decision.Name, decision.Arguments.GetRawText());
 
             object result;
-            object? media;
+            object? media = null;
+            string name = decision.Name;
             try
             {
                 using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 limit.CancelAfter(TimeSpan.FromSeconds(
-                    decision.Name.StartsWith("music_", StringComparison.Ordinal) ? 40 : 15));
-                if (custom.Any(x => x.Name == decision.Name))
-                {
-                    result = registry.Names().Contains(decision.Name, StringComparer.OrdinalIgnoreCase)
-                        ? await registry.InvokeAsync(decision.Name, decision.Arguments, limit.Token)
-                        : new { error = "Для пользовательского навыка не подключён обработчик" };
-                    media = null;
-                }
-                else
-                {
-                    var performed = await skills.ExecuteAsync(decision.Name, decision.Arguments, limit.Token);
-                    result = performed.Result;
-                    media = performed.Media;
-                }
+                    name.StartsWith("music_", StringComparison.Ordinal) ? 40 : 15));
+                var executed = await skills.ExecuteAsync(name, decision.Arguments, limit.Token);
+                result = executed.Result;
+                media = executed.Media;
             }
             catch (Exception ex) when (!ct.IsCancellationRequested &&
-                ex is ArgumentException or InvalidOperationException or HttpRequestException or
-                    InvalidDataException or JsonException or TaskCanceledException or NotSupportedException)
+                ex is ArgumentException or InvalidOperationException or
+                    HttpRequestException or JsonException or InvalidDataException or
+                    NotSupportedException or TaskCanceledException)
             {
-                logger.LogWarning(ex, "Action execution {Tool} failed", decision.Name);
+                logger.LogWarning(ex, "Command {Name} failed", name);
                 result = new { error = ex.Message };
-                media = null;
             }
 
-            observations.Add(new { tool = decision.Name, result });
-            yield return new AgentDelta(Tool: decision.Name, Result: result, Media: media);
-            if (media is not null) break;
-
-            // A failed action cannot safely be retried by the language model
-            // with invented parameters. The real error will be shown instead.
-            var resultJson = JsonSerializer.SerializeToElement(result);
-            if (resultJson.ValueKind == JsonValueKind.Object &&
-                resultJson.TryGetProperty("error", out _)) break;
+            yield return new AgentDelta(Tool: name, Result: result, Media: media);
+            yield break;
         }
-
-        if (actionAttempted) yield break;
 
         // Conversation is independent of tools. This second model call cannot
         // generate function calls or claim their results as real events.
