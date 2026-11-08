@@ -55,7 +55,7 @@ function loadSettings(){
  for(const [id,key,fallback] of [["topP","llmTopP",.9],["topK","llmTopK",40],["repeatPenalty","llmRepeatPenalty",1.1]])el(id).value=s[key]??fallback;
  for(const [id,key] of [["llmUrl","llmUrl"],["llmModel","llmModel"],["sttUrl","sttUrl"],["sttModel","sttModel"],["ttsUrl","ttsUrl"],["ttsModel","ttsModel"]])el(id).value=s[key]??"";
  el("voice").value=p.speaker??s.ttsVoice??"Ryan";
- el("language").value=s.ttsLanguage??"Russian";
+ el("language").value=s.ttsLanguage??"Russian";el("ttsSpeechMode").value=s.ttsSpeechMode??"quality";
  el("voiceModeSetting").value=p.mode||"custom";
  el("voiceGenerationMode").value=p.generationMode||"seeded";
  el("voiceSeed").value=p.seed??42;
@@ -88,7 +88,7 @@ el("settingsForm").onsubmit=async event=>{
    llmUrl:el("llmUrl").value.trim(),llmModel:el("llmModel").value.trim(),
    sttUrl:el("sttUrl").value.trim(),sttModel:el("sttModel").value.trim(),
    ttsUrl:el("ttsUrl").value.trim(),ttsModel:el("ttsModel").value.trim(),
-   ttsVoice:savedProfile.speaker,ttsLanguage:el("language").value.trim()};
+   ttsVoice:savedProfile.speaker,ttsLanguage:el("language").value.trim(),ttsSpeechMode:el("ttsSpeechMode").value};
   delete settings.hasDeviceToken;delete settings.hasHomeAssistantToken;
   await api("/api/settings","POST",settings);
   state.voiceProfile=savedProfile;state.settings=settings;
@@ -210,7 +210,10 @@ function renderModelCards(){
   const current=state.models?.status?.running?.[role];
   const card=textNode("article","","service");const head=textNode("div",role.toUpperCase(),"service-type");
   const model=state.models?.profiles?.[role];
-  const modelName=(current?.modelPath||model?.modelPath||"").split("/").pop();
+  const modelName=current?.displayName||model?.displayName||
+    (role==="stt"&&model?.environment?.OPENASSISTANT_MODEL==="v3_e2e_rnnt"?"GigaAM v3 · RNNT":null)||
+    (model?.environment?.OPENASSISTANT_MODEL||"").split("/").pop()||
+    (current?.modelPath||model?.modelPath||"").split(/[\\/]/).pop();
   const svc=serviceState(role);
   card.append(head,textNode("div",svc.label,"service-value"),
     textNode("div",modelName||"Модель не выбрана","service-caption"));
