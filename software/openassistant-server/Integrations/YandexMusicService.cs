@@ -149,6 +149,91 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
         return new YandexTrack(id, title, artists);
     }
 
+    private async Task<string> UserIdAsync(CancellationToken ct)
+    {
+        using var request = await AuthorizedRequestAsync("/account/status", ct);
+        using var response = await factory.CreateClient("yandex-music").SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        string id = PropertyString(doc.RootElement.GetProperty("result").GetProperty("account"), "uid");
+        if (!Regex.IsMatch(id, @"^\d{1,20}$"))
+            throw new InvalidDataException("Яндекс не вернул идентификатор аккаунта");
+        return id;
+    }
+
+    /// <summary>Плейлисты пользователя, не раскрывая его OAuth-токен.</summary>
+    public async Task<YandexPlaylist[]> PlaylistsAsync(CancellationToken ct)
+    {
+        string user = await UserIdAsync(ct);
+        using var request = await AuthorizedRequestAsync("/users/" + user + "/playlists/list", ct);
+        using var response = await factory.CreateClient("yandex-music").SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        if (!doc.RootElement.TryGetProperty("result", out var result) ||
+            result.ValueKind != JsonValueKind.Array) return [];
+        return result.EnumerateArray().Select(item =>
+        {
+            string kind = PropertyString(item, "kind");
+            string title = PropertyString(item, "title");
+            int count = item.TryGetProperty("trackCount", out var n) && n.TryGetInt32(out int value) ? value : 0;
+            return new YandexPlaylist(kind, title, count);
+        }).Where(x => Regex.IsMatch(x.Kind, @"^\d{1,12}$"))
+          .Take(100).ToArray();
+    }
+
+    /// <summary>Содержимое одного плейлиста пользователя (до 200 треков за раз).</summary>
+    public async Task<YandexTrack[]> PlaylistTracksAsync(string kind, CancellationToken ct)
+    {
+        if (!Regex.IsMatch(kind ?? "", @"^\d{1,12}$"))
+            throw new ArgumentException("Некорректный идентификатор плейлиста");
+        string user = await UserIdAsync(ct);
+        using var request = await AuthorizedRequestAsync(
+            "/users/" + user + "/playlists/" + kind, ct);
+        using var response = await factory.CreateClient("yandex-music").SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        if (!doc.RootElement.TryGetProperty("result", out var data) ||
+            !data.TryGetProperty("tracks", out var list) || list.ValueKind != JsonValueKind.Array)
+            return [];
+        return list.EnumerateArray().Take(200)
+            .Select(item => item.TryGetProperty("track", out var track) && track.ValueKind == JsonValueKind.Object
+                ? ParseTrack(track) : new YandexTrack(PropertyString(item, "id"), "Трек", []))
+            .Where(x => Regex.IsMatch(x.Id, @"^\d+(?::\d+)?$"))
+            .DistinctBy(x => x.Id).ToArray();
+    }
+
+    /// <summary>Список понравившихся композиций с разрешением метаданных пакетами.</summary>
+    public async Task<YandexTrack[]> LikedTracksAsync(CancellationToken ct)
+    {
+        string user = await UserIdAsync(ct);
+        using var request = await AuthorizedRequestAsync("/users/" + user + "/likes/tracks", ct);
+        using var response = await factory.CreateClient("yandex-music").SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        if (!doc.RootElement.TryGetProperty("result", out var result) ||
+            !result.TryGetProperty("library", out var library) ||
+            !library.TryGetProperty("tracks", out var items) || items.ValueKind != JsonValueKind.Array)
+            return [];
+        string[] ids = items.EnumerateArray()
+            .Select(x => PropertyString(x, "id"))
+            .Where(x => Regex.IsMatch(x, @"^\d+(?::\d+)?$"))
+            .Distinct().Take(150).ToArray();
+        var tracks = new List<YandexTrack>();
+        foreach (var batch in ids.Chunk(50))
+        {
+            using var details = await AuthorizedRequestAsync(
+                "/tracks?track-ids=" + Uri.EscapeDataString(string.Join(",", batch)), ct);
+            using var info = await factory.CreateClient("yandex-music").SendAsync(details, ct);
+            info.EnsureSuccessStatusCode();
+            using var metadata = JsonDocument.Parse(await info.Content.ReadAsStringAsync(ct));
+            if (metadata.RootElement.TryGetProperty("result", out var array) &&
+                array.ValueKind == JsonValueKind.Array)
+                tracks.AddRange(array.EnumerateArray().Select(ParseTrack)
+                    .Where(x => x.Id.Length > 0));
+        }
+        return tracks.DistinctBy(x => x.Id).ToArray();
+    }
+
     /// <summary>Треки, рекомендованные относительно заданной композиции.</summary>
     public async Task<YandexTrack[]> SimilarAsync(string trackId, CancellationToken ct)
     {
@@ -300,4 +385,5 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
 }
 
 public sealed record YandexTrack(string Id, string Title, string[] Artists);
+public sealed record YandexPlaylist(string Kind, string Title, int TrackCount);
 public sealed record YandexPlayback(string Url, string Codec, int BitrateKbps, DateTimeOffset ExpiresAt);
