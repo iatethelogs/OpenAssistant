@@ -55,18 +55,20 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
     public Task UpdateLlmUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(url, null, null, null, ct);
     public Task UpdateSttUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(null, url, null, null, ct);
     public Task UpdateTtsUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(null, null, url, null, ct);
+    public Task UpdateTtsBackendAsync(string url, string model, CancellationToken ct) =>
+        UpdatePartialAsync(null, null, url, null, ct, ttsModel: model);
     public Task UpdateLlmTemperatureAsync(double temperature, CancellationToken ct)
     {
         if (temperature is < 0 or > 2) throw new ArgumentException("Температура должна быть от 0 до 2");
         return UpdatePartialAsync(null, null, null, null, ct, temperature);
     }
-    private Task UpdatePartialAsync(string? llmUrl, string? sttUrl, string? ttsUrl, string? deviceToken, CancellationToken ct, double? temperature = null)
+    private Task UpdatePartialAsync(string? llmUrl, string? sttUrl, string? ttsUrl, string? deviceToken, CancellationToken ct, double? temperature = null, string? ttsModel = null)
     {
         var s = options.CurrentValue;
         return SaveAsync(new SettingsUpdate {
             LlmUrl = llmUrl ?? s.LlmUrl, LlmModel = s.LlmModel, SystemPrompt = s.SystemPrompt,
             SttUrl = sttUrl ?? s.SttUrl, SttModel = s.SttModel,
-            TtsUrl = ttsUrl ?? s.TtsUrl, TtsModel = s.TtsModel, TtsVoice = s.TtsVoice,
+            TtsUrl = ttsUrl ?? s.TtsUrl, TtsModel = ttsModel ?? s.TtsModel, TtsVoice = s.TtsVoice,
             TtsLanguage = s.TtsLanguage, TtsSpeechMode = s.TtsSpeechMode, HomeAssistantUrl = s.HomeAssistantUrl,
             HomeAssistantToken = s.HomeAssistantToken, DeviceToken = deviceToken ?? s.DeviceToken,
             LlmTemperature = temperature ?? s.LlmTemperature, LlmTopP = s.LlmTopP,
