@@ -48,35 +48,76 @@ public sealed class AssistantPipeline(
         Task JsonAsync(object payload, CancellationToken ct) =>
             SendAsync(JsonSerializer.SerializeToUtf8Bytes(payload), WebSocketMessageType.Text, ct);
 
-        // Playback belongs to the connected column, not the global LLM or
-        // another user's column. The playbackId makes completion idempotent.
-        var player = new MusicPlaybackSession(music, JsonAsync);
+        // Playback belongs to this connected device. A command is not
+        // successful until the client reports media_started for its playbackId.
+        var playbackAck = new PlaybackAcknowledgement();
 
-        async Task HandleMediaAsync(object media, CancellationToken ct)
+        async Task PlaybackEventAsync(object payload, CancellationToken ct)
+        {
+            var evt = JsonSerializer.SerializeToElement(payload);
+            if (evt.ValueKind == JsonValueKind.Object &&
+                evt.TryGetProperty("type", out var kind) &&
+                kind.ValueKind == JsonValueKind.String)
+            {
+                if (kind.GetString() == "play_media" &&
+                    evt.TryGetProperty("playbackId", out var idNode) &&
+                    idNode.TryGetInt64(out long playbackId))
+                {
+                    string title = evt.TryGetProperty("title", out var titleNode)
+                        ? titleNode.GetString() ?? "Аудио" : "Аудио";
+                    playbackAck.Issued(playbackId, title);
+                    logger.LogInformation("Playback sent to device {Session}: {PlaybackId} {Title}",
+                        sessionId, playbackId, title);
+                }
+                if (kind.GetString() == "stop_media") playbackAck.Stopped();
+            }
+            await JsonAsync(payload, ct);
+        }
+        var player = new MusicPlaybackSession(music, PlaybackEventAsync);
+
+        async Task<PlaybackAcknowledgement.Outcome?> HandleMediaAsync(
+            object media, CancellationToken ct)
         {
             var value = JsonSerializer.SerializeToElement(media);
-            if (!value.TryGetProperty("type", out var typeNode)) return;
+            if (!value.TryGetProperty("type", out var typeNode)) return null;
             string? eventType = typeNode.GetString();
             if (eventType == "music_queue")
             {
+                playbackAck.Begin();
                 var tracks = value.GetProperty("tracks").Deserialize<YandexTrack[]>() ?? [];
                 await player.PlayQueueAsync(tracks, ct);
+                return await playbackAck.WaitAsync(ct);
             }
-            else if (eventType == "music_control")
+            if (eventType == "music_control")
             {
-                await player.ControlAsync(value.GetProperty("action").GetString() ?? "", ct);
+                string action = value.GetProperty("action").GetString() ?? "";
+                bool switchesTrack = action is "next" or "previous";
+                if (switchesTrack) playbackAck.Begin();
+                await player.ControlAsync(action, ct);
+                return switchesTrack ? await playbackAck.WaitAsync(ct) : null;
             }
-            else
+            if (eventType == "play_media")
             {
-                // A radio stream replaces the Yandex queue. Never auto-resume
-                // old songs when a radio stream ends.
-                if (eventType == "play_media") await player.ForgetAsync(ct);
-                await JsonAsync(media, ct);
+                // Radio replaces the Yandex playlist. A separate positive ID
+                // makes client acknowledgements work for radio as well.
+                await player.ForgetAsync(ct);
+                playbackAck.Begin();
+                long playbackId = playbackAck.NextRadioId();
+                string title = value.TryGetProperty("title", out var t)
+                    ? t.GetString() ?? "Радио" : "Радио";
+                string url = value.GetProperty("url").GetString() ?? "";
+                await PlaybackEventAsync(new {
+                    type = "play_media", source = "radio_browser",
+                    title, url, playbackId
+                }, ct);
+                return await playbackAck.WaitAsync(ct);
             }
+            await PlaybackEventAsync(media, ct);
+            return null;
         }
 
-        // Deterministic handling makes short Russian music commands work even
-        // with LLMs that don't support OpenAI tool_calls.
+        // The LLM only chooses intent; the executor enforces permissions,
+        // and the connected audio client confirms effects.
         Task DisplayStateAsync(string state, CancellationToken ct) =>
             JsonAsync(new { type = "display_state", state }, ct);
 
@@ -150,6 +191,9 @@ public sealed class AssistantPipeline(
             // the whole reply, then synthesize it once whenever it fits.
             // Text still streams immediately; the first audio starts later.
             var complete = new StringBuilder();
+            string? lastTool = null;
+            object? lastResult = null;
+            PlaybackAcknowledgement.Outcome? lastPlayback = null;
             int outputRate = settings.CurrentValue.OutputSampleRate;
             bool fastSpeech = synthesize && settings.CurrentValue.TtsSpeechMode == "fast";
             // Fast mode starts speaking completed phrases while the LLM is still
@@ -174,18 +218,51 @@ public sealed class AssistantPipeline(
             {
                 await foreach (var delta in agent.GenerateAsync(messages, ct))
                 {
-                    if (delta.Media is not null) await HandleMediaAsync(delta.Media, ct);
                     if (delta.Tool is not null)
                     {
-                        conversationLog.Add("action", "tool: " + delta.Tool);
-                        await JsonAsync(new { type = "tool_result", name = delta.Tool, result = delta.Result }, ct);
+                        lastTool = delta.Tool;
+                        lastResult = delta.Result;
+                        lastPlayback = null;
+                        if (delta.Media is not null)
+                        {
+                            try { lastPlayback = await HandleMediaAsync(delta.Media, ct); }
+                            catch (Exception ex) when (!ct.IsCancellationRequested &&
+                                ex is ArgumentException or HttpRequestException or InvalidOperationException or
+                                    InvalidDataException or NotSupportedException or TaskCanceledException)
+                            {
+                                logger.LogWarning(ex, "Unable to initiate playback on {Session}", sessionId);
+                                lastPlayback = new PlaybackAcknowledgement.Outcome(false, "", ex.Message);
+                            }
+                        }
+                        logger.LogInformation("Tool {Name} completed for {Session}; media confirmed: {Confirmed}",
+                            delta.Tool, sessionId, lastPlayback?.Started);
+                        conversationLog.Add("action", "tool: " + delta.Tool +
+                            (lastPlayback is null ? "" : lastPlayback.Started
+                                ? " (playback started)" : " (playback NOT started)"));
+                        await JsonAsync(new { type = "tool_result", name = delta.Tool,
+                            result = lastPlayback is null ? delta.Result : new {
+                                playbackStarted = lastPlayback.Started,
+                                title = lastPlayback.Title, reason = lastPlayback.Reason
+                            } }, ct);
+                        continue;
                     }
-                    if (string.IsNullOrEmpty(delta.Text)) continue;
+                    if (lastTool is not null || string.IsNullOrEmpty(delta.Text)) continue;
                     complete.Append(delta.Text);
                     await JsonAsync(new { type = "text", delta = delta.Text }, ct);
                     if (phrases is not null)
                         foreach (var phrase in segmenter!.PushAll(delta.Text))
                             phrases.Writer.TryWrite(phrase);
+                }
+
+                // The final message for actions is generated from actual service
+                // and device results, never from model speculation.
+                if (lastTool is not null)
+                {
+                    string confirmed = ActionResponseFormatter.Format(lastTool,
+                        lastResult, lastPlayback);
+                    complete.Append(confirmed);
+                    await JsonAsync(new { type = "text", delta = confirmed }, ct);
+                    if (phrases is not null) phrases.Writer.TryWrite(confirmed);
                 }
                 if (phrases is not null && segmenter!.Flush() is { } remainder)
                     phrases.Writer.TryWrite(remainder);
@@ -299,12 +376,26 @@ public sealed class AssistantPipeline(
                     }
                     if (kind == "media_started")
                     {
-                        await player.StartedAsync(root.GetProperty("playbackId").GetInt64(), disconnected);
+                        long playbackId = root.GetProperty("playbackId").GetInt64();
+                        playbackAck.Started(playbackId);
+                        await player.StartedAsync(playbackId, disconnected);
+                        logger.LogInformation("Device {Session} started playback {PlaybackId}",
+                            sessionId, playbackId);
                         continue;
                     }
                     if (kind == "media_failed")
                     {
-                        await player.FailedAsync(root.GetProperty("playbackId").GetInt64(), disconnected);
+                        long playbackId = root.GetProperty("playbackId").GetInt64();
+                        string? reason = root.TryGetProperty("reason", out var reasonNode) &&
+                            reasonNode.ValueKind == JsonValueKind.String
+                            ? reasonNode.GetString() : null;
+                        bool radio = playbackId >= 1_000_000_000_000;
+                        playbackAck.Failed(playbackId, reason, terminal: radio ||
+                            reason == "autoplay_blocked");
+                        if (!radio && reason != "autoplay_blocked")
+                            await player.FailedAsync(playbackId, disconnected);
+                        logger.LogWarning("Device {Session} failed playback {PlaybackId}: {Reason}",
+                            sessionId, playbackId, reason);
                         continue;
                     }
                     if (kind == "media_control")
