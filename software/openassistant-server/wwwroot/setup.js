@@ -161,10 +161,17 @@ function updateVoiceMode(){
  const design=choice.includes("design");
  const style=choice.includes("17")&&!design;
  const fast=choice.includes("-fast-");
+ const piper=choice.startsWith("piper-");
+ const gpu=el("ttsGpu");
+ if(piper){if(gpu.value!=="cpu")gpu.dataset.piperForced="1";gpu.value="cpu";}
+ else if(gpu.dataset.piperForced==="1"){gpu.value="";delete gpu.dataset.piperForced;}
+ gpu.disabled=piper;
  el("designedVoice").classList.toggle("hidden",!design);
- el("presetVoice").classList.toggle("hidden",design);
+ el("presetVoice").classList.toggle("hidden",design||piper);
  el("customStyle").classList.toggle("hidden",!style);
- el("ttsChoiceHelp").textContent=design
+ el("ttsChoiceHelp").textContent=piper
+   ? "Piper синтезирует русскую речь на CPU без VRAM. Голос определяется выбранной моделью."
+   :design
    ? "Голос создаётся по описанию. Можно менять тембр, характер и подачу; новый запуск может дать другой результат."
    :style
    ? "Выбирается готовый тембр. Можно отдельно изменить манеру речи и интонации."
