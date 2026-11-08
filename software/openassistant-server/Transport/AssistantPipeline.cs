@@ -131,68 +131,38 @@ public sealed class AssistantPipeline(
             context.AddRange(recalled);
             context.Add(new ChatMessage("user", text));
             var messages = context.ToArray();
-            var segmenter = new SentenceSegmenter();
+            // Synthesizing each sentence independently causes Qwen3-TTS to reset
+            // its prosody and often switch intonation between sentences. Collect
+            // the whole reply, then synthesize it once whenever it fits.
+            // Text still streams immediately; the first audio starts later.
             var complete = new StringBuilder();
             int outputRate = settings.CurrentValue.OutputSampleRate;
-            using var speechStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var speechToken = speechStop.Token;
-            var phrases = Channel.CreateBounded<string>(new BoundedChannelOptions(5)
+            await foreach (var delta in agent.GenerateAsync(messages, ct))
             {
-                SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait
-            });
-
-            /// <summary>отдельно синтезирует фразы и передаёт pcm, пока llm генерирует продолжение.</summary>
-            async Task SpeakAsync()
-            {
-                await foreach (string phrase in phrases.Reader.ReadAllAsync(speechToken))
+                if (delta.Media is not null) await JsonAsync(delta.Media, ct);
+                if (delta.Tool is not null)
                 {
-                    byte[] pcm = await speech.SynthesizeAsync(phrase, voice, outputRate, speechToken);
-                    await AudioAsync(pcm, outputRate, speechToken);
+                    conversationLog.Add("action", "tool: " + delta.Tool);
+                    await JsonAsync(new { type = "tool_result", name = delta.Tool, result = delta.Result }, ct);
+                }
+                if (string.IsNullOrEmpty(delta.Text)) continue;
+                complete.Append(delta.Text);
+                await JsonAsync(new { type = "text", delta = delta.Text }, ct);
+            }
+            string reply = complete.ToString();
+            if (synthesize && !string.IsNullOrWhiteSpace(reply))
+            {
+                foreach (string chunk in SpeechChunks(reply))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    byte[] pcm = await speech.SynthesizeAsync(chunk, voice, outputRate, ct);
+                    await AudioAsync(pcm, outputRate, ct);
                 }
             }
-
-            
-            Task speaker = synthesize ? SpeakAsync() : Task.CompletedTask;
-            // если синтезатор упал, разбудим ожидающего запись в заполненную очередь.
-            _ = speaker.ContinueWith(task =>
-            {
-                if (task.IsFaulted) phrases.Writer.TryComplete(task.Exception);
-                else if (task.IsCanceled) phrases.Writer.TryComplete(new OperationCanceledException());
-            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            try
-            {
-                await foreach (var delta in agent.GenerateAsync(messages, ct))
-                {
-                    if (speaker.IsCompleted && !speaker.IsCompletedSuccessfully) await speaker;
-                    if (delta.Media is not null) await JsonAsync(delta.Media, ct);
-                    if (delta.Tool is not null)
-                    {
-                        conversationLog.Add("action", "tool: " + delta.Tool);
-                        await JsonAsync(new { type = "tool_result", name = delta.Tool, result = delta.Result }, ct);
-                    }
-                    if (string.IsNullOrEmpty(delta.Text)) continue;
-                    complete.Append(delta.Text);
-                    await JsonAsync(new { type = "text", delta = delta.Text }, ct);
-                    string? sentence = segmenter.Push(delta.Text);
-                    if (synthesize && sentence is not null) await phrases.Writer.WriteAsync(sentence, ct);
-                }
-                string? tail = segmenter.Flush();
-                if (synthesize && tail is not null) await phrases.Writer.WriteAsync(tail, ct);
-                phrases.Writer.TryComplete();
-                await speaker;
-                ct.ThrowIfCancellationRequested();
-                await memory.SaveExchangeAsync(profile, text, complete.ToString(), ct);
-                conversationLog.Add("llm", complete.ToString());
-                await JsonAsync(new { type = "done" }, ct);
-            }
-            finally
-            {
-                phrases.Writer.TryComplete();
-                speechStop.Cancel();
-                try { await speaker; }
-                catch (OperationCanceledException) when (speechToken.IsCancellationRequested) { }
-                catch (Exception ex) { logger.LogDebug(ex, "tts task finished with error"); }
-            }
+            ct.ThrowIfCancellationRequested();
+            await memory.SaveExchangeAsync(profile, text, reply, ct);
+            conversationLog.Add("llm", reply);
+            await JsonAsync(new { type = "done" }, ct);
         }
 
         /// <summary>оборачивает обработку запроса, чтобы ошибка gpu-сервиса не убила websocket.</summary>
@@ -368,6 +338,31 @@ public sealed class AssistantPipeline(
                 try { await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None); } catch { }
         }
     }
+    /// <summary>
+    /// Most replies fit in a single TTS request, preserving one speech contour.
+    /// Responses longer than the adapter's limit use the fewest possible chunks.
+    /// </summary>
+    private static IEnumerable<string> SpeechChunks(string text)
+    {
+        const int maxLength = 1100; // adapter accepts up to 1200 characters
+        string remaining = text.Trim();
+        while (remaining.Length > maxLength)
+        {
+            // Prefer ending a chunk at sentence boundaries, then whitespace.
+            int split = remaining.LastIndexOfAny(new[] { '.', '!', '?', '\n' }, maxLength - 1, 600);
+            if (split >= 500) split++;
+            else
+            {
+                split = remaining.LastIndexOf(' ', maxLength - 1, 600);
+                if (split < 500) split = maxLength;
+            }
+            string part = remaining[..split].Trim();
+            if (part.Length > 0) yield return part;
+            remaining = remaining[split..].TrimStart();
+        }
+        if (remaining.Length > 0) yield return remaining;
+    }
+
     /// <summary>убирает из серверной расшифровки только явно переданное слово активации.</summary>
     private static string RemoveActivationWord(string transcription, string? word)
     {
