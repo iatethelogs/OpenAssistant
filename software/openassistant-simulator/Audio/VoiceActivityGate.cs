@@ -9,6 +9,7 @@ public sealed class VoiceActivityGate
     private const int MaxPreRollBytes = SampleRate * 2;
     private int _preRollBytes;
     private int _quietMs;
+    private int _noSpeechTimeoutMs = 5000;
     private int _totalMs;
     private int _speechMs;
     private double _noiseFloor = 0.003;
@@ -56,7 +57,7 @@ public sealed class VoiceActivityGate
                 StopCore();
                 Finished?.Invoke();
             }
-            else if (_totalMs >= 5000 && _speechMs == 0)
+            else if (_totalMs >= _noSpeechTimeoutMs && _speechMs == 0)
             {
                 StopCore();
                 TimedOut?.Invoke();
@@ -65,11 +66,12 @@ public sealed class VoiceActivityGate
     }
 
     /// <summary>активирует запись и немедленно передаёт накопленную секунду звука.</summary>
-    public void Activate()
+    public void Activate(int noSpeechTimeoutMs = 5000)
     {
         lock (_sync)
         {
             if (_capturing) return;
+            _noSpeechTimeoutMs = Math.Clamp(noSpeechTimeoutMs, 3000, 60000);
             _capturing = true;
             _quietMs = _totalMs = _speechMs = 0;
             while (_preRoll.TryDequeue(out var chunk)) SendAudio?.Invoke(chunk);
