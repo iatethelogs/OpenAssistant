@@ -243,6 +243,7 @@ public partial class MainWindow : Window
                     Log("Вы: "+TranscriptText.Text);
                     break;
                 case "text":
+                    if (_ignoreReplyAudio) break; // late text from the cancelled turn
                     if(packet.TryGetProperty("delta",out var part)&&part.ValueKind==JsonValueKind.String)
                     {
                         _llmAnswer.Append(part.GetString());
