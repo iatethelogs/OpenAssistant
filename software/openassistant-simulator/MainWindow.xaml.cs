@@ -539,6 +539,16 @@ public partial class MainWindow : Window
         if(e.Key!=Key.Enter)return;
         e.Handled=true;Text_Click(sender,e);
     }
+    private async void MusicControl_Click(object sender,RoutedEventArgs e)
+    {
+        if(!_socket.Connected)return;
+        var tag=(sender as System.Windows.Controls.Button)?.Tag as string;
+        string action=tag=="toggle"?(_speaker.MusicActive?"pause":"resume"):tag??"";
+        if(action is not ("pause" or "resume" or "next" or "previous"))return;
+        try{await _socket.SendControlAsync(new { type="media_control",action });}
+        catch(Exception ex){Log("Управление музыкой: "+ex.Message);}
+    }
+
     private void StopMusic_Click(object sender,RoutedEventArgs e)
     {
         _speaker.StopMusic();_resumeMusic=false;_musicTitle="";_musicPlaybackId=0;
@@ -577,7 +587,7 @@ public partial class MainWindow : Window
         NoiseSuppressionEnabled.IsChecked=c.NoiseReduction;
         // From now on, wake-word during music is enabled by default
         // even for older preference files that stored false.
-        BargeInOnMusic.IsChecked=true;
+        BargeInOnMusic.IsChecked=c.DuckMusicOnWake??true;
     }
     private void SavePreferences()
     {
@@ -589,7 +599,8 @@ public partial class MainWindow : Window
             WakeThreshold=threshold,WakeEnabled=WakeEnabled.IsChecked==true,
             CommunicationsDsp=CommunicationsEnabled.IsChecked==true,
             NoiseReduction=NoiseSuppressionEnabled.IsChecked==true,
-            BargeInOnMusic=BargeInOnMusic.IsChecked==true
+            BargeInOnMusic=BargeInOnMusic.IsChecked==true,
+            DuckMusicOnWake=BargeInOnMusic.IsChecked==true
         }.Save();
     }
     private void SavePreferences_Click(object sender,RoutedEventArgs e)
