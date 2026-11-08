@@ -307,9 +307,12 @@ public partial class MainWindow : Window
                     MusicText.Text="Музыка: "+_musicTitle;
                     break;
                 case "media_status":
-                    if(packet.TryGetProperty("active",out var activeTrack) && activeTrack.ValueKind==JsonValueKind.False
-                       && !_speaker.MusicPresent)
+                    if(packet.TryGetProperty("active",out var activeTrack) && activeTrack.ValueKind==JsonValueKind.False)
+                    {
+                        _musicPlaybackId=0;_speaker.StopMusic();_resumeMusic=false;
                         MusicText.Text="Очередь закончилась";
+                        if(!_gate.Capturing&&!_speaker.SpeechActive)SetMode(DisplayMode.Idle,"Ожидаю слово");
+                    }
                     break;
                 case "stop_media":
                     _musicPlaybackId=0;
