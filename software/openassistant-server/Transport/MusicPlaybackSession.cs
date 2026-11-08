@@ -16,6 +16,7 @@ public sealed class MusicPlaybackSession(
     private int _index = -1;
     private long _playbackId;
     private bool _paused;
+    private int _consecutiveErrors;
     private const int MaxHistory = 500;
 
     private object Snapshot() => new
@@ -40,7 +41,8 @@ public sealed class MusicPlaybackSession(
             _queue.AddRange(valid);
             _index = 0;
             _paused = false;
-            await PlayCurrentAsync(ct);
+            _consecutiveErrors = 0;
+            await TryPlayFromAsync(0, ct);
         }
         finally { _gate.Release(); }
     }
@@ -61,6 +63,62 @@ public sealed class MusicPlaybackSession(
             codec = playback.Codec
         }, ct);
         await send(Snapshot(), ct);
+    }
+
+    // Unavailable tracks may have expired rights or only DRM media. Skip a few
+    // safely rather than terminating the entire WebSocket on a CDN/API error.
+    private async Task TryPlayFromAsync(int start, CancellationToken ct)
+    {
+        for (int candidate = start; candidate < _queue.Count; candidate++)
+        {
+            _index = candidate;
+            try
+            {
+                await PlayCurrentAsync(ct);
+                return;
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested &&
+                ex is HttpRequestException or InvalidDataException or
+                    InvalidOperationException or NotSupportedException)
+            {
+                await send(new { type = "media_error",
+                    message = "Недоступен трек: " + _queue[candidate].Title + " (" + ex.Message + ")" }, ct);
+            }
+        }
+        _index = -1;
+        _playbackId++;
+        _paused = false;
+        await send(new { type = "stop_media" }, ct);
+        await send(Snapshot(), ct);
+    }
+
+    public async Task StartedAsync(long playbackId, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try { if (_index >= 0 && playbackId == _playbackId) _consecutiveErrors = 0; }
+        finally { _gate.Release(); }
+    }
+
+    public async Task FailedAsync(long playbackId, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            if (_index < 0 || playbackId != _playbackId) return;
+            if (++_consecutiveErrors >= 5)
+            {
+                _queue.Clear();
+                _index = -1;
+                _playbackId++;
+                _paused = false;
+                await send(new { type = "media_error", message = "Несколько треков подряд не удалось воспроизвести." }, ct);
+                await send(new { type = "stop_media" }, ct);
+                await send(Snapshot(), ct);
+                return;
+            }
+            await AdvanceAsync(1, ct);
+        }
+        finally { _gate.Release(); }
     }
 
     private async Task AdvanceAsync(int step, CancellationToken ct)
@@ -93,8 +151,7 @@ public sealed class MusicPlaybackSession(
             await send(Snapshot(), ct);
             return;
         }
-        _index = next;
-        await PlayCurrentAsync(ct);
+        await TryPlayFromAsync(next, ct);
     }
 
     public async Task EndedAsync(long playbackId, CancellationToken ct)
@@ -103,6 +160,7 @@ public sealed class MusicPlaybackSession(
         try
         {
             if (_index < 0 || _paused || playbackId != _playbackId) return;
+            _consecutiveErrors = 0;
             await AdvanceAsync(1, ct);
         }
         finally { _gate.Release(); }
