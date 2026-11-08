@@ -93,6 +93,9 @@ public sealed class AssistantPipeline(
         {
             if (string.IsNullOrWhiteSpace(text))
             {
+                // Every completed voice turn gets a transcript, even when STT
+                // hears silence; the client must be able to leave listening mode.
+                await JsonAsync(new { type = "transcript", text = "" }, ct);
                 await JsonAsync(new { type = "done" }, ct);
                 return;
             }
