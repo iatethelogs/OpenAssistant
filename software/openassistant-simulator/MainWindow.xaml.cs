@@ -35,6 +35,9 @@ public partial class MainWindow : Window
     private long _chimeUntil;
     private string _musicTitle = "";
     private long _musicPlaybackId;
+    // One wake-word starts a short dialogue. Follow-up turns do not require
+    // another wake-word and end after a configurable silence window.
+    private volatile bool _conversationActive;
 
     public MainWindow()
     {
@@ -103,10 +106,12 @@ public partial class MainWindow : Window
         };
         _gate.TimedOut += () =>
         {
+            _conversationActive = false;
             _upload.Cancel();
+            _upload.QueueConversationReset();
             Ui(() =>
             {
-                SetMode(DisplayMode.Idle, "Речь не обнаружена");
+                SetMode(DisplayMode.Idle, "Диалог завершён · ожидаю «Мартин»");
                 ResumeMusicIfNeeded();
             });
         };
@@ -170,10 +175,11 @@ public partial class MainWindow : Window
         catch (Exception ex) { Log("Звуковое подтверждение: " + ex.Message); }
     }
 
-    private void BeginCapture(string? wake = null)
+    private void BeginCapture(string? wake = null, bool followUp = false)
     {
         if (!_socket.Connected) { Log("Нет соединения с сервером"); return; }
-        if (_gate.Capturing) return;
+        if (_gate.Capturing || (followUp && !_conversationActive)) return;
+        if (!followUp) _conversationActive = true;
         _resumeMusic = _speaker.MusicPresent;
         if (_resumeMusic && _bargeInEnabled) _speaker.DuckMusic();
         _ignoreReplyAudio = true;
@@ -182,13 +188,47 @@ public partial class MainWindow : Window
         AnswerText.Text = "—";
         TranscriptText.Text = "—";
         _upload.Reset();
-        if (!string.IsNullOrWhiteSpace(wake)) _upload.QueueWake(wake);
-        _gate.Activate();
-        SetMode(DisplayMode.Listening, "Слушаю команду");
-        // Do not feed the cue coming from our own speaker into STT/VAD.
-        Interlocked.Exchange(ref _chimeUntil, Environment.TickCount64 + 260);
-        _ = PlayActivationChimeAsync();
+        if (!followUp)
+        {
+            if (!string.IsNullOrWhiteSpace(wake)) _upload.QueueWake(wake);
+            else _upload.QueueConversationReset(); // manual capture starts a new conversation
+        }
+        // The normal wake-word capture times out after 5 seconds. Only
+        // follow-up listening uses the user-configured conversation window.
+        int silenceMs = followUp ? GetFollowUpSeconds() * 1000 : 5000;
+        _gate.Activate(silenceMs);
+        SetMode(DisplayMode.Listening, followUp ?
+            "Продолжайте разговор · без «Мартин»" : "Слушаю команду");
+        if (!followUp)
+        {
+            // Do not feed the activation chime into STT/VAD.
+            Interlocked.Exchange(ref _chimeUntil, Environment.TickCount64 + 260);
+            _ = PlayActivationChimeAsync();
+        }
     }
+    private int GetFollowUpSeconds() =>
+        int.TryParse(FollowUpTimeoutSeconds.Text.Trim(), out int seconds)
+            ? Math.Clamp(seconds, 5, 60) : 15;
+
+    private void ArmFollowUpIfEnabled()
+    {
+        if (!_conversationActive || !_running || !_socket.Connected || _gate.Capturing)
+            return;
+        if (FollowUpEnabled.IsChecked != true)
+        {
+            _conversationActive = false;
+            _ = ResetConversationAsync();
+            return;
+        }
+        BeginCapture(followUp: true);
+    }
+
+    private async Task ResetConversationAsync()
+    {
+        try { if (_socket.Connected) await _socket.SendControlAsync(new { type = "conversation_reset" }); }
+        catch (Exception ex) { Ui(() => Log("Сброс контекста: " + ex.Message)); }
+    }
+
     private void ResumeMusicIfNeeded()
     {
         if (!_resumeMusic) return;
@@ -392,7 +432,8 @@ public partial class MainWindow : Window
             await _speaker.FinishSpeechAsync();
             if (_closing || _gate.Capturing) return;
             ResumeMusicIfNeeded();
-            if (!_speaker.MusicActive) SetMode(DisplayMode.Idle,"Ожидаю слово");
+            if (_conversationActive) ArmFollowUpIfEnabled();
+            else if (!_speaker.MusicActive) SetMode(DisplayMode.Idle,"Ожидаю слово");
         }
         catch(Exception ex){if(!_closing)Log("Аудиовыход: "+ex.Message);}
     }
@@ -468,7 +509,8 @@ public partial class MainWindow : Window
     {
         try
         {
-            _running=false;_microphone.Stop();await StopWakeAsync();_gate.Stop();_noise.Reset();_upload.Reset();
+            _running=false;_conversationActive=false;
+            _microphone.Stop();await StopWakeAsync();_gate.Stop();_noise.Reset();_upload.Reset();
             var profile=ProfileName.Text.Trim();
             if(profile.Length is < 1 or > 48||!Regex.IsMatch(profile,@"^[\p{L}\p{N} _.-]+$"))
                 throw new ArgumentException("Имя профиля должно содержать от 1 до 48 допустимых символов.");
@@ -496,7 +538,8 @@ public partial class MainWindow : Window
     }
     private async void Disconnect_Click(object sender,RoutedEventArgs e)
     {
-        _running=false;_microphone.Stop();_gate.Stop();await StopWakeAsync();_upload.Reset();
+        _running=false;_conversationActive=false;
+        _microphone.Stop();_gate.Stop();await StopWakeAsync();_upload.Reset();
         _speaker.EndSpeech();_speaker.StopMusic();_resumeMusic=false;_musicPlaybackId=0;
         await _socket.DisconnectAsync();
         SetMode(DisplayMode.Offline,"Не подключено");
@@ -533,7 +576,8 @@ public partial class MainWindow : Window
     }
     private void Cancel_Click(object sender,RoutedEventArgs e)
     {
-        _gate.Stop();_speaker.EndSpeech();_upload.Cancel();
+        _gate.Stop();_conversationActive=false;
+        _speaker.EndSpeech();_upload.Cancel();_upload.QueueConversationReset();
         ResumeMusicIfNeeded();
         if(!_speaker.MusicActive)SetMode(DisplayMode.Idle,"Ожидаю слово");
     }
@@ -541,7 +585,7 @@ public partial class MainWindow : Window
     {
         string text=RequestText.Text.Trim();
         if(text.Length==0||!_socket.Connected)return;
-        _gate.Stop();_upload.Reset();
+        _gate.Stop();_conversationActive=false;_upload.Reset();
         RequestText.Clear();TranscriptText.Text=text;AnswerText.Text="—";_llmAnswer.Clear();
         _upload.QueueText(text);
         SetMode(DisplayMode.Thinking,"LLM формирует ответ");
@@ -600,6 +644,9 @@ public partial class MainWindow : Window
         // From now on, wake-word during music is enabled by default
         // even for older preference files that stored false.
         BargeInOnMusic.IsChecked=c.DuckMusicOnWake??true;
+        FollowUpEnabled.IsChecked=c.FollowUpEnabled;
+        FollowUpTimeoutSeconds.Text=Math.Clamp(c.FollowUpTimeoutSeconds,5,60)
+            .ToString(CultureInfo.InvariantCulture);
     }
     private void SavePreferences()
     {
@@ -612,7 +659,9 @@ public partial class MainWindow : Window
             CommunicationsDsp=CommunicationsEnabled.IsChecked==true,
             NoiseReduction=NoiseSuppressionEnabled.IsChecked==true,
             BargeInOnMusic=BargeInOnMusic.IsChecked==true,
-            DuckMusicOnWake=BargeInOnMusic.IsChecked==true
+            DuckMusicOnWake=BargeInOnMusic.IsChecked==true,
+            FollowUpEnabled=FollowUpEnabled.IsChecked==true,
+            FollowUpTimeoutSeconds=GetFollowUpSeconds()
         }.Save();
     }
     private void SavePreferences_Click(object sender,RoutedEventArgs e)
