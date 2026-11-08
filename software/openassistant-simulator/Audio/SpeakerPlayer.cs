@@ -18,6 +18,7 @@ public sealed class SpeakerPlayer : IDisposable
     private bool _duckedByAssistant;
     private bool _pausedByUser;
     public event Action? MusicEnded;
+    public event Action<Exception>? MusicFailed;
     public bool SpeechActive => _speechOutput is not null;
     public bool MusicActive
     {
@@ -202,8 +203,9 @@ public sealed class SpeakerPlayer : IDisposable
                 // real media_ended event and must not advance the server queue.
                 output.PlaybackStopped += (_, e) =>
                 {
-                    if (e.Exception is not null || version != Volatile.Read(ref _musicVersion)) return;
-                    MusicEnded?.Invoke();
+                    if (version != Volatile.Read(ref _musicVersion)) return;
+                    if (e.Exception is not null) MusicFailed?.Invoke(e.Exception);
+                    else MusicEnded?.Invoke();
                 };
                 _mediaReader = reader;
                 _musicTempPath = temporaryFile;
