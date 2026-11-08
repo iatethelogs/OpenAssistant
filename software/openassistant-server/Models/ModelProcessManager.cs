@@ -66,6 +66,7 @@ public sealed class ModelProcessManager(
             if (!profiles.TryGetValue(role, out var profile)) throw new ArgumentException("Профиль модели не сохранён");
             // Upgrade the old wizard default to 64K when the existing model is
             // next restarted. Respect explicitly configured non-default contexts.
+            bool contextUpgraded = false;
             if (role == "llm")
             {
                 int contextArg = Array.FindIndex(profile.Arguments, arg =>
@@ -74,6 +75,7 @@ public sealed class ModelProcessManager(
                     profile.Arguments[contextArg + 1] == "4096")
                 {
                     profile.Arguments[contextArg + 1] = "65536";
+                    contextUpgraded = true;
                     await File.WriteAllTextAsync(ConfigPath,
                         JsonSerializer.Serialize(profiles,
                             new JsonSerializerOptions { WriteIndented = true }), ct);
@@ -87,7 +89,8 @@ public sealed class ModelProcessManager(
                 if (!old.Process.HasExited)
                 {
                     string expected = string.IsNullOrWhiteSpace(profile.ModelPath) ? "" : Path.GetFullPath(profile.ModelPath);
-                    if (string.Equals(expected, old.ModelPath, StringComparison.Ordinal))
+                    if (!contextUpgraded &&
+                        string.Equals(expected, old.ModelPath, StringComparison.Ordinal))
                         return new { role, running = true, pid = old.Process.Id };
                     old.Process.Kill(entireProcessTree: true);
                     await old.Process.WaitForExitAsync(ct);
