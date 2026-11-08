@@ -309,7 +309,19 @@
 </div></div>
   <div class="test-grid"><article class="panel"><h2>Поиск радио</h2><label for="radioQuery">Станция</label><div class="button-row"><input id="radioQuery" placeholder="Название станции"><button id="searchRadio" class="button secondary">Найти</button></div><div id="radioResults" class="search-results"></div></article>
   <article class="panel"><h2>Яндекс Музыка</h2><label for="musicQuery">Название или исполнитель</label><div class="button-row"><input id="musicQuery" placeholder="Поиск композиции"><button id="searchMusic" class="button secondary">Найти</button></div><div id="musicResults" class="search-results"></div></article></div>
-  <div class="panel extra-panel"><h2>Прослушивание</h2><audio id="mediaPlayer" controls></audio></div>
+  <div class="panel extra-panel"><h2>Браузерный музыкальный плеер</h2>
+    <div id="musicCurrent" class="minor">Трек не выбран</div>
+    <audio id="mediaPlayer" controls preload="none"></audio>
+    <div class="button-row">
+      <button id="musicPrev" class="button secondary" type="button">Предыдущий</button>
+      <button id="musicPause" class="button secondary" type="button">Пауза / продолжить</button>
+      <button id="musicNext" class="button secondary" type="button">Следующий</button>
+      <button id="musicStop" class="button secondary" type="button">Остановить</button>
+    </div>
+    <p id="musicQueueStatus" class="minor">После трека автоматически включается следующий из результатов поиска.</p>
+    <div id="musicQueue" class="search-results"></div>
+    <p class="minor">Плеер этой страницы независим от аудиовыхода колонки. Голосовые команды управляют плеером подключённого устройства.</p>
+  </div>
  </section>
 
  <section class="view" id="events">
