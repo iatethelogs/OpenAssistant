@@ -16,7 +16,7 @@ public sealed class MusicPlaybackSession(
     private int _index = -1;
     private long _playbackId;
     private bool _paused;
-    private const int MaxHistory = 150;
+    private const int MaxHistory = 500;
 
     private object Snapshot() => new
     {
@@ -31,7 +31,7 @@ public sealed class MusicPlaybackSession(
     public async Task PlayQueueAsync(IEnumerable<YandexTrack> tracks, CancellationToken ct)
     {
         var valid = tracks.Where(x => Regex.IsMatch(x.Id, @"^\d+(?::\d+)?$"))
-            .DistinctBy(x => x.Id).Take(50).ToArray();
+            .DistinctBy(x => x.Id).Take(200).ToArray();
         if (valid.Length == 0) throw new ArgumentException("В очереди нет воспроизводимых треков");
         await _gate.WaitAsync(ct);
         try
