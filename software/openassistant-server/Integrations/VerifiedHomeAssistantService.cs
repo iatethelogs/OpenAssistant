@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
-using OpenAssistant.Server.Chat;
 using OpenAssistant.Server.Configuration;
 
 namespace OpenAssistant.Server.Integrations;
@@ -19,17 +18,6 @@ public sealed class VerifiedHomeAssistantService(IHttpClientFactory factory,
     private static readonly HashSet<string> OnOff = ["light", "switch", "input_boolean", "fan"];
     private static readonly Regex EntityId = new(@"\b[a-z_]+\.[a-z0-9_]+\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex HomeTopic = new(
-        @"\bсвет(?:а|ом|у|е)?\b|светильник|ламп|люстр|розет|выключател|штор|жалюзи|вентилятор|датчик|термостат|температур|градус|влажност|отоплен|кондиц|увлажнит|двер|замок|гараж|движен|устройств|освещен|реле|home assistant|умн.{0,5}дом|\b(?:light|switch|sensor|binary_sensor|fan|cover|climate|lock)\.",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex QueryIntent = new(
-        @"включ|выключ|откро|откры|закро|закры|состояни|статус|горит|работает|температур|градус|какие|сколько|покажи|проверь|открыт|закрыт|влажност|движени|\b(on|off)\b|включ[её]н|выключ[её]н|управ",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex CommandOn = new(@"\bвключи(?:те)?\b|\bзажги(?:те)?\b|\bоткрой(?:те)?\b",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex CommandOff = new(@"\bвыключи(?:те)?\b|\bпогаси(?:те)?\b|\bзакрой(?:те)?\b",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
     public bool Connected => !string.IsNullOrWhiteSpace(options.CurrentValue.HomeAssistantUrl) &&
                              !string.IsNullOrWhiteSpace(options.CurrentValue.HomeAssistantToken);
 
@@ -134,91 +122,4 @@ public sealed class VerifiedHomeAssistantService(IHttpClientFactory factory,
         };
     }
 
-    private static string[] Tokens(string source) => Regex.Matches(source.ToLowerInvariant(), @"[\p{L}\p{N}]{4,}")
-        .Select(x => x.Value).Where(x => !new [] {
-            "свет", "света", "лампа", "лампы", "включ", "выключ", "состояние",
-            "датчик", "какая", "какое", "сейчас", "работает", "температура",
-            "turn", "switch", "light", "sensor", "input", "boolean"
-        }.Contains(x)).Distinct().ToArray();
-
-    private static List<Entity> FindEntities(string input, IReadOnlyList<Entity> entities)
-    {
-        var explicitId = EntityId.Match(input.ToLowerInvariant());
-        if (explicitId.Success) return entities.Where(e => e.Id == explicitId.Value).ToList();
-        string? domain =
-            Regex.IsMatch(input, @"свет|ламп|люстр", RegexOptions.IgnoreCase) ? "light" :
-            Regex.IsMatch(input, @"розет|выключател", RegexOptions.IgnoreCase) ? "switch" :
-            Regex.IsMatch(input, @"штор|жалюзи", RegexOptions.IgnoreCase) ? "cover" :
-            Regex.IsMatch(input, @"вентилятор", RegexOptions.IgnoreCase) ? "fan" :
-            Regex.IsMatch(input, @"температур|градус", RegexOptions.IgnoreCase) ? "sensor" : null;
-        var candidates = entities.Where(e => domain is null ||
-            e.Id.StartsWith(domain + ".", StringComparison.Ordinal)).ToList();
-        var terms = Tokens(input);
-        var ranked = candidates.Select(e => new {
-            Entity = e,
-            Score = terms.Count(w => Tokens(e.Name.Replace('_',' ')).Concat(Tokens(e.Id.Replace('_',' ')))
-                .Any(t => t.StartsWith(w[..Math.Min(4,w.Length)], StringComparison.Ordinal)))
-        }).OrderByDescending(x => x.Score).ToArray();
-        if (ranked.Length == 0) return [];
-        if (ranked[0].Score == 0) return ranked.Length == 1 ? [ranked[0].Entity] : [];
-        return ranked.Where(x => x.Score == ranked[0].Score).Select(x => x.Entity).Take(10).ToList();
-    }
-
-    /// <summary>Перехватывает вопросы о состоянии и прямые команды; модель не формирует фактический ответ.</summary>
-    public async Task<string?> TryHandleAsync(string text, bool canRead, bool canWrite, CancellationToken ct)
-    {
-        if ((!HomeTopic.IsMatch(text) && !EntityId.IsMatch(text)) || !QueryIntent.IsMatch(text)) return null;
-        if (Regex.IsMatch(text, @"^\s*(что такое|как устроен|как работает|зачем нужен|почему работает)",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-            return null;
-        if (!canRead) return "Чтение состояний Home Assistant отключено в настройках инструментов.";
-        if (!Connected) return "Home Assistant не подключён. Добавьте адрес и токен в разделе интеграций.";
-        if (Regex.IsMatch(text, @"вчера|прошл|позавчера|неделю назад|в понедельник",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-            return "История изменений устройств не загружается. Могу проверить только текущее состояние.";
-        try
-        {
-            var entities = await EntitiesAsync(ct);
-            bool on = CommandOn.IsMatch(text), off = CommandOff.IsMatch(text);
-            bool command = on ^ off && !Regex.IsMatch(text,
-                @"\bкак\s+(включ|выключ|откро|закро)|\b(если|можно ли|умеешь ли)\b",
-                RegexOptions.IgnoreCase);
-            if (Regex.IsMatch(text, @"какие\s+(устройств|ламп|светильник|датчик)", RegexOptions.IgnoreCase))
-            {
-                return entities.Count == 0 ? "Устройств не найдено." :
-                    "Устройства Home Assistant: " + string.Join("; ",
-                        entities.Take(25).Select(e => $"{e.Name} ({e.State}{e.Unit})")) +
-                        (entities.Count > 25 ? ". Показаны первые 25." : ".");
-            }
-            var matches = FindEntities(text, entities);
-            if (matches.Count == 0) return "Не удалось однозначно определить устройство в Home Assistant. Назовите его точнее.";
-            if (matches.Count > 1) return "Уточните устройство: " +
-                string.Join(", ", matches.Take(6).Select(e => e.Name + " (" + e.Id + ")")) + ".";
-            var entity = matches[0];
-            if (!command)
-                return $"По данным Home Assistant на момент запроса: {entity.Name} — {entity.State}{(string.IsNullOrWhiteSpace(entity.Unit) ? "" : " " + entity.Unit)}.";
-            if (!canWrite)
-                return "Управление Home Assistant отключено. Разрешите действие в разделе интеграций.";
-            string domain = entity.Id.Split('.')[0];
-            string service = domain switch {
-                "cover" => on ? "open_cover" : "close_cover",
-                "media_player" => on ? "media_play" : "media_pause",
-                _ => on ? "turn_on" : "turn_off"
-            };
-            var result = await ChangeAsync(entity.Id, domain, service, ct);
-            using var document = JsonDocument.Parse(JsonSerializer.Serialize(result));
-            var root = document.RootElement;
-            bool verified = root.GetProperty("verified").GetBoolean();
-            string state = root.TryGetProperty("observed_state", out var observed) ? observed.GetString() ?? "?" :
-                root.TryGetProperty("state", out var fallback) ? fallback.GetString() ?? "?" : "?";
-            return verified
-                ? $"{entity.Name}: состояние «{state}» подтверждено Home Assistant."
-                : $"{entity.Name}: ожидаемое состояние не подтверждено. Последнее наблюдение: «{state}».";
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or
-            JsonException or InvalidDataException or InvalidOperationException or ArgumentException)
-        {
-            return "Не удалось получить подтверждённое состояние Home Assistant: " + ex.Message;
-        }
-    }
 }
