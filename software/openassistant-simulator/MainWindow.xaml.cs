@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private volatile bool _running;
     private volatile bool _noiseEnabled = true;
     private volatile bool _bargeInEnabled;
+    private volatile bool _ignoreReplyAudio;
     private bool _closing;
     private bool _resumeMusic;
     private int _micTicks;
@@ -60,6 +61,7 @@ public partial class MainWindow : Window
         });
         _socket.AudioReceived += pcm => Ui(() =>
         {
+            if (_ignoreReplyAudio) return; // old answer may still be in the socket queue
             _speaker.AddSpeech(pcm);
             Matrix.SetSpeechLevel(CalculateRms(pcm));
         });
@@ -150,6 +152,7 @@ public partial class MainWindow : Window
         if (_gate.Capturing) return;
         _resumeMusic = _speaker.MusicActive;
         if (_resumeMusic) _speaker.DuckMusic();
+        _ignoreReplyAudio = true;
         _speaker.EndSpeech();
         _llmAnswer.Clear();
         AnswerText.Text = "—";
@@ -179,8 +182,9 @@ public partial class MainWindow : Window
             var processed = _noise.Process(pcm);
             // A separate detector receives the real PCM from the same microphone,
             // never a second capture device with drifting timestamps.
-            if (!_gate.Capturing && !_speaker.SpeechActive &&
-                (!_speaker.MusicActive || _bargeInEnabled))
+            // The user can say the wake-word while Martin is speaking; music
+            // interruption remains separately configurable.
+            if (!_gate.Capturing && (!_speaker.MusicActive || _bargeInEnabled))
                 _wake?.Feed(pcm);
             if (_gate.Capturing && Environment.TickCount64 < Interlocked.Read(ref _chimeUntil))
                 _gate.Push(new byte[processed.Length]);
@@ -232,6 +236,7 @@ public partial class MainWindow : Window
                     Log("Профиль: " + packet.GetProperty("name").GetString());
                     break;
                 case "transcript":
+                    _ignoreReplyAudio = false;
                     TranscriptText.Text=packet.TryGetProperty("text",out var tr)?tr.GetString()??"": "";
                     _llmAnswer.Clear();
                     SetMode(DisplayMode.Thinking,"LLM формирует ответ");
@@ -245,6 +250,7 @@ public partial class MainWindow : Window
                     }
                     break;
                 case "audio_start":
+                    if (_ignoreReplyAudio) break;
                     int rate=packet.GetProperty("sampleRate").GetInt32();
                     _speaker.BeginSpeech(rate);
                     SetMode(DisplayMode.Speaking,"Голосовой ответ");
@@ -253,6 +259,7 @@ public partial class MainWindow : Window
                     // Keep PCM in the output buffer until it has been played.
                     break;
                 case "done":
+                    if (_ignoreReplyAudio || _gate.Capturing) break;
                     if (_llmAnswer.Length>0) Log("Ассистент: "+_llmAnswer);
                     _llmAnswer.Clear();
                     _=FinishPlayingSpeechAsync();
@@ -276,7 +283,11 @@ public partial class MainWindow : Window
                     MusicText.Text="Музыка не воспроизводится";
                     if(!_gate.Capturing&&!_speaker.SpeechActive)SetMode(DisplayMode.Idle,"Ожидаю слово");
                     break;
+                case "interrupted":
+                    _llmAnswer.Clear();_speaker.EndSpeech();
+                    break;
                 case "cancelled":
+                    _ignoreReplyAudio = false;
                     _llmAnswer.Clear();_speaker.EndSpeech();
                     ResumeMusicIfNeeded();
                     if(!_speaker.MusicActive)SetMode(DisplayMode.Idle,"Ожидаю слово");
@@ -336,7 +347,7 @@ public partial class MainWindow : Window
         var detector=new WakeWordDetector(path,WakeName.Text.Trim(),threshold);
         detector.Detected+=(word,score)=>Ui(()=>
         {
-            if (!_socket.Connected || !_running || _gate.Capturing || _speaker.SpeechActive ||
+            if (!_socket.Connected || !_running || _gate.Capturing ||
                 WakeEnabled.IsChecked!=true ||
                 (_speaker.MusicActive && !_bargeInEnabled))return;
             Log($"Wake-word: {word} · {score:0.00}");
