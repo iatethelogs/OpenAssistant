@@ -27,8 +27,8 @@ public sealed class SpeakerPlayer : IDisposable
         EndSpeech();
         _speechRate = rate;
         _speechBuffer = new BufferedWaveProvider(
-            new WaveFormat(rate, 16, 1), TimeSpan.FromSeconds(12))
-        { DiscardOnBufferOverflow = true };
+            new WaveFormat(rate, 16, 1), TimeSpan.FromMinutes(10))
+        { DiscardOnBufferOverflow = false };
         _speechOutput = new WaveOut { BufferMilliseconds = 60, NumberOfBuffers = 3 };
         _speechOutput.Init(_speechBuffer);
         _speechOutput.Play();
@@ -45,16 +45,18 @@ public sealed class SpeakerPlayer : IDisposable
         var buffer = _speechBuffer;
         long version = Volatile.Read(ref _speechVersion);
         if (buffer is null) return;
-        for (int i = 0; i < 240; i++)
+        // The server can deliver a long answer much faster than real-time.
+        // Never time out after twelve seconds and truncate its buffered tail.
+        while (version == Volatile.Read(ref _speechVersion))
         {
-            if (version != Volatile.Read(ref _speechVersion)) return;
             if (buffer.BufferedBytes == 0)
             {
                 await Task.Delay(220);
-                if (version == Volatile.Read(ref _speechVersion)) EndSpeech();
+                if (version == Volatile.Read(ref _speechVersion) && buffer.BufferedBytes == 0)
+                    EndSpeech();
                 return;
             }
-            await Task.Delay(50);
+            await Task.Delay(100);
         }
     }
 
