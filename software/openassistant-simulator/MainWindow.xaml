@@ -123,7 +123,7 @@
                  <StackPanel><TextBlock Text="Имя" Style="{StaticResource FieldLabel}"/><TextBox x:Name="WakeName" Text="Мартин"/></StackPanel>
                  <StackPanel Grid.Column="2"><TextBlock Text="Порог" Style="{StaticResource FieldLabel}"/><TextBox x:Name="WakeThreshold" Text="0.87"/></StackPanel>
                </Grid>
-               <CheckBox x:Name="BargeInOnMusic" Content="Разрешать активацию во время музыки"/>
+               <CheckBox x:Name="BargeInOnMusic" Content="Приглушать музыку при «Мартин»" IsChecked="True"/>
                
              </StackPanel>
            </Border>
