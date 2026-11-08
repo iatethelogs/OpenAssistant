@@ -74,6 +74,16 @@ public partial class MainWindow : Window
             _musicPlaybackId = 0;
             _ = NotifyMusicEventAsync("media_ended", ended);
         });
+        _speaker.MusicFailed += error => Ui(() =>
+        {
+            Log("Декодер музыки: " + error.Message);
+            long failed = _musicPlaybackId;
+            if (failed > 0 && _socket.Connected)
+            {
+                _musicPlaybackId = 0;
+                _ = NotifyMusicEventAsync("media_failed", failed, error.Message);
+            }
+        });
         _upload.Error += message => Ui(() =>
         {
             _gate.Stop();
@@ -289,10 +299,12 @@ public partial class MainWindow : Window
                     if(packet.TryGetProperty("url",out var url))
                     {
                         _musicPlaybackId = packet.TryGetProperty("playbackId",out var pid) && pid.TryGetInt64(out long nextId)
-                            ? nextId : 0; // radio has no Yandex queue
+                            ? nextId : 0; // explicit ID used by both radio and Yandex Music
                         string target=url.GetString()??"";
                         string title=packet.TryGetProperty("title",out var cap)?cap.GetString()??target:target;
-                        _=StartMusicAsync(target,title);
+                        string? codec=packet.TryGetProperty("codec",out var codecValue) &&
+                            codecValue.ValueKind==JsonValueKind.String?codecValue.GetString():null;
+                        _=StartMusicAsync(target,title,codec);
                     }
                     break;
                 case "pause_media":
@@ -339,12 +351,12 @@ public partial class MainWindow : Window
         catch(Exception ex){Log("Событие сервера: "+ex.Message);}
     });
 
-    private async Task StartMusicAsync(string url,string title)
+    private async Task StartMusicAsync(string url,string title,string? codec)
     {
         long playbackId=_musicPlaybackId;
         try
         {
-            MusicStreamInfo? media=await _speaker.PlayUrlAsync(url);
+            MusicStreamInfo? media=await _speaker.PlayUrlAsync(url,codec);
             if(media is null||_closing)return;
             if(playbackId>0 && playbackId==_musicPlaybackId)
                 _=NotifyMusicEventAsync("media_started",playbackId);
