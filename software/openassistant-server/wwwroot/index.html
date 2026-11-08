@@ -339,6 +339,10 @@
     <div class="chat-connection"><button id="chatConnect" class="button secondary" type="button">Подключиться</button><span id="chatStatus" role="status" class="minor">Отключено</span><input id="chatDeviceToken" type="password" autocomplete="off" aria-label="Ключ устройства" placeholder="Ключ для подключения по сети"><button type="button" data-view="devices" class="text-link text-button">Ключ устройства</button></div>
    <div id="chatHistory" class="chat-history" role="log" aria-live="polite"></div>
    <div class="chat-compose"><input id="chatInput" placeholder="Напишите сообщение"><button id="chatSend" type="button" class="button primary" disabled>Отправить</button><button id="chatCancel" type="button" class="button secondary" disabled>Стоп</button></div>
+   <div class="button-row chat-media-controls">
+      <button id="chatPlayPending" class="button secondary" type="button" hidden>Разрешить воспроизведение музыки</button>
+      <span id="chatMediaState" class="minor" role="status"></span>
+   </div>
    <label class="chat-audio-option"><input type="checkbox" id="chatAudioEnabled"> Озвучивать ответы</label><audio id="chatAudio" controls hidden></audio>
   </div>
  </section>
@@ -387,6 +391,6 @@
 </main></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/audio-test.js" defer></script>
-<script src="/dashboard.js?v=20261108-skills-wizard" defer></script>
+<script src="/dashboard.js?v=20261108-confirmed-actions" defer></script>
 <script src="/settings-manager.js?v=20261106c" defer></script><script src="/display-editor.js?v=2" defer></script>
 </body></html>

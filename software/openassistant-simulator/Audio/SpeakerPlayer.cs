@@ -1,4 +1,5 @@
 using NAudio.Wave;
+using System.Net.Http;
 
 namespace OpenAssistant.Simulator.Audio;
 
@@ -6,6 +7,8 @@ namespace OpenAssistant.Simulator.Audio;
 public sealed class SpeakerPlayer : IDisposable
 {
     private readonly object _musicLock = new();
+    private static readonly HttpClient MusicClient = new() { Timeout = TimeSpan.FromSeconds(40) };
+    private string? _musicTempPath;
     private WaveOut? _speechOutput;
     private BufferedWaveProvider? _speechBuffer;
     private int _speechRate;
@@ -16,6 +19,7 @@ public sealed class SpeakerPlayer : IDisposable
     private bool _duckedByAssistant;
     private bool _pausedByUser;
     public event Action? MusicEnded;
+    public event Action<Exception>? MusicFailed;
     public bool SpeechActive => _speechOutput is not null;
     public bool MusicActive
     {
@@ -116,18 +120,79 @@ public sealed class SpeakerPlayer : IDisposable
         }
     }
 
-    public async Task<MusicStreamInfo?> PlayUrlAsync(string url, CancellationToken ct = default)
+    private static async Task<(MediaFoundationReader Reader, string? TempPath)> OpenMusicAsync(
+        string url, string? codec, CancellationToken ct)
+    {
+        try
+        {
+            // Fast path: stream directly through Windows Media Foundation.
+            return (await Task.Run(() => new MediaFoundationReader(url), ct), null);
+        }
+        catch (Exception directError) when (!ct.IsCancellationRequested &&
+            directError is not OperationCanceledException)
+        {
+            // Media Foundation does not always infer codecs from Yandex/CDN
+            // URLs without a filename extension. Its local file source is
+            // substantially more reliable for these streams.
+            string extension = codec?.ToLowerInvariant() switch {
+                "aac" => ".aac",
+                "aac-mp4" => ".m4a",
+                _ => ".mp3"
+            };
+            string path = Path.Combine(Path.GetTempPath(),
+                "openassistant-audio-" + Guid.NewGuid().ToString("N") + extension);
+            try
+            {
+                using var response = await MusicClient.GetAsync(url,
+                    HttpCompletionOption.ResponseHeadersRead, ct);
+                response.EnsureSuccessStatusCode();
+                const long maxBytes = 40L * 1024 * 1024;
+                if (response.Content.Headers.ContentLength is long length && length > maxBytes)
+                    throw new InvalidDataException("Аудиофайл превышает 40 МБ");
+                await using (var input = await response.Content.ReadAsStreamAsync(ct))
+                await using (var output = new FileStream(path, FileMode.CreateNew,
+                    FileAccess.Write, FileShare.Read, 65536, FileOptions.Asynchronous))
+                {
+                    var buffer = new byte[65536];
+                    long bytes = 0;
+                    int count;
+                    while ((count = await input.ReadAsync(buffer, ct)) > 0)
+                    {
+                        bytes += count;
+                        if (bytes > maxBytes)
+                            throw new InvalidDataException("Аудиопоток превысил 40 МБ");
+                        await output.WriteAsync(buffer.AsMemory(0, count), ct);
+                    }
+                    if (bytes < 1024) throw new InvalidDataException("Пустой аудиопоток");
+                    await output.FlushAsync(ct);
+                }
+                return (await Task.Run(() => new MediaFoundationReader(path), ct), path);
+            }
+            catch (Exception fallbackError)
+            {
+                try { File.Delete(path); } catch (IOException) { }
+                throw new IOException(
+                    "Не удалось открыть поток через Media Foundation и резервное скачивание. " +
+                    "Прямой поток: " + directError.Message + ". Локальный декодер: " +
+                    fallbackError.Message, fallbackError);
+            }
+        }
+    }
+
+    public async Task<MusicStreamInfo?> PlayUrlAsync(
+        string url, string? codec = null, CancellationToken ct = default)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var address) ||
             address.Scheme is not ("http" or "https"))
             throw new ArgumentException("Music URL must use HTTP or HTTPS");
         long version = Interlocked.Increment(ref _musicVersion);
-        var reader = await Task.Run(() => new MediaFoundationReader(url), ct);
+        var (reader, temporaryFile) = await OpenMusicAsync(url, codec, ct);
         lock (_musicLock)
         {
             if (version != Volatile.Read(ref _musicVersion) || ct.IsCancellationRequested)
             {
                 reader.Dispose();
+                if (temporaryFile is not null) TryDelete(temporaryFile);
                 return null;
             }
             StopMusicCore();
@@ -135,13 +200,16 @@ public sealed class SpeakerPlayer : IDisposable
             {
                 var output = new WaveOut { BufferMilliseconds = 120 };
                 output.Init(reader);
-                // Do not emit completion for a manually stopped/replaced track.
+                // Completion of a manually stopped/replaced track is not a
+                // real media_ended event and must not advance the server queue.
                 output.PlaybackStopped += (_, e) =>
                 {
-                    if (e.Exception is not null || version != Volatile.Read(ref _musicVersion)) return;
-                    MusicEnded?.Invoke();
+                    if (version != Volatile.Read(ref _musicVersion)) return;
+                    if (e.Exception is not null) MusicFailed?.Invoke(e.Exception);
+                    else MusicEnded?.Invoke();
                 };
                 _mediaReader = reader;
+                _musicTempPath = temporaryFile;
                 _musicOutput = output;
                 output.Play();
                 return new MusicStreamInfo(reader.WaveFormat.SampleRate,
@@ -150,12 +218,21 @@ public sealed class SpeakerPlayer : IDisposable
             catch
             {
                 reader.Dispose();
+                if (temporaryFile is not null) TryDelete(temporaryFile);
+                _musicTempPath = null;
                 _mediaReader = null;
                 _musicOutput?.Dispose();
                 _musicOutput = null;
                 throw;
             }
         }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     public void StopMusic()
@@ -172,6 +249,11 @@ public sealed class SpeakerPlayer : IDisposable
         _musicOutput = null;
         _mediaReader?.Dispose();
         _mediaReader = null;
+        if (_musicTempPath is not null)
+        {
+            TryDelete(_musicTempPath);
+            _musicTempPath = null;
+        }
     }
 
     public void Dispose()

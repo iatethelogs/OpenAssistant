@@ -128,7 +128,10 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
                 var first = data[0];
                 string url = first.GetProperty("url").GetString() ?? "";
                 string title = first.GetProperty("name").GetString() ?? "Радио";
-                return new AgentAction(new { playing = title }, new { type = "play_media", url, title, source = "radio_browser" });
+                string codec = first.TryGetProperty("codec", out var codecNode) &&
+                    codecNode.ValueKind == JsonValueKind.String ? codecNode.GetString() ?? "" : "";
+                return new AgentAction(new { selected = title },
+                    new { type = "play_media", url, title, source = "radio_browser", codec });
             }
             case "music_search":
             {

@@ -333,3 +333,8 @@ footer a:hover{text-decoration:underline}
  font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
 .skill-wizard .tool-schema{min-height:180px}
 @media(max-width:690px){.skill-wizard{padding:16px}.integration-enable{margin-top:10px}.integration-tab{padding:8px 10px}}
+
+/* Manual playback permission when a browser blocks WebSocket-initiated audio. */
+.chat-media-controls{margin:9px 0;align-items:center}
+#chatPlayPending[hidden]{display:none}
+#chatMediaState{overflow-wrap:anywhere}

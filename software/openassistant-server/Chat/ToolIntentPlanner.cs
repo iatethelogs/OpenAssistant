@@ -24,6 +24,12 @@ public sealed class ToolIntentPlanner(
         Возвращай ровно один JSON-объект:
         {"name":"имя_доступной_функции","arguments":{"аргумент":"значение"}}
         Если инструмент не нужен: {"name":"none","arguments":{}}.
+        Выбирай только действие, необходимое для текущей фразы. Не изображай
+        выполненную команду, не сообщай об успехе. Это проверит сервер и клиент.
+        При неоднозначном запросе, который может быть управлением устройством,
+        сначала получи актуальные сущности через ha_list_entities, если доступно.
+        Если уже есть результат одного инструмента, учитывай его, а не
+        придумывай другие действия.
 
         Инструменты и допустимые параметры перечислены отдельно ниже.
         Название инструмента должно в точности совпадать с одним из перечисленных.
@@ -54,7 +60,8 @@ public sealed class ToolIntentPlanner(
         IReadOnlyList<CustomToolDefinition> custom, IReadOnlyList<object> observations,
         CancellationToken ct)
     {
-        if (skills.Count == 0 && custom.Count == 0) return null;
+        if (skills.Count == 0 && custom.Count == 0)
+            return new Plan("none", default);
         var catalog = skills.Select(x => new
         {
             name = x.Name, description = x.Description, parameters = x.Parameters
@@ -136,7 +143,7 @@ public sealed class ToolIntentPlanner(
                 if (name == "none")
                 {
                     logger.LogInformation("LLM selected no external tool");
-                    return null;
+                    return new Plan("none", default);
                 }
                 if (!names.Contains(name))
                 {

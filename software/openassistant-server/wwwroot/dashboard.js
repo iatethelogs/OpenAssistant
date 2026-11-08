@@ -609,35 +609,51 @@ function drawSearch(results,target,play){
 const browserPlayer=el("mediaPlayer");
 let browserQueue=[],browserIndex=-1,browserSource="",browserEpoch=0;
 let chatMediaPlaybackId=0,chatMediaStartedId=0;
-function notifyChatMedia(type,playbackId=chatMediaPlaybackId){
+function notifyChatMedia(type,playbackId=chatMediaPlaybackId,reason=""){
  if(playbackId&&chatSocket?.readyState===WebSocket.OPEN)
-  chatSocket.send(JSON.stringify({type,playbackId}));
+  chatSocket.send(JSON.stringify({type,playbackId,reason}));
 }
 async function playChatMedia(msg){
  browserEpoch++;browserSource="chat";browserQueue=[];browserIndex=-1;
  renderBrowserQueue();
  chatMediaPlaybackId=Number(msg.playbackId)||0;chatMediaStartedId=0;
+ const requestedId=chatMediaPlaybackId;
+ el("chatPlayPending").hidden=true;
+ el("chatMediaState").textContent="Открываю поток: "+(msg.title||"музыка");
  el("musicCurrent").textContent=msg.title||"Музыка";
  browserPlayer.src=msg.url;
  try{await browserPlayer.play()}
  catch(error){
+  if(requestedId!==chatMediaPlaybackId)return;
   if(error.name==="NotAllowedError"){
-   toast("Автовоспроизведение запрещено браузером. Нажмите Play в разделе «Музыка».",true);return;
+   el("chatPlayPending").hidden=false;
+   el("chatMediaState").textContent="Браузер требует нажатия для воспроизведения.";
+   return;
   }
-  const failed=chatMediaPlaybackId;chatMediaPlaybackId=0;
-  notifyChatMedia("media_failed",failed);
-  toast("Ошибка воспроизведения: "+error.message,true);
+  chatMediaPlaybackId=0;
+  notifyChatMedia("media_failed",requestedId,error.message);
+  el("chatMediaState").textContent="Ошибка аудиопотока: "+error.message;
  }
 }
+el("chatPlayPending").onclick=async()=>{
+ if(browserSource!=="chat"||!browserPlayer.src)return;
+ try{await browserPlayer.play();el("chatPlayPending").hidden=true}
+ catch(error){el("chatMediaState").textContent="Ошибка воспроизведения: "+error.message}
+};
 browserPlayer.addEventListener("playing",()=>{
  if(browserSource==="chat"&&chatMediaPlaybackId&&chatMediaStartedId!==chatMediaPlaybackId){
   chatMediaStartedId=chatMediaPlaybackId;
+  el("chatPlayPending").hidden=true;
+  el("chatMediaState").textContent="Воспроизводится на этом устройстве";
   notifyChatMedia("media_started");
  }
 });
 browserPlayer.addEventListener("error",()=>{
  if(browserSource==="chat"&&chatMediaPlaybackId){
-  const failed=chatMediaPlaybackId;chatMediaPlaybackId=0;notifyChatMedia("media_failed",failed);
+  const failed=chatMediaPlaybackId;chatMediaPlaybackId=0;
+  const error="Ошибка декодера или загрузки аудиопотока (код "+(browserPlayer.error?.code||"?")+")";
+  el("chatMediaState").textContent=error;
+  notifyChatMedia("media_failed",failed,error);
  }
 });
 function renderBrowserQueue(){
@@ -802,19 +818,26 @@ function connectChat(auto=false){
    else if(msg.type==="profile")el("chatStatus").textContent="Подключено · "+msg.name;
    else if(msg.type==="play_media"){
     void playChatMedia(msg);
-    chatAppend("\n[Музыка] "+(msg.title||"Воспроизведение")+"\n");
    }
    else if(msg.type==="pause_media"){if(browserSource==="chat")browserPlayer.pause();}
    else if(msg.type==="resume_media"){if(browserSource==="chat")browserPlayer.play().catch(()=>{});}
    else if(msg.type==="stop_media"){
-    if(browserSource==="chat"){chatMediaPlaybackId=0;browserPlayer.pause();browserPlayer.removeAttribute("src");browserPlayer.load();}
+    if(browserSource==="chat"){
+     chatMediaPlaybackId=0;browserPlayer.pause();browserPlayer.removeAttribute("src");
+     browserPlayer.load();el("chatPlayPending").hidden=true;
+     el("chatMediaState").textContent="Воспроизведение остановлено";
+    }
    }
    else if(msg.type==="media_status"){
     if(msg.source==="yandex_music"&&msg.active)el("musicQueueStatus").textContent=
       "Устройство: "+(msg.track?.title||"трек")+" · "+(Number(msg.index)+1)+"/"+msg.total;
    }
-   else if(msg.type==="media_error"){chatAppend("\nОшибка музыки: "+(msg.message||"Недоступный трек")+"\n");}
-   else if(msg.type==="tool_result"){chatAppend("\n[Навык: "+msg.name+"] "+JSON.stringify(msg.result).slice(0,350)+"\n");}
+   else if(msg.type==="media_error"){
+    el("chatMediaState").textContent="Ошибка потока: "+(msg.message||"Недоступен трек");
+   }
+   else if(msg.type==="tool_result"){
+    el("chatStatus").textContent="Навык "+msg.name+" выполнен; проверка результата";
+   }
    else if(msg.type==="text"){chatAppend(msg.delta||"");el("chatStatus").textContent="Ответ ассистента"}
    else if(msg.type==="audio_start"){chatBuffer=[];chatSampleRate=msg.sampleRate||24000}
    else if(msg.type==="audio_end"){
