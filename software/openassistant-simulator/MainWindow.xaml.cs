@@ -193,6 +193,9 @@ public partial class MainWindow : Window
             if (!string.IsNullOrWhiteSpace(wake)) _upload.QueueWake(wake);
             else _upload.QueueConversationReset(); // manual capture starts a new conversation
         }
+        // Exclude the last second of our own TTS from the microphone pre-roll:
+        // it must never become the beginning of the next user utterance.
+        if (followUp) _gate.Stop();
         // The normal wake-word capture times out after 5 seconds. Only
         // follow-up listening uses the user-configured conversation window.
         int silenceMs = followUp ? GetFollowUpSeconds() * 1000 : 5000;
