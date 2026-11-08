@@ -219,6 +219,13 @@ async function pollTtsInstallation(){
    if(!job||job.status!=="running"){
     if(job)indicator.textContent=job.status==="ready"?"Модель запущена: "+job.name:"Ошибка: "+(job.error||job.description);
     await refreshModels();
+    if(job?.status==="ready"){
+     const current=await api("/api/settings");
+     state.settings=current;
+     el("ttsModel").value=current.ttsModel??"";
+     state.voiceProfile=await api("/api/setup/voice");
+     el("voiceModeSetting").value=state.voiceProfile.mode||"custom";
+    }
     break;
    }
    indicator.textContent=job.description||"Загрузка модели";
