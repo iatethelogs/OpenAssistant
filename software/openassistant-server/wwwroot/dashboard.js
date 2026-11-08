@@ -42,6 +42,9 @@ const sys=state.system||{};el("cpuValue").textContent=sys.cpuThreads??"—";el("
 el("serverChip").textContent="Подключено";el("sideStatus").textContent="Сервер доступен"}
 async function poll(){if(state.loading)return;state.loading=true;try{const [models,system,devices,downloads]=await Promise.all([api("/api/models"),api("/api/control/system"),api("/api/control/devices"),api("/api/models/downloads")]);Object.assign(state,{models,system,devices,downloads});render()}catch(e){el("serverChip").textContent="Нет соединения";el("sideStatus").textContent="Нет подключения";}finally{state.loading=false}}
 function updateVoiceSamplingInputs(){
+ const piper=el("ttsEngineChoice")?.value?.startsWith("piper-")===true;
+ el("piperVoiceFields").hidden=!piper;
+ el("qwenVoiceFields").hidden=piper;
  const mode=el("voiceGenerationMode").value;
  const piper=el("ttsEngineChoice")?.value?.startsWith("piper-");
  el("voiceGenerationMode").disabled=!!piper;
@@ -69,17 +72,32 @@ function loadSettings(){
  el("voicePenalty").value=p.repetitionPenalty??1.05;
  el("voiceStyleSetting").value=p.style||"";
  el("voiceDescriptionSetting").value=p.description||"";
+ for(const [id,key,fallback] of [
+   ["piperLengthScale","piperLengthScale",1],["piperNoiseScale","piperNoiseScale",0.667],
+   ["piperNoiseWScale","piperNoiseWScale",0.8],["piperVolume","piperVolume",1]
+ ])el(id).value=p[key]??fallback;
+ el("piperNormalizeAudio").checked=p.piperNormalizeAudio??true;
  updateVoiceSamplingInputs();
 }
 el("settingsForm").onsubmit=async event=>{
  event.preventDefault();const b=el("saveSettings");
  await busy(b,async()=>{
+  const piperValue=(id,min,max)=>{
+   const value=Number(el(id).value.replace(",","."));
+   if(!Number.isFinite(value)||value<min||value>max)throw Error("Параметр Piper "+id+": диапазон "+min+"–"+max);
+   return value;
+  };
   const profile={...state.voiceProfile,
    mode:el("voiceModeSetting").value,speaker:el("voice").value.trim(),
    generationMode:el("voiceGenerationMode").value,seed:Number(el("voiceSeed").value),
    temperature:Number(el("voiceTemperature").value),topP:numericDecimal("voiceTopP",0,1),
    topK:Number(el("voiceTopK").value),repetitionPenalty:Number(el("voicePenalty").value),
-   style:el("voiceStyleSetting").value.trim(),description:el("voiceDescriptionSetting").value.trim()};
+   style:el("voiceStyleSetting").value.trim(),description:el("voiceDescriptionSetting").value.trim(),
+   piperLengthScale:piperValue("piperLengthScale",0.5,2.5),
+   piperNoiseScale:piperValue("piperNoiseScale",0,2),
+   piperNoiseWScale:piperValue("piperNoiseWScale",0,2),
+   piperVolume:piperValue("piperVolume",0,2),
+   piperNormalizeAudio:el("piperNormalizeAudio").checked};
   // Each settings tab can be saved independently. A broken/unconfigured TTS
   // runtime must not prevent an LLM or STT settings change.
   const activePane=document.querySelector("[data-settings-panel]:not([hidden])")?.dataset.settingsPanel;
