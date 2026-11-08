@@ -392,8 +392,7 @@ public partial class MainWindow : Window
         detector.Detected+=(word,score)=>Ui(()=>
         {
             if (!_socket.Connected || !_running || _gate.Capturing ||
-                WakeEnabled.IsChecked!=true ||
-                false)return;
+                WakeEnabled.IsChecked!=true)return;
             Log($"Wake-word: {word} · {score:0.00}");
             BeginCapture(word);
         });
