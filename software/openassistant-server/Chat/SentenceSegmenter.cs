@@ -11,8 +11,8 @@ public sealed class SentenceSegmenter
     /// <summary>находит границу предложения даже при нескольких знаках в одном токене.</summary>
     public string? Push(string token)
     {
-        if (string.IsNullOrEmpty(token)) return null;
-        _buffer.Append(token);
+        if (!string.IsNullOrEmpty(token)) _buffer.Append(token);
+        if (_buffer.Length == 0) return null;
         for (int i = 1; i < _buffer.Length; i++)
         {
             char current = _buffer[i];
@@ -32,6 +32,13 @@ public sealed class SentenceSegmenter
             return phrase.Length > 0 ? phrase : null;
         }
         return null;
+    }
+
+    /// <summary>Returns every complete sentence contained in one LLM token.</summary>
+    public IEnumerable<string> PushAll(string token)
+    {
+        for (string? phrase = Push(token); phrase is not null; phrase = Push(""))
+            yield return phrase;
     }
 
     /// <summary>возвращает остаток ответа после завершения генерации.</summary>
