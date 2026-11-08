@@ -212,6 +212,7 @@ async function pollTtsInstallation(){
  if(ttsInstallPolling)return;
  ttsInstallPolling=true;
  const indicator=el("ttsEngineInstallStatus"),button=el("ttsEngineInstall");
+ button.disabled=true;
  try{
   while(true){
    const status=await api("/api/setup/status");
@@ -247,12 +248,18 @@ async function initTtsChoices(){
  picker.value=selected?.id||"qwen-tts-fast-06";
  picker.onchange=updateVoiceSamplingInputs;
  updateVoiceSamplingInputs();
- el("ttsEngineInstall").onclick=busy(el("ttsEngineInstall"),async()=>{
-  const modelId=picker.value,piper=modelId.startsWith("piper-");
-  const job=await api("/api/setup/tts","POST",{modelId,gpuUuid:piper?"cpu":null});
-  el("ttsEngineInstallStatus").textContent=job.description||"Подготовка модели";
-  void pollTtsInstallation();
- });
+ el("ttsEngineInstall").onclick=async()=>{
+  if(ttsInstallPolling)return;
+  const button=el("ttsEngineInstall");
+  button.disabled=true;
+  try{
+   const modelId=picker.value,piper=modelId.startsWith("piper-");
+   const job=await api("/api/setup/tts","POST",{modelId,gpuUuid:piper?"cpu":null});
+   el("ttsEngineInstallStatus").textContent=job.description||"Подготовка модели";
+   await pollTtsInstallation();
+  }catch(error){toast(error.message,true);}
+  finally{button.disabled=false;}
+ };
  const status=await api("/api/setup/status");
  if(status.jobs?.some(x=>x.role==="tts"&&x.status==="running"))void pollTtsInstallation();
 }
