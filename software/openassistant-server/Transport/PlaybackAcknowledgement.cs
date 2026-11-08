@@ -11,9 +11,9 @@ public sealed class PlaybackAcknowledgement
     private readonly Dictionary<long, string> _issued = new();
     private TaskCompletionSource<Outcome>? _pending;
     private string _lastFailure = "";
-    private long _radioCounter = -1;
+    private long _radioCounter = 1_000_000_000_000;
 
-    public long NextRadioId() => Interlocked.Decrement(ref _radioCounter);
+    public long NextRadioId() => Interlocked.Increment(ref _radioCounter);
 
     public void Begin()
     {
