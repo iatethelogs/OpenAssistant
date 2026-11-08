@@ -148,9 +148,9 @@ public partial class MainWindow : Window
         }
         return Math.Sqrt(energy/count);
     }
-    private async Task NotifyMusicEventAsync(string type, long playbackId)
+    private async Task NotifyMusicEventAsync(string type, long playbackId, string? reason = null)
     {
-        try { await _socket.SendControlAsync(new { type, playbackId }); }
+        try { await _socket.SendControlAsync(new { type, playbackId, reason }); }
         catch (Exception ex) { Ui(() => Log("Состояние музыки: " + ex.Message)); }
     }
 
@@ -369,7 +369,7 @@ public partial class MainWindow : Window
             if(playbackId>0 && playbackId==_musicPlaybackId)
             {
                 _musicPlaybackId=0;
-                _=NotifyMusicEventAsync("media_failed",playbackId);
+                _=NotifyMusicEventAsync("media_failed",playbackId,ex.Message);
             }
         }
     }
