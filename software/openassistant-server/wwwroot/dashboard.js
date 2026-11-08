@@ -171,14 +171,16 @@ function resetToolEditor(){
  editingTool=null;
  el("toolName").disabled=false;el("toolName").value="";el("toolTitle").value="";
  el("toolDescription").value="";el("toolSchema").value=JSON.stringify(emptyToolSchema(),null,2);
- el("toolSchemaPreset").value="none";el("toolEnabled").checked=false;
+ el("toolSchemaPreset").value="none";el("toolSchema").readOnly=true;
+ el("toolEnabled").checked=false;
  el("toolDelete").disabled=true;el("toolMode").textContent="Новый навык";
  el("toolSaveStatus").textContent="";
 }
 function editTool(item){
  editingTool=item.name;el("toolName").value=item.name;el("toolName").disabled=true;
  el("toolTitle").value=item.title;el("toolDescription").value=item.description;
- el("toolSchema").value=JSON.stringify(item.parameters,null,2);el("toolSchemaPreset").value="custom";
+ el("toolSchema").value=JSON.stringify(item.parameters,null,2);
+ el("toolSchemaPreset").value="custom";el("toolSchema").readOnly=false;
  el("toolEnabled").checked=!!item.enabled;el("toolDelete").disabled=false;
  el("toolMode").textContent=item.implemented?"Обработчик подключён":"Обработчик пока не подключён";
  el("toolSaveStatus").textContent="";
