@@ -144,6 +144,23 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
             .Select(x => x.Value));
     }
 
+    private static int EditDistance(string left, string right)
+    {
+        if (left == right) return 0;
+        int[] previous = Enumerable.Range(0, right.Length + 1).ToArray();
+        int[] current = new int[right.Length + 1];
+        for (int i = 1; i <= left.Length; i++)
+        {
+            current[0] = i;
+            for (int j = 1; j <= right.Length; j++)
+                current[j] = Math.Min(Math.Min(
+                    previous[j] + 1, current[j - 1] + 1),
+                    previous[j - 1] + (left[i - 1] == right[j - 1] ? 0 : 1));
+            (previous, current) = (current, previous);
+        }
+        return previous[right.Length];
+    }
+
     private static int MatchScore(string query, string candidate)
     {
         query = NormalizedName(query);
@@ -154,11 +171,22 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
         if (candidate.EndsWith(" " + query, StringComparison.Ordinal)) return 76;
         if (candidate.Contains(" " + query + " ", StringComparison.Ordinal)) return 74;
         if (query.StartsWith(candidate + " ", StringComparison.Ordinal)) return 55;
-        // Autocorrection/transcription errors are common in spoken music names.
-        // Retain Yandex's relevance order for approximate non-exact matches.
         if (candidate.Contains(query, StringComparison.Ordinal)) return 60;
+        if (query.Length >= 5 && candidate.Length >= 5 &&
+            Math.Abs(query.Length - candidate.Length) <= 3)
+        {
+            int distance = EditDistance(query, candidate);
+            int max = Math.Max(query.Length, candidate.Length);
+            if (distance <= 2 && distance * 100 / max <= 25)
+                return Math.Max(65, 90 - distance * 12);
+        }
         return 0;
     }
+
+    private static int MusicMatchScore(string query, YandexTrack track) =>
+        Math.Max(MatchScore(query, track.Title),
+            track.Artists.Length == 0 ? 0 :
+            Math.Min(85, track.Artists.Max(artist => MatchScore(query, artist))));
 
     private sealed record ArtistCandidate(string Id, string Name);
 
@@ -233,8 +261,9 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
         {
             var results = await SearchAsync(query, ct);
             var sorted = results.Select((x, i) =>
-                    new { Track = x, Score = MatchScore(query, x.Title), Index = i })
+                    new { Track = x, Score = MusicMatchScore(query, x), Index = i })
                 .OrderByDescending(x => x.Score).ThenBy(x => x.Index)
+                .Where(x => x.Score >= 55)
                 .Select(x => x.Track).ToArray();
             return new YandexMusicSelection("track", query, sorted);
         }
@@ -266,9 +295,10 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
             if (artistTracks.Tracks.Length > 0) return artistTracks;
         }
 
-        if (rankedSongs.Length > 0)
+        if (bestTrack >= 55)
             return new YandexMusicSelection("track", query,
-                rankedSongs.Select(x => x.Track).ToArray());
+                rankedSongs.Where(x => x.Score >= 55)
+                    .Select(x => x.Track).ToArray());
 
         if (bestArtist >= 60)
             return await ArtistTracksAsync(rankedArtists[0].Artist, ct);
