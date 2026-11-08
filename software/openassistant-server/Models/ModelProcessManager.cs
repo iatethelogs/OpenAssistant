@@ -66,6 +66,7 @@ public sealed class ModelProcessManager(
             if (!profiles.TryGetValue(role, out var profile)) throw new ArgumentException("Профиль модели не сохранён");
             // Upgrade the old wizard default to 64K when the existing model is
             // next restarted. Respect explicitly configured non-default contexts.
+            Validate(role, profile, true);
             bool contextUpgraded = false;
             if (role == "llm")
             {
@@ -76,9 +77,18 @@ public sealed class ModelProcessManager(
                 {
                     profile.Arguments[contextArg + 1] = "65536";
                     contextUpgraded = true;
-                    await File.WriteAllTextAsync(ConfigPath,
-                        JsonSerializer.Serialize(profiles,
-                            new JsonSerializerOptions { WriteIndented = true }), ct);
+                    string temp = ConfigPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                    try
+                    {
+                        await File.WriteAllTextAsync(temp,
+                            JsonSerializer.Serialize(profiles,
+                                new JsonSerializerOptions { WriteIndented = true }), ct);
+                        if (OperatingSystem.IsLinux())
+                            File.SetUnixFileMode(temp,
+                                UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                        File.Move(temp, ConfigPath, overwrite: true);
+                    }
+                    finally { if (File.Exists(temp)) File.Delete(temp); }
                     logger.LogInformation("Migrated default llama.cpp context from 4096 to 65536. " +
                         "64K requires more KV cache memory; reduce it in model settings if startup fails.");
                 }
