@@ -162,9 +162,9 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
             HttpCompletionOption.ResponseHeadersRead, ct);
         if (!response.IsSuccessStatusCode)
         {
-            string body = await response.Content.ReadAsStringAsync(ct);
+            string httpDetail = await response.Content.ReadAsStringAsync(ct);
             throw new InvalidOperationException(
-                $"LLM HTTP {(int)response.StatusCode}: {body[..Math.Min(body.Length, 300)]}");
+                $"LLM HTTP {(int)response.StatusCode}: {httpDetail[..Math.Min(httpDetail.Length, 300)]}");
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
