@@ -169,6 +169,11 @@ function updateVoiceMode(){
  el("designedVoice").classList.toggle("hidden",!design);
  el("presetVoice").classList.toggle("hidden",design||piper);
  el("customStyle").classList.toggle("hidden",!style);
+ const sampling=el("ttsGenerationMode").closest(".guided-options");
+ sampling?.classList.toggle("hidden",piper);
+ sampling?.previousElementSibling?.classList.toggle("hidden",piper);
+ sampling?.nextElementSibling?.classList.toggle("hidden",piper);
+ el("ttsSaveVoice").closest(".inline-actions")?.classList.toggle("hidden",piper);
  el("ttsChoiceHelp").textContent=piper
    ? "Piper синтезирует русскую речь на CPU без VRAM. Голос определяется выбранной моделью."
    :design
