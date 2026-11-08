@@ -308,7 +308,11 @@
 <div class="provider-panel"><span class="provider-symbol">▶</span><strong>YouTube Music</strong><small>Нет подключения</small><span class="provider-state">Недоступно</span></div>
 </div></div>
   <div class="test-grid"><article class="panel"><h2>Поиск радио</h2><label for="radioQuery">Станция</label><div class="button-row"><input id="radioQuery" placeholder="Название станции"><button id="searchRadio" class="button secondary">Найти</button></div><div id="radioResults" class="search-results"></div></article>
-  <article class="panel"><h2>Яндекс Музыка</h2><label for="musicQuery">Название или исполнитель</label><div class="button-row"><input id="musicQuery" placeholder="Поиск композиции"><button id="searchMusic" class="button secondary">Найти</button></div><div id="musicResults" class="search-results"></div></article></div>
+  <article class="panel"><h2>Яндекс Музыка</h2><label for="musicQuery">Название или исполнитель</label><div class="button-row"><input id="musicQuery" placeholder="Поиск композиции"><button id="searchMusic" class="button secondary">Найти</button></div><div id="musicResults" class="search-results"></div>
+     <div class="button-row"><button id="loadYmPlaylists" class="button secondary" type="button">Мои плейлисты</button><button id="playYmLiked" class="button secondary" type="button">Мне нравится</button></div>
+     <label for="ymPlaylistSelect">Плейлист</label>
+     <div class="button-row"><select id="ymPlaylistSelect" aria-label="Плейлист Яндекс Музыки"><option value="">Загрузите плейлисты</option></select><button id="playYmPlaylist" class="button secondary" type="button">Включить плейлист</button></div>
+     </article></div>
   <div class="panel extra-panel"><h2>Браузерный музыкальный плеер</h2>
     <div id="musicCurrent" class="minor">Трек не выбран</div>
     <audio id="mediaPlayer" controls preload="none"></audio>
