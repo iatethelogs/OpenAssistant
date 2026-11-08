@@ -11,7 +11,10 @@ public sealed class VoiceProfileStore(IWebHostEnvironment env)
         string Description = "A calm, friendly, clear Russian-speaking adult voice with natural intonation and moderate pace.",
         string Style = "", string GenerationMode = "seeded", int Seed = 42,
         double Temperature = 0.75, double TopP = 0.9, int TopK = 40,
-        double RepetitionPenalty = 1.05);
+        double RepetitionPenalty = 1.05,
+        double PiperLengthScale = 1.0, double PiperNoiseScale = 0.667,
+        double PiperNoiseWScale = 0.8, double PiperVolume = 1.0,
+        bool PiperNormalizeAudio = true);
     public Profile Read()
     {
         if (!File.Exists(FilePath)) return new Profile();
@@ -35,6 +38,11 @@ public sealed class VoiceProfileStore(IWebHostEnvironment env)
             input.TopK is < 1 or > 200 ||
             !double.IsFinite(input.RepetitionPenalty) || input.RepetitionPenalty is < 1 or > 2)
             throw new ArgumentException("Некорректные параметры генерации TTS");
+        if (!double.IsFinite(input.PiperLengthScale) || input.PiperLengthScale is < 0.5 or > 2.5 ||
+            !double.IsFinite(input.PiperNoiseScale) || input.PiperNoiseScale is < 0 or > 2 ||
+            !double.IsFinite(input.PiperNoiseWScale) || input.PiperNoiseWScale is < 0 or > 2 ||
+            !double.IsFinite(input.PiperVolume) || input.PiperVolume is < 0 or > 2)
+            throw new ArgumentException("Некорректные параметры Piper");
         var clean = input with { Speaker = speaker, Description = description, Style = style };
         await _gate.WaitAsync(ct);
         try
