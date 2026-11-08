@@ -398,6 +398,16 @@ public sealed class AssistantPipeline(
                         await player.EndedAsync(playbackId, disconnected);
                         continue;
                     }
+                    if (kind == "media_started")
+                    {
+                        await player.StartedAsync(root.GetProperty("playbackId").GetInt64(), disconnected);
+                        continue;
+                    }
+                    if (kind == "media_failed")
+                    {
+                        await player.FailedAsync(root.GetProperty("playbackId").GetInt64(), disconnected);
+                        continue;
+                    }
                     if (kind == "media_control")
                     {
                         await player.ControlAsync(root.GetProperty("action").GetString() ?? "", disconnected);
