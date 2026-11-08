@@ -24,12 +24,11 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
         new("music_search", "Поиск Яндекс Музыки", "Найди треки и верни их ID для последующего воспроизведения.", true, false, One("query", "Название или исполнитель")),
         new("music_play", "Включить Яндекс Музыку", "Включи композицию по ID из music_search и продолжай похожими треками.", true, false, One("track_id", "ID трека из music_search")),
         new("music_play_query", "Включить музыку: исполнитель или композиция",
-            "Запускает Яндекс Музыку на колонке. Используй при просьбах включить музыку, исполнителя, группу или песню. "
-            + "Примеры: «включи группу Кино» -> query='Кино', kind='artist'; «поставь Queen» -> query='Queen', kind='artist'; "
-            + "«включи песню Звезда по имени Солнце» -> query='Звезда по имени Солнце', kind='track'. "
-            + "Не вызывай для света, ламп, розеток, телевизоров, Home Assistant или других устройств.", true, false,
+            "Воспроизводит исполнителя или композицию по произвольному названию. " +
+            "kind=artist выбирает исполнителя; kind=track — композицию; " +
+            "kind=auto сравнивает реальные результаты музыкального каталога.", true, false,
             new { type = "object", properties = new {
-                query = new { type = "string", description = "Название музыки, исполнителя либо группы, без слов «включи», «группу» и т. п." },
+                query = new { type = "string", description = "Свободное название композиции или исполнителя" },
                 kind = new { type = "string", @enum = new[] { "artist", "track", "auto" },
                     description = "artist = исполнитель/группа; track = конкретная песня; auto = общий поиск по каталогу." }
             }, required = new[] { "query", "kind" }, additionalProperties = false }),
