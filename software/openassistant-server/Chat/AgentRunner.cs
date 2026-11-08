@@ -12,7 +12,8 @@ public sealed record AgentDelta(string? Text = null, string? Tool = null, object
 
 /// <summary>OpenAI-compatible SSE tool_calls: запрос → вызов навыков → ответ модели.</summary>
 public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<ServerOptions> options,
-    AgentToolService skills, CustomToolStore customTools, ToolRegistry toolRegistry)
+    AgentToolService skills, CustomToolStore customTools, ToolRegistry toolRegistry,
+    ToolIntentPlanner planner, ILogger<AgentRunner> logger)
 {
     private static List<object> NormalizeHistory(IReadOnlyList<ChatMessage> history)
     {
@@ -42,6 +43,10 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
             Если пользователь просит выполнить внешнее действие, выбирай подходящий доступный инструмент
             и вызывай его. Не утверждай, что действие выполнено, пока не получишь результат вызова.
             Различай музыку и управление устройствами по смыслу, а не по одному слову «включи».
+            Настроенный музыкальный провайдер — Яндекс Музыка. Пользователь не обязан
+            называть его при музыкальных запросах. Никогда не спрашивай, какую
+            платформу использовать, когда есть разрешённый музыкальный навык.
+            После успешного результата инструмента кратко сообщи, что воспроизводится.
             «Включи группу Кино» означает музыку исполнителя Кино: вызови music_play_query
             с query="Кино", kind="artist". «Включи песню Звезда по имени Солнце» —
             music_play_query с kind="track". «Включи свет» относится к Home Assistant,
@@ -72,6 +77,9 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
         var messages = NormalizeHistory(history);
         int executed = 0;
         bool toolsSupported = true;
+        bool planFurther = true;
+        var completedTools = new List<object>();
+        var plannedSignatures = new HashSet<string>(StringComparer.Ordinal);
         for (int round = 0; round < 5; round++)
         {
             SkillDefinition[] enabled = toolsSupported
@@ -87,6 +95,66 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
                 type = "function", function = new {
                     name = x.Name, description = x.Description, parameters = (object)x.Parameters }
             })).ToArray();
+            // First, ask the LLM to decide intent in a short structured step.
+            // Native tool_choice=auto is unreliable with some local models:
+            // they can simply answer "which music service?" despite having
+            // received the tool list. This planner chooses an action or "none".
+            if (planFurther && offeredTools.Length > 0)
+            {
+                ToolIntentPlanner.Plan? decision = null;
+                try
+                {
+                    decision = await planner.DecideAsync(history, enabled, custom,
+                        completedTools, ct);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or
+                    InvalidOperationException or JsonException or TaskCanceledException)
+                {
+                    if (ct.IsCancellationRequested) throw;
+                    logger.LogWarning(ex, "Tool intent planning unavailable; using native tool calls");
+                }
+
+                if (decision is not null)
+                {
+                    var signature = decision.Name + ":" + decision.Arguments.GetRawText();
+                    if (!plannedSignatures.Add(signature))
+                    {
+                        logger.LogWarning("Planner attempted repeated identical tool {Tool}; falling back to final response", decision.Name);
+                        planFurther = false;
+                        toolsSupported = false;
+                        continue;
+                    }
+                    if (++executed > 8)
+                        throw new InvalidOperationException("Превышен лимит вызовов инструментов");
+                    var toolResult = await InvokeToolAsync(decision.Name,
+                        decision.Arguments, custom, ct);
+                    string callId = "planned_" + round;
+                    messages.Add(new
+                    {
+                        role = "assistant", content = "",
+                        tool_calls = new[] { new {
+                            id = callId, type = "function",
+                            function = new { name = decision.Name,
+                                arguments = decision.Arguments.GetRawText() }
+                        } }
+                    });
+                    messages.Add(new { role = "tool", tool_call_id = callId,
+                        content = JsonSerializer.Serialize(toolResult.Result) });
+                    completedTools.Add(new { tool = decision.Name, result = toolResult.Result });
+                    yield return new AgentDelta(Tool: decision.Name,
+                        Result: toolResult.Result, Media: toolResult.Media);
+                    // A playback/control command already produces its side
+                    // effect; avoid repeating it when composing the final reply.
+                    if (toolResult.Media is not null)
+                    {
+                        planFurther = false;
+                        toolsSupported = false;
+                    }
+                    continue;
+                }
+                planFurther = false;
+            }
+
             var cfg = options.CurrentValue;
             object payload = offeredTools.Length > 0
                 ? new {
@@ -227,33 +295,52 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
             {
                 executed++;
                 object result;
-                object? media = null;
+                object? media;
                 try
                 {
-                    using var args = JsonDocument.Parse(call.function.arguments);
-                    using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    limit.CancelAfter(TimeSpan.FromSeconds(
-                        call.function.name.StartsWith("music_", StringComparison.Ordinal) ? 40 : 15));
-                    if (custom.Any(x => x.Name == call.function.name))
-                    {
-                        if (toolRegistry.Names().Contains(call.function.name, StringComparer.OrdinalIgnoreCase))
-                            result = await toolRegistry.InvokeAsync(call.function.name, args.RootElement, limit.Token);
-                        else
-                            result = new { error = "Обработчик этого инструмента ещё не подключён", implemented = false };
-                    }
-                    else
-                    {
-                        var action = await skills.ExecuteAsync(call.function.name, args.RootElement, limit.Token);
-                        result = action.Result;
-                        media = action.Media;
-                    }
+                    using var parsedArgs = JsonDocument.Parse(call.function.arguments);
+                    var execution = await InvokeToolAsync(call.function.name,
+                        parsedArgs.RootElement, custom, ct);
+                    result = execution.Result;
+                    media = execution.Media;
                 }
-                catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
-                    HttpRequestException or JsonException or OperationCanceledException or InvalidDataException)
-                { result = new { error = ex.Message }; }
+                catch (JsonException ex)
+                {
+                    result = new { error = "Неверные параметры вызова: " + ex.Message };
+                    media = null;
+                }
                 yield return new AgentDelta(Tool: call.function.name, Result: result, Media: media);
-                messages.Add(new { role = "tool", tool_call_id = call.id, content = JsonSerializer.Serialize(result) });
+                messages.Add(new { role = "tool", tool_call_id = call.id,
+                    content = JsonSerializer.Serialize(result) });
             }
         }
     }
+    private async Task<(object Result, object? Media)> InvokeToolAsync(
+        string name, JsonElement args,
+        IReadOnlyList<CustomToolDefinition> allowedCustom, CancellationToken ct)
+    {
+        try
+        {
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            limit.CancelAfter(TimeSpan.FromSeconds(name.StartsWith("music_", StringComparison.Ordinal)
+                ? 40 : 15));
+            if (allowedCustom.Any(x => x.Name == name))
+            {
+                if (toolRegistry.Names().Contains(name, StringComparer.OrdinalIgnoreCase))
+                    return (await toolRegistry.InvokeAsync(name, args, limit.Token), null);
+                return (new { error = "Обработчик этого инструмента ещё не подключён",
+                    implemented = false }, null);
+            }
+            var action = await skills.ExecuteAsync(name, args, limit.Token);
+            return (action.Result, action.Media);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
+            HttpRequestException or JsonException or OperationCanceledException or InvalidDataException)
+        {
+            if (ct.IsCancellationRequested) throw;
+            logger.LogWarning(ex, "Tool invocation {Tool} failed", name);
+            return (new { error = ex.Message }, null);
+        }
+    }
+
 }

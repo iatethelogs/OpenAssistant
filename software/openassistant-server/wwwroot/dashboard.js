@@ -608,6 +608,38 @@ function drawSearch(results,target,play){
 }
 const browserPlayer=el("mediaPlayer");
 let browserQueue=[],browserIndex=-1,browserSource="",browserEpoch=0;
+let chatMediaPlaybackId=0,chatMediaStartedId=0;
+function notifyChatMedia(type,playbackId=chatMediaPlaybackId){
+ if(playbackId&&chatSocket?.readyState===WebSocket.OPEN)
+  chatSocket.send(JSON.stringify({type,playbackId}));
+}
+async function playChatMedia(msg){
+ browserEpoch++;browserSource="chat";browserQueue=[];browserIndex=-1;
+ renderBrowserQueue();
+ chatMediaPlaybackId=Number(msg.playbackId)||0;chatMediaStartedId=0;
+ el("musicCurrent").textContent=msg.title||"Музыка";
+ browserPlayer.src=msg.url;
+ try{await browserPlayer.play()}
+ catch(error){
+  if(error.name==="NotAllowedError"){
+   toast("Автовоспроизведение запрещено браузером. Нажмите Play в разделе «Музыка».",true);return;
+  }
+  const failed=chatMediaPlaybackId;chatMediaPlaybackId=0;
+  notifyChatMedia("media_failed",failed);
+  toast("Ошибка воспроизведения: "+error.message,true);
+ }
+}
+browserPlayer.addEventListener("playing",()=>{
+ if(browserSource==="chat"&&chatMediaPlaybackId&&chatMediaStartedId!==chatMediaPlaybackId){
+  chatMediaStartedId=chatMediaPlaybackId;
+  notifyChatMedia("media_started");
+ }
+});
+browserPlayer.addEventListener("error",()=>{
+ if(browserSource==="chat"&&chatMediaPlaybackId){
+  const failed=chatMediaPlaybackId;chatMediaPlaybackId=0;notifyChatMedia("media_failed",failed);
+ }
+});
 function renderBrowserQueue(){
  const list=el("musicQueue");list.replaceChildren();
  for(const [i,track] of browserQueue.slice(0,40).entries()){
@@ -646,12 +678,31 @@ async function browserNext(){
  }
  await playBrowserTrack(browserIndex+1);
 }
-browserPlayer.addEventListener("ended",()=>{void browserNext().catch(e=>toast(e.message,true))});
-el("musicPrev").onclick=busy(el("musicPrev"),async()=>{if(browserSource==="yandex")await playBrowserTrack(Math.max(0,browserIndex-1))});
-el("musicNext").onclick=busy(el("musicNext"),browserNext);
-el("musicPause").onclick=busy(el("musicPause"),async()=>{if(!browserPlayer.src)return;if(browserPlayer.paused)await browserPlayer.play();else browserPlayer.pause()});
+browserPlayer.addEventListener("ended",()=>{
+ if(browserSource==="chat"&&chatMediaPlaybackId){
+  const ended=chatMediaPlaybackId;chatMediaPlaybackId=0;notifyChatMedia("media_ended",ended);
+ }else void browserNext().catch(e=>toast(e.message,true));
+});
+el("musicPrev").onclick=busy(el("musicPrev"),async()=>{
+ if(browserSource==="chat"&&chatSocket?.readyState===WebSocket.OPEN)
+  chatSocket.send(JSON.stringify({type:"media_control",action:"previous"}));
+ else if(browserSource==="yandex")await playBrowserTrack(Math.max(0,browserIndex-1));
+});
+el("musicNext").onclick=busy(el("musicNext"),async()=>{
+ if(browserSource==="chat"&&chatSocket?.readyState===WebSocket.OPEN)
+  chatSocket.send(JSON.stringify({type:"media_control",action:"next"}));
+ else await browserNext();
+});
+el("musicPause").onclick=busy(el("musicPause"),async()=>{
+ if(!browserPlayer.src)return;
+ if(browserSource==="chat"&&chatSocket?.readyState===WebSocket.OPEN)
+  chatSocket.send(JSON.stringify({type:"media_control",action:browserPlayer.paused?"resume":"pause"}));
+ else if(browserPlayer.paused)await browserPlayer.play();else browserPlayer.pause();
+});
 el("musicStop").onclick=()=>{
- browserEpoch++;browserSource="";browserPlayer.pause();browserPlayer.removeAttribute("src");
+ if(browserSource==="chat"&&chatSocket?.readyState===WebSocket.OPEN)
+  chatSocket.send(JSON.stringify({type:"media_control",action:"stop"}));
+ chatMediaPlaybackId=0;browserEpoch++;browserSource="";browserPlayer.pause();browserPlayer.removeAttribute("src");
  browserPlayer.load();browserIndex=-1;browserQueue=[];el("musicCurrent").textContent="Трек не выбран";renderBrowserQueue();
 };
 el("searchRadio").onclick=busy(el("searchRadio"),async()=>{
@@ -749,6 +800,21 @@ function connectChat(auto=false){
    let msg;try{msg=JSON.parse(event.data)}catch{return}
    if(msg.type==="transcript")chatAppend("\nВы: "+msg.text+"\nАссистент: ");
    else if(msg.type==="profile")el("chatStatus").textContent="Подключено · "+msg.name;
+   else if(msg.type==="play_media"){
+    void playChatMedia(msg);
+    chatAppend("\n[Музыка] "+(msg.title||"Воспроизведение")+"\n");
+   }
+   else if(msg.type==="pause_media"){if(browserSource==="chat")browserPlayer.pause();}
+   else if(msg.type==="resume_media"){if(browserSource==="chat")browserPlayer.play().catch(()=>{});}
+   else if(msg.type==="stop_media"){
+    if(browserSource==="chat"){chatMediaPlaybackId=0;browserPlayer.pause();browserPlayer.removeAttribute("src");browserPlayer.load();}
+   }
+   else if(msg.type==="media_status"){
+    if(msg.source==="yandex_music"&&msg.active)el("musicQueueStatus").textContent=
+      "Устройство: "+(msg.track?.title||"трек")+" · "+(Number(msg.index)+1)+"/"+msg.total;
+   }
+   else if(msg.type==="media_error"){chatAppend("\nОшибка музыки: "+(msg.message||"Недоступный трек")+"\n");}
+   else if(msg.type==="tool_result"){chatAppend("\n[Навык: "+msg.name+"] "+JSON.stringify(msg.result).slice(0,350)+"\n");}
    else if(msg.type==="text"){chatAppend(msg.delta||"");el("chatStatus").textContent="Ответ ассистента"}
    else if(msg.type==="audio_start"){chatBuffer=[];chatSampleRate=msg.sampleRate||24000}
    else if(msg.type==="audio_end"){

@@ -27,6 +27,7 @@ builder.Services.AddSingleton<ModelProcessManager>();
 builder.Services.AddSingleton<ModelDownloadManager>();
 builder.Services.AddSingleton<AgentToolService>();
 builder.Services.AddSingleton<CustomToolStore>();
+builder.Services.AddSingleton<ToolIntentPlanner>();
 builder.Services.AddSingleton<AgentRunner>();
 builder.Services.AddSingleton<ConversationMemoryStore>();
 builder.Services.AddSingleton<VerifiedHomeAssistantService>();

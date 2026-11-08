@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Text.Json;
+using OpenAssistant.Server.Monitoring;
 
 namespace OpenAssistant.Server.Models;
 
@@ -373,8 +374,11 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
                     Path.GetDirectoryName(x) == Path.Combine(Root, "piper") &&
                     File.Exists(x + ".json")))
         {
-            result.Add(new { role = "tts", name = Path.GetFileNameWithoutExtension(file),
-                path = file, repo = "rhasspy/piper-voices", source = "piper-cache",
+            string name = Path.GetFileNameWithoutExtension(file);
+            string repo = GuidedModelCatalog.All.FirstOrDefault(x =>
+                x.Id.StartsWith("piper-", StringComparison.Ordinal) && x.File == name)?.Repo
+                ?? "local/piper";
+            result.Add(new { role = "tts", name, path = file, repo, source = "piper-cache",
                 removable = false, bytes = SafeSize(file) + SafeSize(file + ".json") });
         }
 
