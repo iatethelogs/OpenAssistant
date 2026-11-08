@@ -31,7 +31,11 @@ public static class GuidedModelCatalog
         new("qwen-tts-fast-17", "tts", "Faster Qwen3-TTS · 1.7B", "Более качественная речь · готовые голоса и управление манерой", "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", "", 4.5, "FP16", false, true),
         new("qwen-tts-fast-design", "tts", "Faster Qwen3-TTS · VoiceDesign", "Создание тембра по текстовому описанию · 1.7B", "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign", "", 5.0, "FP16", false, true),
         new("qwen-tts-06", "tts", "Qwen3-TTS · 0.6B", "Обычный движок · готовые голоса", "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", "", 2.5, "FP16", false, false),
-        new("qwen-tts-design", "tts", "Qwen3-TTS · VoiceDesign 1.7B", "Обычный движок · голос по описанию", "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign", "", 5.0, "FP16", false, false)
+        new("qwen-tts-design", "tts", "Qwen3-TTS · VoiceDesign 1.7B", "Обычный движок · голос по описанию", "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign", "", 5.0, "FP16", false, false),
+        new("piper-denis", "tts", "Piper · Денис (русский)", "Локальный быстрый CPU-синтез · без видеопамяти", "rhasspy/piper-voices", "ru_RU-denis-medium", 0.07, "ONNX · CPU", false, true),
+        new("piper-dmitri", "tts", "Piper · Дмитрий (русский)", "Локальный быстрый CPU-синтез · без видеопамяти", "rhasspy/piper-voices", "ru_RU-dmitri-medium", 0.07, "ONNX · CPU", false, true),
+        new("piper-irina", "tts", "Piper · Ирина (русский)", "Локальный быстрый CPU-синтез · без видеопамяти", "rhasspy/piper-voices", "ru_RU-irina-medium", 0.07, "ONNX · CPU", false, true),
+        new("piper-ruslan", "tts", "Piper · Руслан (русский)", "Локальный быстрый CPU-синтез · без видеопамяти", "rhasspy/piper-voices", "ru_RU-ruslan-medium", 0.07, "ONNX · CPU", false, true)
     ];
     public static Choice Require(string id, string role) =>
         All.FirstOrDefault(x => x.Id == id && x.Role == role)
@@ -151,7 +155,10 @@ public sealed class GuidedSetupService(
                 throw new InvalidOperationException("Подготовка этой модели уже выполняется");
             _jobs[role] = j;
         }
-        _ = Task.Run(() => ExecuteAsync(j, choice, input.GpuUuid == "cpu" ? null : input.GpuUuid, input.GpuUuid == "cpu", input.ContextSize ?? 4096, input.Temperature ?? 0.5));
+        bool cpuOnly = choice.Id.StartsWith("piper-", StringComparison.Ordinal);
+        _ = Task.Run(() => ExecuteAsync(j, choice,
+            cpuOnly || input.GpuUuid == "cpu" ? null : input.GpuUuid,
+            cpuOnly || input.GpuUuid == "cpu", input.ContextSize ?? 4096, input.Temperature ?? 0.5));
         return Snapshot(j);
     }
     private static GuidedModelCatalog.Choice ParseCustomModel(string supplied)
@@ -328,7 +335,9 @@ public sealed class GuidedSetupService(
             if (!File.Exists(python))
                 throw new InvalidOperationException("Не удалось установить системный Python");
         }
-        string adapter = Path.Combine(env.ContentRootPath, "Runtimes", j.Role == "stt" ? "gigaam_adapter.py" : "qwen_tts_adapter.py");
+        bool piper = j.Role == "tts" && choice.Id.StartsWith("piper-", StringComparison.Ordinal);
+        string adapter = Path.Combine(env.ContentRootPath, "Runtimes",
+            j.Role == "stt" ? "gigaam_adapter.py" : piper ? "piper_tts_adapter.py" : "qwen_tts_adapter.py");
         if (!File.Exists(adapter)) throw new FileNotFoundException("Нет адаптера нейросети", adapter);
         Stage(j, "install", "Проверяем синтаксис адаптера");
         var syntaxFiles = j.Role == "stt"
@@ -337,7 +346,22 @@ public sealed class GuidedSetupService(
         await RunCommandAsync(j, python, ["-m", "py_compile", ..syntaxFiles], env.ContentRootPath, ct, 30);
         if (j.Role == "tts")
         {
-            await InstallTtsDependenciesAsync(j, python,
+            if (piper)
+            {
+                Stage(j, "install", "Проверяем Piper и ONNX Runtime");
+                try { await RunCommandAsync(j, python, ["-m", "pip", "--version"], env.ContentRootPath, ct, 30); }
+                catch (InvalidOperationException) { await InstallAptAsync(j, ["python3-pip"], ct); }
+                string probe = "from piper import PiperVoice; import numpy, scipy, onnxruntime; print('Piper OK')";
+                try { await RunCommandAsync(j, python, ["-c", probe], env.ContentRootPath, ct, 45); }
+                catch (InvalidOperationException)
+                {
+                    await RunCommandAsync(j, python, ["-m", "pip", "install", "--break-system-packages",
+                        "--root-user-action=ignore", "--no-input", "--upgrade-strategy", "only-if-needed",
+                        "piper-tts==1.8.0", "scipy"], env.ContentRootPath, ct, 900);
+                    await RunCommandAsync(j, python, ["-c", probe], env.ContentRootPath, ct, 45);
+                }
+            }
+            else await InstallTtsDependenciesAsync(j, python,
                 choice.Id.StartsWith("qwen-tts-fast-", StringComparison.Ordinal), ct);
         }
         else
@@ -371,12 +395,13 @@ public sealed class GuidedSetupService(
         string port = j.Role == "stt" ? "8016" : "8020";
         var profile = new ModelLaunchProfile {
             Executable = python, WorkingDirectory = env.ContentRootPath,
-            ModelPath = adapter, GpuUuids = gpu is null ? [] : [gpu], Gpus = [],
+            ModelPath = adapter, DisplayName = choice.Name,
+            GpuUuids = gpu is null ? [] : [gpu], Gpus = [],
             HealthUrl = $"http://127.0.0.1:{port}/health",
             Arguments = [adapter, "--port", port],
             Environment = new Dictionary<string,string> {
                 ["OPENASSISTANT_DEVICE"] = gpu is null ? "cpu" : "cuda",
-                ["OPENASSISTANT_MODEL"] = j.Role == "stt" ? "v3_e2e_rnnt" : choice.Repo,
+                ["OPENASSISTANT_MODEL"] = j.Role == "stt" ? "v3_e2e_rnnt" : piper ? choice.File : choice.Repo,
                 ["OPENASSISTANT_TTS_ENGINE"] = choice.Id.StartsWith("qwen-tts-fast-", StringComparison.Ordinal) && gpu is not null ? "faster" : "official"
             }
         };
@@ -430,7 +455,7 @@ public sealed class GuidedSetupService(
         }
         if (j.Role == "tts")
         {
-            var test = await diagnostics.TestTtsAsync("Здравствуйте! Голосовой синтез готов.", "Ryan", null, ct);
+            var test = await diagnostics.TestTtsAsync("Здравствуйте! Голосовой синтез готов.", piper ? null : "Ryan", null, ct);
             lock (_gate) j.TestResult = JsonSerializer.Serialize(new {
                 milliseconds = test.Milliseconds, duration = test.DurationSeconds, rtf = test.Rtf });
         }
