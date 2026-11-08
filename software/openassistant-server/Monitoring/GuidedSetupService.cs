@@ -151,7 +151,7 @@ public sealed class GuidedSetupService(
         var choice = !string.IsNullOrWhiteSpace(input.ModelUrl) && role == "llm"
             ? ParseCustomModel(input.ModelUrl)
             : GuidedModelCatalog.Require(input.ModelId, role);
-        if (role == "llm" && (input.ContextSize is < 512 or > 32768 || input.Temperature is < 0 or > 2))
+        if (role == "llm" && (input.ContextSize is < 512 or > 65536 || input.Temperature is < 0 or > 2))
             throw new ArgumentException("Контекст или температура вне допустимого диапазона");
         if (!string.IsNullOrEmpty(input.GpuUuid) && input.GpuUuid != "cpu" &&
             !System.Text.RegularExpressions.Regex.IsMatch(input.GpuUuid, @"^GPU-[A-Za-z0-9-]{8,80}$"))
@@ -166,7 +166,7 @@ public sealed class GuidedSetupService(
         bool cpuOnly = choice.Id.StartsWith("piper-", StringComparison.Ordinal);
         _ = Task.Run(() => ExecuteAsync(j, choice,
             cpuOnly || input.GpuUuid == "cpu" ? null : input.GpuUuid,
-            cpuOnly || input.GpuUuid == "cpu", input.ContextSize ?? 4096, input.Temperature ?? 0.5));
+            cpuOnly || input.GpuUuid == "cpu", input.ContextSize ?? 65536, input.Temperature ?? 0.5));
         return Snapshot(j);
     }
     private static GuidedModelCatalog.Choice ParseCustomModel(string supplied)
