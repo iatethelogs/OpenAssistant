@@ -48,7 +48,7 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
                 filter = new { type = "string", description = "Часть имени или entity_id, можно оставить пустым" }
             }, required = new[] { "filter" }, additionalProperties = false }),
         new("ha_get_state", "Состояние устройства", "Узнай состояние конкретного entity_id Home Assistant.", true, false, One("entity_id", "Например light.kitchen")),
-        new("ha_call_service", "Управление Home Assistant", "Выполни явно запрошенное пользователем действие с устройством. Доступно только после включения администратором.", false, true,
+        new("ha_call_service", "Управление Home Assistant", "Выполняй только явно запрошенные пользователем действия над устройством Home Assistant; для информационных вопросов используй чтение состояния. Управление разрешается отдельно в настройках.", false, true,
             new { type = "object", properties = new {
                 domain = new { type = "string", description = "Домен, например light" },
                 service = new { type = "string", description = "Например turn_on" },
@@ -99,7 +99,7 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
         return await ListAsync(ct);
     }
 
-    public async Task<AgentAction> ExecuteAsync(string name, JsonElement args, CancellationToken ct, string? userRequest = null)
+    public async Task<AgentAction> ExecuteAsync(string name, JsonElement args, CancellationToken ct)
     {
         var skills = await ListAsync(ct);
         if (!skills.Any(s => s.Name == name && s.Enabled))
@@ -205,10 +205,9 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
             }
             case "ha_call_service":
             {
-                if (string.IsNullOrWhiteSpace(userRequest) ||
-                    !Regex.IsMatch(userRequest, @"\b(?:включи(?:те)?|выключи(?:те)?|открой(?:те)?|закрой(?:те)?|зажги(?:те)?|погаси(?:те)?|останови(?:те)?)\b|\bпоставь на паузу\b",
-                        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-                    throw new InvalidOperationException("Нет явной просьбы пользователя на управление устройством");
+                // The LLM chooses the operation; this executor validates the
+                // explicit per-tool permission, domain, service and entity ID.
+                // No natural-language keyword checks run after a tool call.
                 string domain = Arg(args, "domain"), service = Arg(args, "service"), entity = Arg(args, "entity_id");
                 if (!Regex.IsMatch(entity, @"^[a-z_]+\.[a-z0-9_]+$") ||
                     !Regex.IsMatch(domain, @"^[a-z_]+$") || !Regex.IsMatch(service, @"^[a-z_]+$"))
