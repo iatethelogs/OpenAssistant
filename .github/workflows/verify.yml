@@ -1,11 +1,8 @@
 name: Verify OpenAssistant
 
+# Manual only. This repository must not launch builds on every pull request:
+# the maintainer prefers running local checks without GitHub notifications.
 on:
-  pull_request:
-    paths:
-      - 'software/openassistant-server/**'
-      - 'software/openassistant-simulator/**'
-      - '.github/workflows/verify.yml'
   workflow_dispatch:
 
 permissions:
