@@ -219,7 +219,8 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
                 {
                     using var args = JsonDocument.Parse(call.function.arguments);
                     using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    limit.CancelAfter(TimeSpan.FromSeconds(15));
+                    limit.CancelAfter(TimeSpan.FromSeconds(
+                        call.function.name.StartsWith("music_", StringComparison.Ordinal) ? 40 : 15));
                     if (custom.Any(x => x.Name == call.function.name))
                     {
                         if (toolRegistry.Names().Contains(call.function.name, StringComparer.OrdinalIgnoreCase))

@@ -46,7 +46,12 @@ public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<Se
             temperature = voiceProfile.Temperature,
             top_p = voiceProfile.TopP,
             top_k = voiceProfile.TopK,
-            repetition_penalty = voiceProfile.RepetitionPenalty
+            repetition_penalty = voiceProfile.RepetitionPenalty,
+            length_scale = voiceProfile.PiperLengthScale,
+            noise_scale = voiceProfile.PiperNoiseScale,
+            noise_w_scale = voiceProfile.PiperNoiseWScale,
+            volume = voiceProfile.PiperVolume,
+            normalize_audio = voiceProfile.PiperNormalizeAudio
         });
         using var content = new ByteArrayContent(json);
         content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");

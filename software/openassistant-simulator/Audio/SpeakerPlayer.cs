@@ -13,11 +13,17 @@ public sealed class SpeakerPlayer : IDisposable
     private WaveOut? _musicOutput;
     private MediaFoundationReader? _mediaReader;
     private long _musicVersion;
-    private bool _pausedByAssistant;
+    private bool _duckedByAssistant;
+    private bool _pausedByUser;
+    public event Action? MusicEnded;
     public bool SpeechActive => _speechOutput is not null;
     public bool MusicActive
     {
         get { lock (_musicLock) return _musicOutput?.PlaybackState == PlaybackState.Playing; }
+    }
+    public bool MusicPresent
+    {
+        get { lock (_musicLock) return _musicOutput is not null; }
     }
 
     public void BeginSpeech(int rate)
@@ -69,24 +75,44 @@ public sealed class SpeakerPlayer : IDisposable
         _speechBuffer = null;
     }
 
+    /// <summary>Duck background music without losing playback position or pausing its decoder.</summary>
     public void DuckMusic()
     {
         lock (_musicLock)
         {
-            if (_musicOutput?.PlaybackState == PlaybackState.Playing)
-            {
-                _musicOutput.Pause();
-                _pausedByAssistant = true;
-            }
+            if (_musicOutput is null) return;
+            _musicOutput.Volume = 0.18f;
+            _duckedByAssistant = true;
         }
     }
+
     public void ResumeMusic()
     {
         lock (_musicLock)
         {
-            if (!_pausedByAssistant) return;
-            _pausedByAssistant = false;
-            _musicOutput?.Play();
+            if (!_duckedByAssistant) return;
+            _duckedByAssistant = false;
+            if (_musicOutput is not null) _musicOutput.Volume = 1.0f;
+        }
+    }
+
+    public void PauseMusic()
+    {
+        lock (_musicLock)
+        {
+            if (_musicOutput?.PlaybackState != PlaybackState.Playing) return;
+            _pausedByUser = true;
+            _musicOutput.Pause();
+        }
+    }
+
+    public void ResumeMusicPlayback()
+    {
+        lock (_musicLock)
+        {
+            if (_musicOutput is null || !_pausedByUser) return;
+            _pausedByUser = false;
+            _musicOutput.Play();
         }
     }
 
@@ -109,6 +135,12 @@ public sealed class SpeakerPlayer : IDisposable
             {
                 var output = new WaveOut { BufferMilliseconds = 120 };
                 output.Init(reader);
+                // Do not emit completion for a manually stopped/replaced track.
+                output.PlaybackStopped += (_, e) =>
+                {
+                    if (e.Exception is not null || version != Volatile.Read(ref _musicVersion)) return;
+                    MusicEnded?.Invoke();
+                };
                 _mediaReader = reader;
                 _musicOutput = output;
                 output.Play();
@@ -133,7 +165,8 @@ public sealed class SpeakerPlayer : IDisposable
     }
     private void StopMusicCore()
     {
-        _pausedByAssistant = false;
+        _duckedByAssistant = false;
+        _pausedByUser = false;
         _musicOutput?.Stop();
         _musicOutput?.Dispose();
         _musicOutput = null;

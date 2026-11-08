@@ -123,7 +123,7 @@
                  <StackPanel><TextBlock Text="Имя" Style="{StaticResource FieldLabel}"/><TextBox x:Name="WakeName" Text="Мартин"/></StackPanel>
                  <StackPanel Grid.Column="2"><TextBlock Text="Порог" Style="{StaticResource FieldLabel}"/><TextBox x:Name="WakeThreshold" Text="0.87"/></StackPanel>
                </Grid>
-               <CheckBox x:Name="BargeInOnMusic" Content="Разрешать активацию во время музыки"/>
+               <CheckBox x:Name="BargeInOnMusic" Content="Приглушать музыку при «Мартин»" IsChecked="True"/>
                
              </StackPanel>
            </Border>
@@ -174,7 +174,12 @@
    <Border Grid.Row="3" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}"
            BorderThickness="1" CornerRadius="9" Padding="11,10">
      <DockPanel>
-       <Button Content="Остановить музыку" DockPanel.Dock="Right" Click="StopMusic_Click" Margin="10,0,0,0"/>
+       <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+         <Button Content="Предыдущий" Tag="previous" Click="MusicControl_Click" Margin="0,0,6,0"/>
+         <Button Content="Пауза / играть" Tag="toggle" Click="MusicControl_Click" Margin="0,0,6,0"/>
+         <Button Content="Следующий" Tag="next" Click="MusicControl_Click" Margin="0,0,6,0"/>
+         <Button Content="Остановить" Click="StopMusic_Click"/>
+       </StackPanel>
        <TextBlock x:Name="MusicText" Text="Музыка не воспроизводится" VerticalAlignment="Center"
                   TextTrimming="CharacterEllipsis"/>
      </DockPanel>

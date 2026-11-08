@@ -22,7 +22,18 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
         new("radio_search", "Поиск радио", "Найди радиостанцию по названию или жанру, верни список.", true, false, One("query", "Поисковый запрос")),
         new("radio_play", "Включить радио", "Найди станцию и начни воспроизведение на устройстве.", true, false, One("query", "Название станции")),
         new("music_search", "Поиск Яндекс Музыки", "Найди треки и верни их ID для последующего воспроизведения.", true, false, One("query", "Название или исполнитель")),
-        new("music_play", "Включить Яндекс Музыку", "Включи композицию по ID из music_search.", true, false, One("track_id", "ID трека из music_search")),
+        new("music_play", "Включить Яндекс Музыку", "Включи композицию по ID из music_search и продолжай похожими треками.", true, false, One("track_id", "ID трека из music_search")),
+        new("music_play_query", "Воспроизведение музыки по названию", "Найди и сразу включи музыку по названию, исполнителю или жанру; создай очередь треков.", true, false, One("query", "Что включить: название трека, исполнитель или жанр")),
+        new("music_play_liked", "Включить понравившиеся композиции", "Включи из Яндекс Музыки плейлист «Мне нравится» пользователя с автопереходом на следующую песню.", true, false,
+            new { type = "object", properties = new { }, required = Array.Empty<string>(), additionalProperties = false }),
+        new("music_list_playlists", "Список плейлистов Яндекс Музыки", "Получить названия и идентификаторы плейлистов авторизованного пользователя.", true, false,
+            new { type = "object", properties = new { }, required = Array.Empty<string>(), additionalProperties = false }),
+        new("music_play_playlist", "Включить плейлист Яндекс Музыки", "Включить плейлист пользователя по ID из music_list_playlists и продолжать воспроизведение.", true, false, One("kind", "Идентификатор плейлиста")),
+        new("music_control", "Управление музыкальным плеером", "Пауза, продолжение, следующий, предыдущий, остановка или статус очереди на текущей колонке.", true, false,
+            new { type = "object", properties = new {
+                action = new { type = "string", @enum = new[] { "pause", "resume", "next", "previous", "stop", "status" },
+                    description = "pause: пауза; resume: продолжить; next: следующий; previous: предыдущий; stop: остановить; status: состояние" }
+            }, required = new[] { "action" }, additionalProperties = false }),
         new("ha_list_entities", "Устройства Home Assistant", "Найди реальные устройства и их состояния без угадывания идентификаторов.", true, false,
             new { type = "object", properties = new {
                 filter = new { type = "string", description = "Часть имени или entity_id, можно оставить пустым" }
@@ -115,14 +126,50 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
                 var found = await music.SearchAsync(Arg(args, "query"), ct);
                 return new AgentAction(found.Take(8).ToArray());
             }
+            case "music_play_query":
+            {
+                var found = await music.SearchAsync(Arg(args, "query"), ct);
+                if (found.Length == 0) return new AgentAction(new { error = "Ничего не найдено" });
+                return new AgentAction(new { playing = found[0].Title, queued = found.Length },
+                    new { type = "music_queue", tracks = found });
+            }
             case "music_play":
             {
                 string id = Arg(args, "track_id");
                 if (!Regex.IsMatch(id, @"^\d+(?::\d+)?$")) throw new ArgumentException("Некорректный ID трека");
-                var playable = await music.ResolveAsync(id, ct);
-                return new AgentAction(new { playing = id, codec = playable.Codec },
-                    new { type = "play_media", url = playable.Url, title = "Яндекс Музыка", source = "yandex_music",
-                        codec = playable.Codec, bitrateKbps = playable.BitrateKbps });
+                var similar = await music.SimilarAsync(id, ct);
+                var selected = similar.FirstOrDefault(t => t.Id == id) ??
+                    new YandexTrack(id, "Выбранный трек", []);
+                var queue = new[] { selected }.Concat(similar.Where(t => t.Id != id))
+                    .DistinctBy(t => t.Id).Take(50).ToArray();
+                return new AgentAction(new { playing = selected.Title, queued = queue.Length },
+                    new { type = "music_queue", tracks = queue });
+            }
+            case "music_play_liked":
+            {
+                var liked = await music.LikedTracksAsync(ct);
+                if (liked.Length == 0) return new AgentAction(new { error = "Нет понравившихся треков" });
+                return new AgentAction(new { playing = "Мне нравится", queued = liked.Length },
+                    new { type = "music_queue", tracks = liked });
+            }
+            case "music_list_playlists":
+                return new AgentAction(await music.PlaylistsAsync(ct));
+            case "music_play_playlist":
+            {
+                string kind = Arg(args, "kind");
+                if (!Regex.IsMatch(kind, @"^\d{1,12}$")) throw new ArgumentException("Некорректный ID плейлиста");
+                var tracks = await music.PlaylistTracksAsync(kind, ct);
+                if (tracks.Length == 0) return new AgentAction(new { error = "Плейлист пуст" });
+                return new AgentAction(new { playing = "Плейлист", queued = tracks.Length },
+                    new { type = "music_queue", tracks });
+            }
+            case "music_control":
+            {
+                string action = Arg(args, "action");
+                if (action is not ("pause" or "resume" or "next" or "previous" or "stop" or "status"))
+                    throw new ArgumentException("Неизвестная команда музыки");
+                return new AgentAction(new { requested = action },
+                    new { type = "music_control", action });
             }
             case "ha_list_entities":
             {

@@ -42,8 +42,10 @@ const sys=state.system||{};el("cpuValue").textContent=sys.cpuThreads??"—";el("
 el("serverChip").textContent="Подключено";el("sideStatus").textContent="Сервер доступен"}
 async function poll(){if(state.loading)return;state.loading=true;try{const [models,system,devices,downloads]=await Promise.all([api("/api/models"),api("/api/control/system"),api("/api/control/devices"),api("/api/models/downloads")]);Object.assign(state,{models,system,devices,downloads});render()}catch(e){el("serverChip").textContent="Нет соединения";el("sideStatus").textContent="Нет подключения";}finally{state.loading=false}}
 function updateVoiceSamplingInputs(){
+ const piper=el("ttsEngineChoice")?.value?.startsWith("piper-")===true;
+ el("piperVoiceFields").hidden=!piper;
+ el("qwenVoiceFields").hidden=piper;
  const mode=el("voiceGenerationMode").value;
- const piper=el("ttsEngineChoice")?.value?.startsWith("piper-");
  el("voiceGenerationMode").disabled=!!piper;
  el("voiceSeed").disabled=!!piper||mode!=="seeded";
  for(const id of ["voiceTemperature","voiceTopP","voiceTopK"])el(id).disabled=!!piper||mode==="greedy";
@@ -69,17 +71,32 @@ function loadSettings(){
  el("voicePenalty").value=p.repetitionPenalty??1.05;
  el("voiceStyleSetting").value=p.style||"";
  el("voiceDescriptionSetting").value=p.description||"";
+ for(const [id,key,fallback] of [
+   ["piperLengthScale","piperLengthScale",1],["piperNoiseScale","piperNoiseScale",0.667],
+   ["piperNoiseWScale","piperNoiseWScale",0.8],["piperVolume","piperVolume",1]
+ ])el(id).value=p[key]??fallback;
+ el("piperNormalizeAudio").checked=p.piperNormalizeAudio??true;
  updateVoiceSamplingInputs();
 }
 el("settingsForm").onsubmit=async event=>{
  event.preventDefault();const b=el("saveSettings");
  await busy(b,async()=>{
+  const piperValue=(id,min,max)=>{
+   const value=Number(el(id).value.replace(",","."));
+   if(!Number.isFinite(value)||value<min||value>max)throw Error("Параметр Piper "+id+": диапазон "+min+"–"+max);
+   return value;
+  };
   const profile={...state.voiceProfile,
    mode:el("voiceModeSetting").value,speaker:el("voice").value.trim(),
    generationMode:el("voiceGenerationMode").value,seed:Number(el("voiceSeed").value),
    temperature:Number(el("voiceTemperature").value),topP:numericDecimal("voiceTopP",0,1),
    topK:Number(el("voiceTopK").value),repetitionPenalty:Number(el("voicePenalty").value),
-   style:el("voiceStyleSetting").value.trim(),description:el("voiceDescriptionSetting").value.trim()};
+   style:el("voiceStyleSetting").value.trim(),description:el("voiceDescriptionSetting").value.trim(),
+   piperLengthScale:piperValue("piperLengthScale",0.5,2.5),
+   piperNoiseScale:piperValue("piperNoiseScale",0,2),
+   piperNoiseWScale:piperValue("piperNoiseWScale",0,2),
+   piperVolume:piperValue("piperVolume",0,2),
+   piperNormalizeAudio:el("piperNormalizeAudio").checked};
   // Each settings tab can be saved independently. A broken/unconfigured TTS
   // runtime must not prevent an LLM or STT settings change.
   const activePane=document.querySelector("[data-settings-panel]:not([hidden])")?.dataset.settingsPanel;
@@ -441,14 +458,94 @@ el("refreshEvents").onclick=busy(el("refreshEvents"),refreshEvents);
 /* Radio and music */
 function drawSearch(results,target,play){
  const box=el(target);box.replaceChildren();
- for(const item of (Array.isArray(results)?results:[]).slice(0,20)){
-  const row=textNode("div","","search-row");const title=item.name||item.title||item.trackTitle||JSON.stringify(item).slice(0,100);
+ for(const [index,item] of (Array.isArray(results)?results:[]).slice(0,25).entries()){
+  const row=textNode("div","","search-row");
+  const title=item.name||item.title||item.trackTitle||JSON.stringify(item).slice(0,100);
   row.append(textNode("span",title),textNode("button","Слушать","button secondary"));
-  row.querySelector("button").onclick=()=>play(item).catch(e=>toast(e.message,true));box.append(row);
- }if(!box.children.length)box.textContent="Ничего не найдено";
+  row.querySelector("button").onclick=()=>play(item,index).catch(e=>toast(e.message,true));
+  box.append(row);
+ }
+ if(!box.children.length)box.textContent="Ничего не найдено";
 }
-el("searchRadio").onclick=busy(el("searchRadio"),async()=>{const r=await api("/api/radio/search?name="+encodeURIComponent(el("radioQuery").value.trim()));drawSearch(r,"radioResults",async x=>{const url=x.url||x.urlResolved;if(!url)throw Error("Нет адреса потока");el("mediaPlayer").src=url;await el("mediaPlayer").play().catch(()=>{})})});
-el("searchMusic").onclick=busy(el("searchMusic"),async()=>{const r=await api("/api/yandex/search?query="+encodeURIComponent(el("musicQuery").value.trim()));drawSearch(r,"musicResults",async x=>{const id=x.id||x.trackId;if(!id)throw Error("Отсутствует ID трека");const r=await api("/api/yandex/tracks/"+encodeURIComponent(id)+"/playback");el("mediaPlayer").src=r.url;await el("mediaPlayer").play().catch(()=>{})})});
+const browserPlayer=el("mediaPlayer");
+let browserQueue=[],browserIndex=-1,browserSource="",browserEpoch=0;
+function renderBrowserQueue(){
+ const list=el("musicQueue");list.replaceChildren();
+ for(const [i,track] of browserQueue.slice(0,40).entries()){
+  const row=textNode("div","","search-row");
+  const title=(track.artists?.join(", ")||"")+(track.artists?.length?" — ":"")+(track.title||"Трек");
+  row.append(textNode("span",(i===browserIndex?"▶ ":"")+title),textNode("button","Слушать","button secondary"));
+  row.querySelector("button").onclick=()=>playBrowserTrack(i).catch(e=>toast(e.message,true));
+  list.append(row);
+ }
+ el("musicQueueStatus").textContent=browserQueue.length?
+  "Трек "+(browserIndex+1)+" из "+browserQueue.length+" · автопереход включён":"Очередь пуста";
+}
+async function playBrowserTrack(index){
+ if(index<0||index>=browserQueue.length)return;
+ const epoch=++browserEpoch,track=browserQueue[index];
+ browserSource="yandex";browserIndex=index;renderBrowserQueue();
+ const title=(track.artists?.join(", ")||"")+(track.artists?.length?" — ":"")+(track.title||"Трек");
+ el("musicCurrent").textContent=title+" · получение аудиоссылки";
+ const info=await api("/api/yandex/tracks/"+encodeURIComponent(track.id)+"/playback");
+ if(epoch!==browserEpoch)return;
+ browserPlayer.src=info.url;el("musicCurrent").textContent=title;
+ try{await browserPlayer.play()}
+ catch(error){el("musicQueueStatus").textContent="Не удалось воспроизвести: "+error.message;throw error}
+}
+async function browserNext(){
+ if(browserSource!=="yandex")return;
+ if(browserIndex+1>=browserQueue.length&&browserQueue.length){
+  try{
+   const recommendations=await api("/api/yandex/tracks/"+encodeURIComponent(browserQueue.at(-1).id)+"/similar");
+   const known=new Set(browserQueue.map(x=>x.id));
+   browserQueue.push(...recommendations.filter(x=>!known.has(x.id)&&known.add(x.id)).slice(0,30));
+  }catch(error){toast("Продолжение музыки: "+error.message,true)}
+ }
+ if(browserIndex+1>=browserQueue.length){
+  el("musicQueueStatus").textContent="Очередь закончилась";return;
+ }
+ await playBrowserTrack(browserIndex+1);
+}
+browserPlayer.addEventListener("ended",()=>{void browserNext().catch(e=>toast(e.message,true))});
+el("musicPrev").onclick=busy(el("musicPrev"),async()=>{if(browserSource==="yandex")await playBrowserTrack(Math.max(0,browserIndex-1))});
+el("musicNext").onclick=busy(el("musicNext"),browserNext);
+el("musicPause").onclick=busy(el("musicPause"),async()=>{if(!browserPlayer.src)return;if(browserPlayer.paused)await browserPlayer.play();else browserPlayer.pause()});
+el("musicStop").onclick=()=>{
+ browserEpoch++;browserSource="";browserPlayer.pause();browserPlayer.removeAttribute("src");
+ browserPlayer.load();browserIndex=-1;browserQueue=[];el("musicCurrent").textContent="Трек не выбран";renderBrowserQueue();
+};
+el("searchRadio").onclick=busy(el("searchRadio"),async()=>{
+ const r=await api("/api/radio/search?name="+encodeURIComponent(el("radioQuery").value.trim()));
+ drawSearch(r,"radioResults",async x=>{
+  const url=x.url||x.urlResolved;if(!url)throw Error("Нет адреса потока");
+  browserEpoch++;browserSource="radio";browserQueue=[];browserIndex=-1;
+  renderBrowserQueue();el("musicCurrent").textContent=x.name||"Радио";
+  browserPlayer.src=url;await browserPlayer.play();
+ });
+});
+el("searchMusic").onclick=busy(el("searchMusic"),async()=>{
+ const r=await api("/api/yandex/search?query="+encodeURIComponent(el("musicQuery").value.trim()));
+ drawSearch(r,"musicResults",async(_,index)=>{browserQueue=r;await playBrowserTrack(index)});
+});
+el("loadYmPlaylists").onclick=busy(el("loadYmPlaylists"),async()=>{
+ const entries=await api("/api/yandex/playlists"),picker=el("ymPlaylistSelect");
+ picker.replaceChildren(new Option("Выберите плейлист",""),
+   ...entries.map(p=>new Option(p.title+" · "+p.trackCount+" треков",p.kind)));
+ if(entries.length===0)toast("Плейлисты не найдены",true);
+});
+el("playYmPlaylist").onclick=busy(el("playYmPlaylist"),async()=>{
+ const kind=el("ymPlaylistSelect").value;
+ if(!/^\d{1,12}$/.test(kind))throw Error("Выберите плейлист");
+ const tracks=await api("/api/yandex/playlists/"+kind+"/tracks");
+ if(!tracks.length)throw Error("Плейлист пуст");
+ browserQueue=tracks;await playBrowserTrack(0);
+});
+el("playYmLiked").onclick=busy(el("playYmLiked"),async()=>{
+ const tracks=await api("/api/yandex/liked");
+ if(!tracks.length)throw Error("Понравившихся треков пока нет");
+ browserQueue=tracks;await playBrowserTrack(0);
+});
 /* Chat directly via the device websocket */
 let chatSocket=null,chatBuffer=[],chatSampleRate=24000;
 function chatAppend(s){const box=el("chatHistory");box.textContent+=s;box.scrollTop=box.scrollHeight}

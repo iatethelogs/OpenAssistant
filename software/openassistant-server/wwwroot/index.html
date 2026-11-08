@@ -105,6 +105,18 @@
     </div>
     <div class="button-row"><button class="button secondary" type="button" id="ttsEngineInstall">Установить и переключить TTS</button><span id="ttsEngineInstallStatus" class="minor"></span></div>
     <p class="minor">Piper использует CPU и готовые русские голоса. Для Qwen доступны отдельные варианты Faster и VoiceDesign. В режиме качества длинный ответ может делиться на части из-за ограничения модели.</p>
+    <section id="piperVoiceFields" hidden>
+      <div class="panel-heading"><div><h2>Параметры Piper</h2><p>Настройки применяются без перезапуска ONNX-модели.</p></div></div>
+      <div class="field-grid">
+        <div><label for="piperLengthScale">Длительность фонем · 1.0 — исходная скорость</label><input id="piperLengthScale" type="number" min="0.5" max="2.5" step="0.05" value="1"></div>
+        <div><label for="piperNoiseScale">Вариативность звучания (Noise scale)</label><input id="piperNoiseScale" type="number" min="0" max="2" step="0.05" value="0.667"></div>
+        <div><label for="piperNoiseWScale">Вариативность длительности фонем (Noise W)</label><input id="piperNoiseWScale" type="number" min="0" max="2" step="0.05" value="0.8"></div>
+        <div><label for="piperVolume">Громкость синтеза</label><input id="piperVolume" type="number" min="0" max="2" step="0.05" value="1"></div>
+        <div><label for="piperNormalizeAudio">Нормализация амплитуды</label><input id="piperNormalizeAudio" type="checkbox" checked></div>
+      </div>
+      <p class="minor">Меньшее значение длительности фонем ускоряет речь, большее — замедляет. Параметры шума влияют на вариативность произношения, а не на громкость.</p>
+    </section>
+    <section id="qwenVoiceFields">
     <div class="panel-heading"><div><h2>Голос и повторяемость синтеза</h2><p>Профиль используется и мастером, и обычными ответами ассистента</p></div></div>
     <div class="field-grid">
       <div><label for="voiceModeSetting">Тип загруженной модели (меняется в мастере)</label><select id="voiceModeSetting" disabled><option value="custom">Готовый голос (CustomVoice)</option><option value="design">VoiceDesign по описанию</option></select></div>
@@ -118,6 +130,7 @@
     <label for="voiceStyleSetting">Манера речи (CustomVoice 1.7B)</label><textarea id="voiceStyleSetting" rows="2" maxlength="600"></textarea>
     <label for="voiceDescriptionSetting">Описание тембра (VoiceDesign)</label><textarea id="voiceDescriptionSetting" rows="3" maxlength="1200"></textarea>
     <p class="minor">Режим с фиксированным seed повторяет случайный выбор токенов. Строгий режим отключает sampling; он может звучать менее естественно. Изменение параметров не требует перезагрузки модели.</p>
+    </section>
     <details class="advanced-settings"><summary>Подключение к API</summary>
       <div class="field-grid">
         <div><label for="ttsUrl">Адрес TTS</label><input id="ttsUrl" type="url"></div>
@@ -295,8 +308,24 @@
 <div class="provider-panel"><span class="provider-symbol">▶</span><strong>YouTube Music</strong><small>Нет подключения</small><span class="provider-state">Недоступно</span></div>
 </div></div>
   <div class="test-grid"><article class="panel"><h2>Поиск радио</h2><label for="radioQuery">Станция</label><div class="button-row"><input id="radioQuery" placeholder="Название станции"><button id="searchRadio" class="button secondary">Найти</button></div><div id="radioResults" class="search-results"></div></article>
-  <article class="panel"><h2>Яндекс Музыка</h2><label for="musicQuery">Название или исполнитель</label><div class="button-row"><input id="musicQuery" placeholder="Поиск композиции"><button id="searchMusic" class="button secondary">Найти</button></div><div id="musicResults" class="search-results"></div></article></div>
-  <div class="panel extra-panel"><h2>Прослушивание</h2><audio id="mediaPlayer" controls></audio></div>
+  <article class="panel"><h2>Яндекс Музыка</h2><label for="musicQuery">Название или исполнитель</label><div class="button-row"><input id="musicQuery" placeholder="Поиск композиции"><button id="searchMusic" class="button secondary">Найти</button></div><div id="musicResults" class="search-results"></div>
+     <div class="button-row"><button id="loadYmPlaylists" class="button secondary" type="button">Мои плейлисты</button><button id="playYmLiked" class="button secondary" type="button">Мне нравится</button></div>
+     <label for="ymPlaylistSelect">Плейлист</label>
+     <div class="button-row"><select id="ymPlaylistSelect" aria-label="Плейлист Яндекс Музыки"><option value="">Загрузите плейлисты</option></select><button id="playYmPlaylist" class="button secondary" type="button">Включить плейлист</button></div>
+     </article></div>
+  <div class="panel extra-panel"><h2>Браузерный музыкальный плеер</h2>
+    <div id="musicCurrent" class="minor">Трек не выбран</div>
+    <audio id="mediaPlayer" controls preload="none"></audio>
+    <div class="button-row">
+      <button id="musicPrev" class="button secondary" type="button">Предыдущий</button>
+      <button id="musicPause" class="button secondary" type="button">Пауза / продолжить</button>
+      <button id="musicNext" class="button secondary" type="button">Следующий</button>
+      <button id="musicStop" class="button secondary" type="button">Остановить</button>
+    </div>
+    <p id="musicQueueStatus" class="minor">После трека автоматически включается следующий из результатов поиска.</p>
+    <div id="musicQueue" class="search-results"></div>
+    <p class="minor">Плеер этой страницы независим от аудиовыхода колонки. Голосовые команды управляют плеером подключённого устройства.</p>
+  </div>
  </section>
 
  <section class="view" id="events">

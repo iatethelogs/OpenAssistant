@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private int _micTicks;
     private long _chimeUntil;
     private string _musicTitle = "";
+    private long _musicPlaybackId;
 
     public MainWindow()
     {
@@ -66,6 +67,13 @@ public partial class MainWindow : Window
             Matrix.SetSpeechLevel(CalculateRms(pcm));
         });
         _socket.ControlReceived += OnControl;
+        _speaker.MusicEnded += () => Ui(() =>
+        {
+            long ended = _musicPlaybackId;
+            if (ended == 0 || !_socket.Connected) return;
+            _musicPlaybackId = 0;
+            _ = NotifyMusicEventAsync("media_ended", ended);
+        });
         _upload.Error += message => Ui(() =>
         {
             _gate.Stop();
@@ -140,6 +148,12 @@ public partial class MainWindow : Window
         }
         return Math.Sqrt(energy/count);
     }
+    private async Task NotifyMusicEventAsync(string type, long playbackId)
+    {
+        try { await _socket.SendControlAsync(new { type, playbackId }); }
+        catch (Exception ex) { Ui(() => Log("Состояние музыки: " + ex.Message)); }
+    }
+
     private async Task PlayActivationChimeAsync(bool completed = false)
     {
         try { await ActivationChime.PlayAsync(completed); }
@@ -150,8 +164,8 @@ public partial class MainWindow : Window
     {
         if (!_socket.Connected) { Log("Нет соединения с сервером"); return; }
         if (_gate.Capturing) return;
-        _resumeMusic = _speaker.MusicActive;
-        if (_resumeMusic) _speaker.DuckMusic();
+        _resumeMusic = _speaker.MusicPresent;
+        if (_resumeMusic && _bargeInEnabled) _speaker.DuckMusic();
         _ignoreReplyAudio = true;
         _speaker.EndSpeech();
         _llmAnswer.Clear();
@@ -184,7 +198,7 @@ public partial class MainWindow : Window
             // never a second capture device with drifting timestamps.
             // The user can say the wake-word while Martin is speaking; music
             // interruption remains separately configurable.
-            if (!_gate.Capturing && (!_speaker.MusicActive || _bargeInEnabled))
+            if (!_gate.Capturing)
                 _wake?.Feed(pcm);
             if (_gate.Capturing && Environment.TickCount64 < Interlocked.Read(ref _chimeUntil))
                 _gate.Push(new byte[processed.Length]);
@@ -274,12 +288,37 @@ public partial class MainWindow : Window
                 case "play_media":
                     if(packet.TryGetProperty("url",out var url))
                     {
+                        _musicPlaybackId = packet.TryGetProperty("playbackId",out var pid) && pid.TryGetInt64(out long nextId)
+                            ? nextId : 0; // radio has no Yandex queue
                         string target=url.GetString()??"";
                         string title=packet.TryGetProperty("title",out var cap)?cap.GetString()??target:target;
                         _=StartMusicAsync(target,title);
                     }
                     break;
+                case "pause_media":
+                    _speaker.PauseMusic();_resumeMusic=false;_speaker.ResumeMusic();
+                    MusicText.Text="Пауза · "+_musicTitle;
+                    if(!_gate.Capturing)SetMode(DisplayMode.Idle,"Музыка на паузе");
+                    break;
+                case "resume_media":
+                    _speaker.ResumeMusicPlayback();
+                    if(_gate.Capturing && _bargeInEnabled){_resumeMusic=true;_speaker.DuckMusic();}
+                    else if(!_gate.Capturing)SetMode(DisplayMode.Music,"Музыка: "+_musicTitle);
+                    MusicText.Text="Музыка: "+_musicTitle;
+                    break;
+                case "media_error":
+                    Log("Яндекс Музыка: "+(packet.TryGetProperty("message",out var msg)?msg.GetString():"Неизвестная ошибка"));
+                    break;
+                case "media_status":
+                    if(packet.TryGetProperty("active",out var activeTrack) && activeTrack.ValueKind==JsonValueKind.False)
+                    {
+                        _musicPlaybackId=0;_speaker.StopMusic();_resumeMusic=false;
+                        MusicText.Text="Очередь закончилась";
+                        if(!_gate.Capturing&&!_speaker.SpeechActive)SetMode(DisplayMode.Idle,"Ожидаю слово");
+                    }
+                    break;
                 case "stop_media":
+                    _musicPlaybackId=0;
                     _speaker.StopMusic();_resumeMusic=false;
                     MusicText.Text="Музыка не воспроизводится";
                     if(!_gate.Capturing&&!_speaker.SpeechActive)SetMode(DisplayMode.Idle,"Ожидаю слово");
@@ -302,16 +341,37 @@ public partial class MainWindow : Window
 
     private async Task StartMusicAsync(string url,string title)
     {
+        long playbackId=_musicPlaybackId;
         try
         {
             MusicStreamInfo? media=await _speaker.PlayUrlAsync(url);
             if(media is null||_closing)return;
-            _musicTitle=title;_resumeMusic=false;
+            if(playbackId>0 && playbackId==_musicPlaybackId)
+                _=NotifyMusicEventAsync("media_started",playbackId);
+            _musicTitle=title;
+            if (_bargeInEnabled && (_resumeMusic || _gate.Capturing || _speaker.SpeechActive))
+            {
+                _resumeMusic=true;
+                _speaker.DuckMusic();
+            }
+            else
+            {
+                _resumeMusic=false;
+                _speaker.ResumeMusic();
+            }
             MusicText.Text=$"{title} · {media.SampleRate} Hz · {media.Channels} ch · {media.BitsPerSample} bit";
             if(!_gate.Capturing&&!_speaker.SpeechActive)SetMode(DisplayMode.Music,"Музыка: "+title);
             Log("Музыка: "+title);
         }
-        catch(Exception ex){if(!_closing)Log("Воспроизведение: "+ex.Message);}
+        catch(Exception ex)
+        {
+            if(!_closing)Log("Воспроизведение: "+ex.Message);
+            if(playbackId>0 && playbackId==_musicPlaybackId)
+            {
+                _musicPlaybackId=0;
+                _=NotifyMusicEventAsync("media_failed",playbackId);
+            }
+        }
     }
     private async Task FinishPlayingSpeechAsync()
     {
@@ -349,8 +409,7 @@ public partial class MainWindow : Window
         detector.Detected+=(word,score)=>Ui(()=>
         {
             if (!_socket.Connected || !_running || _gate.Capturing ||
-                WakeEnabled.IsChecked!=true ||
-                (_speaker.MusicActive && !_bargeInEnabled))return;
+                WakeEnabled.IsChecked!=true)return;
             Log($"Wake-word: {word} · {score:0.00}");
             BeginCapture(word);
         });
@@ -426,7 +485,7 @@ public partial class MainWindow : Window
     private async void Disconnect_Click(object sender,RoutedEventArgs e)
     {
         _running=false;_microphone.Stop();_gate.Stop();await StopWakeAsync();_upload.Reset();
-        _speaker.EndSpeech();_speaker.StopMusic();_resumeMusic=false;
+        _speaker.EndSpeech();_speaker.StopMusic();_resumeMusic=false;_musicPlaybackId=0;
         await _socket.DisconnectAsync();
         SetMode(DisplayMode.Offline,"Не подключено");
     }
@@ -480,11 +539,27 @@ public partial class MainWindow : Window
         if(e.Key!=Key.Enter)return;
         e.Handled=true;Text_Click(sender,e);
     }
+    private async void MusicControl_Click(object sender,RoutedEventArgs e)
+    {
+        if(!_socket.Connected)return;
+        var tag=(sender as System.Windows.Controls.Button)?.Tag as string;
+        string action=tag=="toggle"?(_speaker.MusicActive?"pause":"resume"):tag??"";
+        if(action is not ("pause" or "resume" or "next" or "previous"))return;
+        try{await _socket.SendControlAsync(new { type="media_control",action });}
+        catch(Exception ex){Log("Управление музыкой: "+ex.Message);}
+    }
+
     private void StopMusic_Click(object sender,RoutedEventArgs e)
     {
-        _speaker.StopMusic();_resumeMusic=false;_musicTitle="";
+        _speaker.StopMusic();_resumeMusic=false;_musicTitle="";_musicPlaybackId=0;
+        if(_socket.Connected)_=SendMusicStopAsync();
         MusicText.Text="Музыка не воспроизводится";
         if(!_gate.Capturing&&!_speaker.SpeechActive)SetMode(DisplayMode.Idle,"Ожидаю слово");
+    }
+    private async Task SendMusicStopAsync()
+    {
+        try { await _socket.SendControlAsync(new { type="media_control",action="stop" }); }
+        catch (Exception ex) { Ui(() => Log("Остановка музыки: "+ex.Message)); }
     }
     private void BrowseWakeModel_Click(object sender,RoutedEventArgs e)
     {
@@ -510,7 +585,9 @@ public partial class MainWindow : Window
         WakeEnabled.IsChecked=c.WakeEnabled;
         CommunicationsEnabled.IsChecked=c.CommunicationsDsp;
         NoiseSuppressionEnabled.IsChecked=c.NoiseReduction;
-        BargeInOnMusic.IsChecked=c.BargeInOnMusic;
+        // From now on, wake-word during music is enabled by default
+        // even for older preference files that stored false.
+        BargeInOnMusic.IsChecked=c.DuckMusicOnWake??true;
     }
     private void SavePreferences()
     {
@@ -522,7 +599,8 @@ public partial class MainWindow : Window
             WakeThreshold=threshold,WakeEnabled=WakeEnabled.IsChecked==true,
             CommunicationsDsp=CommunicationsEnabled.IsChecked==true,
             NoiseReduction=NoiseSuppressionEnabled.IsChecked==true,
-            BargeInOnMusic=BargeInOnMusic.IsChecked==true
+            BargeInOnMusic=BargeInOnMusic.IsChecked==true,
+            DuckMusicOnWake=BargeInOnMusic.IsChecked==true
         }.Save();
     }
     private void SavePreferences_Click(object sender,RoutedEventArgs e)

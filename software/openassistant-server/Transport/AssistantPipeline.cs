@@ -16,7 +16,7 @@ public sealed class AssistantPipeline(
     SpeechService speech, AgentRunner agent, ToolRegistry tools,
     ConversationMemoryStore memory, VerifiedHomeAssistantService homeAssistant,
     AgentToolService skills, ConversationLog conversationLog, DeviceRegistry devices,
-    DisplaySettingsStore displaySettings, IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
+    YandexMusicService music, DisplaySettingsStore displaySettings, IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
 {
     /// <summary>принимает аудио и команды клиента до отключения websocket.</summary>
     public async Task RunAsync(WebSocket socket, CancellationToken disconnected, string? remoteAddress = null)
@@ -48,6 +48,116 @@ public sealed class AssistantPipeline(
         /// <summary>отправляет событие протокола в json.</summary>
         Task JsonAsync(object payload, CancellationToken ct) =>
             SendAsync(JsonSerializer.SerializeToUtf8Bytes(payload), WebSocketMessageType.Text, ct);
+
+        // Playback belongs to the connected column, not the global LLM or
+        // another user's column. The playbackId makes completion idempotent.
+        var player = new MusicPlaybackSession(music, JsonAsync);
+
+        async Task HandleMediaAsync(object media, CancellationToken ct)
+        {
+            var value = JsonSerializer.SerializeToElement(media);
+            if (!value.TryGetProperty("type", out var typeNode)) return;
+            string? eventType = typeNode.GetString();
+            if (eventType == "music_queue")
+            {
+                var tracks = value.GetProperty("tracks").Deserialize<YandexTrack[]>() ?? [];
+                await player.PlayQueueAsync(tracks, ct);
+            }
+            else if (eventType == "music_control")
+            {
+                await player.ControlAsync(value.GetProperty("action").GetString() ?? "", ct);
+            }
+            else
+            {
+                // A radio stream replaces the Yandex queue. Never auto-resume
+                // old songs when a radio stream ends.
+                if (eventType == "play_media") await player.ForgetAsync(ct);
+                await JsonAsync(media, ct);
+            }
+        }
+
+        // Deterministic handling makes short Russian music commands work even
+        // with LLMs that don't support OpenAI tool_calls.
+        async Task<string?> HandleDirectMusicAsync(string utterance, SkillDefinition[] allowed, CancellationToken ct)
+        {
+            string phrase = utterance.Trim().TrimEnd('.', '!', '?').ToLowerInvariant();
+            bool canControl = allowed.Any(x => x.Name == "music_control" && x.Enabled);
+            if (canControl)
+            {
+                if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
+                    @"^(?:что (?:сейчас )?играет|какая (?:сейчас )?(?:песня|музыка) играет|что за (?:трек|песня)(?: играет)?)$"))
+                {
+                    string? title = await player.CurrentTrackAsync(ct);
+                    return title is null ? "Сейчас музыка не воспроизводится." : "Сейчас играет " + title + ".";
+                }
+                string? action = null;
+                if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
+                        @"^(?:(?:поставь|поставить|ставь) (?:музыку |трек )?на паузу|пауза|приостанови (?:музыку|трек))$"))
+                    action = "pause";
+                else if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
+                         @"^(?:продолжи|возобнови|сними с паузы|играй дальше)(?: (?:музыку|трек|воспроизведение))?$"))
+                    action = "resume";
+                else if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
+                         @"^(?:следующ(?:ий|ую)(?: трек| песню)?|дальше|переключи(?: на)? следующ(?:ий|ую)(?: трек| песню)?|пропусти(?: трек| песню)?)$"))
+                    action = "next";
+                else if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
+                         @"^(?:предыдущ(?:ий|ую)(?: трек| песню)?|назад|верни предыдущ(?:ий|ую)(?: трек| песню)?)$"))
+                    action = "previous";
+                else if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
+                         @"^(?:останови|выключи|стоп)(?: (?:музыку|трек|воспроизведение))$"))
+                    action = "stop";
+                if (action is not null)
+                {
+                    await player.ControlAsync(action, ct);
+                    return action switch
+                    {
+                        "pause" => "Музыка на паузе.",
+                        "resume" => "Продолжаю воспроизведение.",
+                        "next" => "Следующий трек.",
+                        "previous" => "Предыдущий трек.",
+                        _ => "Музыка остановлена."
+                    };
+                }
+            }
+            bool canPlay = allowed.Any(x => x.Name == "music_play_query" && x.Enabled);
+            if (canPlay)
+            {
+                if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
+                        @"^(?:включи|поставь|проиграй)(?: мне)? (?:мою музыку|музыку|любимые треки|понравившиеся треки|плейлист мне нравится)$"))
+                {
+                    var liked = await music.LikedTracksAsync(ct);
+                    if (liked.Length == 0) return "В избранном пока нет треков.";
+                    await player.PlayQueueAsync(liked, ct);
+                    return "Включаю понравившиеся треки.";
+                }
+                var playlistCommand = System.Text.RegularExpressions.Regex.Match(phrase,
+                    @"^(?:включи|поставь|проиграй)(?: мне)? плейлист (.+)$");
+                if (playlistCommand.Success)
+                {
+                    string name = playlistCommand.Groups[1].Value.Trim(' ', '"', '«', '»');
+                    var playlists = await music.PlaylistsAsync(ct);
+                    var selected = playlists.FirstOrDefault(p =>
+                        p.Title.Equals(name, StringComparison.OrdinalIgnoreCase)) ??
+                        playlists.FirstOrDefault(p =>
+                            p.Title.Contains(name, StringComparison.OrdinalIgnoreCase));
+                    if (selected is null) return "Плейлист не найден.";
+                    var queue = await music.PlaylistTracksAsync(selected.Kind, ct);
+                    if (queue.Length == 0) return "Плейлист пуст.";
+                    await player.PlayQueueAsync(queue, ct);
+                    return "Включаю плейлист " + selected.Title + ".";
+                }
+                var match = System.Text.RegularExpressions.Regex.Match(phrase,
+                    @"^(?:включи|поставь|проиграй|запусти)(?: мне)? (?:песню|трек|музыку|композицию) (.+)$");
+                if (match.Success)
+                {
+                    var found = await music.SearchAsync(match.Groups[1].Value, ct);
+                    if (found.Length == 0) return "Не удалось найти музыку.";
+                    await player.PlayQueueAsync(found, ct);
+                    return "Включаю " + found[0].Title + ".";
+                }
+            }
+            return null;
+        }
 
         Task DisplayStateAsync(string state, CancellationToken ct) =>
             JsonAsync(new { type = "display_state", state }, ct);
@@ -105,6 +215,14 @@ public sealed class AssistantPipeline(
             conversationLog.Add(fromAudio ? "stt" : "user", text);
 
             var permissions = await skills.ListAsync(ct);
+            string? musicResponse = await HandleDirectMusicAsync(text, permissions, ct);
+            if (musicResponse is not null)
+            {
+                await JsonAsync(new { type = "text", delta = musicResponse }, ct);
+                conversationLog.Add("action", "music: " + musicResponse);
+                await JsonAsync(new { type = "done" }, ct);
+                return;
+            }
             bool readHa = permissions.Any(s => s.Name == "ha_get_state" && s.Enabled);
             bool writeHa = permissions.Any(s => s.Name == "ha_call_service" && s.Enabled);
             string? verified = await homeAssistant.TryHandleAsync(text, readHa, writeHa, ct);
@@ -163,7 +281,7 @@ public sealed class AssistantPipeline(
             {
                 await foreach (var delta in agent.GenerateAsync(messages, ct))
                 {
-                    if (delta.Media is not null) await JsonAsync(delta.Media, ct);
+                    if (delta.Media is not null) await HandleMediaAsync(delta.Media, ct);
                     if (delta.Tool is not null)
                     {
                         conversationLog.Add("action", "tool: " + delta.Tool);
@@ -278,6 +396,27 @@ public sealed class AssistantPipeline(
                     if (kind == "display_get")
                     {
                         await DisplayConfigAsync(disconnected);
+                        continue;
+                    }
+                    if (kind == "media_ended")
+                    {
+                        long playbackId = root.GetProperty("playbackId").GetInt64();
+                        await player.EndedAsync(playbackId, disconnected);
+                        continue;
+                    }
+                    if (kind == "media_started")
+                    {
+                        await player.StartedAsync(root.GetProperty("playbackId").GetInt64(), disconnected);
+                        continue;
+                    }
+                    if (kind == "media_failed")
+                    {
+                        await player.FailedAsync(root.GetProperty("playbackId").GetInt64(), disconnected);
+                        continue;
+                    }
+                    if (kind == "media_control")
+                    {
+                        await player.ControlAsync(root.GetProperty("action").GetString() ?? "", disconnected);
                         continue;
                     }
                     if (kind == "wake")
