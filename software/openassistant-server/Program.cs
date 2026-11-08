@@ -487,7 +487,7 @@ app.MapGet("/api/yandex/playlists", async (HttpContext ctx, YandexMusicService m
     if (!localOnly(ctx)) return Results.StatusCode(403);
     try { return Results.Ok(await music.PlaylistsAsync(ct)); }
     catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
-        HttpRequestException or JsonException or TaskCanceledException or InvalidDataException)
+        HttpRequestException or System.Text.Json.JsonException or TaskCanceledException or InvalidDataException)
     { return Results.BadRequest(new { error = ex.Message }); }
 });
 app.MapGet("/api/yandex/playlists/{kind}/tracks", async (
@@ -496,7 +496,7 @@ app.MapGet("/api/yandex/playlists/{kind}/tracks", async (
     if (!localOnly(ctx)) return Results.StatusCode(403);
     try { return Results.Ok(await music.PlaylistTracksAsync(kind, ct)); }
     catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
-        HttpRequestException or JsonException or TaskCanceledException or InvalidDataException)
+        HttpRequestException or System.Text.Json.JsonException or TaskCanceledException or InvalidDataException)
     { return Results.BadRequest(new { error = ex.Message }); }
 });
 app.MapGet("/api/yandex/liked", async (HttpContext ctx, YandexMusicService music, CancellationToken ct) =>
@@ -504,7 +504,7 @@ app.MapGet("/api/yandex/liked", async (HttpContext ctx, YandexMusicService music
     if (!localOnly(ctx)) return Results.StatusCode(403);
     try { return Results.Ok(await music.LikedTracksAsync(ct)); }
     catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
-        HttpRequestException or JsonException or TaskCanceledException or InvalidDataException)
+        HttpRequestException or System.Text.Json.JsonException or TaskCanceledException or InvalidDataException)
     { return Results.BadRequest(new { error = ex.Message }); }
 });
 app.MapGet("/api/yandex/tracks/{trackId}/similar", async (
@@ -513,7 +513,7 @@ app.MapGet("/api/yandex/tracks/{trackId}/similar", async (
     if (!localOnly(ctx)) return Results.StatusCode(403);
     try { return Results.Ok(await music.SimilarAsync(trackId, ct)); }
     catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
-        HttpRequestException or JsonException or TaskCanceledException or InvalidDataException)
+        HttpRequestException or System.Text.Json.JsonException or TaskCanceledException or InvalidDataException)
     { return Results.BadRequest(new { error = ex.Message }); }
 });
 // на клиент передаём только короткоживущую ссылку, без oauth-токена и аудиопрокси.
