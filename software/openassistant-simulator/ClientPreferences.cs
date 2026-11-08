@@ -13,6 +13,8 @@ public sealed class ClientPreferences
     public bool CommunicationsDsp { get; set; } = true;
     public bool NoiseReduction { get; set; } = true;
     public bool BargeInOnMusic { get; set; } = true;
+    // Null means older preferences: default volume ducking to enabled.
+    public bool? DuckMusicOnWake { get; set; }
     private static string Location => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "OpenAssistant","simulator.json");
