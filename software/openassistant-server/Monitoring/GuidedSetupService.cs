@@ -35,7 +35,15 @@ public static class GuidedModelCatalog
         new("piper-denis", "tts", "Piper · Денис (русский)", "Локальный быстрый CPU-синтез · без видеопамяти", "rhasspy/piper-voices", "ru_RU-denis-medium", 0.07, "ONNX · CPU", false, true),
         new("piper-dmitri", "tts", "Piper · Дмитрий (русский)", "Локальный быстрый CPU-синтез · без видеопамяти", "rhasspy/piper-voices", "ru_RU-dmitri-medium", 0.07, "ONNX · CPU", false, true),
         new("piper-irina", "tts", "Piper · Ирина (русский)", "Локальный быстрый CPU-синтез · без видеопамяти", "rhasspy/piper-voices", "ru_RU-irina-medium", 0.07, "ONNX · CPU", false, true),
-        new("piper-ruslan", "tts", "Piper · Руслан (русский)", "Локальный быстрый CPU-синтез · без видеопамяти", "rhasspy/piper-voices", "ru_RU-ruslan-medium", 0.07, "ONNX · CPU", false, true)
+        new("piper-ruslan", "tts", "Piper · Руслан (русский)", "Локальный быстрый CPU-синтез · без видеопамяти", "rhasspy/piper-voices", "ru_RU-ruslan-medium", 0.07, "ONNX · CPU", false, true),
+        new("piper-kat580", "tts", "Piper Community · Kat580", "Русский · новый голос rraaww · Apache-2.0", "rraaww/ru_piper", "ru_RU-kat580-medium", 0.07, "Community · ONNX · CPU", false, true),
+        new("piper-pvo240", "tts", "Piper Community · Pvo240", "Русский · новый голос rraaww · Apache-2.0", "rraaww/ru_piper", "ru_RU-pvo240-medium", 0.07, "Community · ONNX · CPU", false, true),
+        new("piper-sushkov", "tts", "Piper Community · Sushkov v4", "Русский · rraaww · Apache-2.0", "rraaww/ru_piper", "ru_RU-sushkov_v4-medium", 0.07, "Community · ONNX · CPU", false, true),
+        new("piper-terra", "tts", "Piper Community · Terra", "Русский · rraaww · Apache-2.0", "rraaww/ru_piper", "ru_RU-terra5862-medium", 0.07, "Community · ONNX · CPU", false, true),
+        new("piper-mari", "tts", "Piper Community · Mari", "Русский · rraaww · Apache-2.0", "rraaww/ru_piper", "ru_RU-mari-medium_epoch5699", 0.07, "Community · ONNX · CPU", false, false),
+        new("piper-nara", "tts", "Piper Community · Nara", "Русский · rraaww · Apache-2.0", "rraaww/ru_piper", "ru_RU-nara426-medium", 0.07, "Community · ONNX · CPU", false, false),
+        new("piper-puriso", "tts", "Piper Community · Puriso", "Русский · мужской голос · только некоммерческое использование · CC BY-NC-SA/OpenRAIL-M", "dhammagift/piper-ru-puriso", "ru_puriso2-medium", 0.07, "Community · ONNX · CPU · NC", false, false),
+        new("piper-custom-local", "tts", "Piper · Своя ONNX-модель (в том числе high)", "Положите custom.onnx и custom.onnx.json в models/piper · совместимая Piper-модель", "local/piper", "custom", 0.12, "ONNX · CPU · пользовательская", false, false)
     ];
     public static Choice Require(string id, string role) =>
         All.FirstOrDefault(x => x.Id == id && x.Role == role)
