@@ -24,6 +24,11 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
         new("music_search", "Поиск Яндекс Музыки", "Найди треки и верни их ID для последующего воспроизведения.", true, false, One("query", "Название или исполнитель")),
         new("music_play", "Включить Яндекс Музыку", "Включи композицию по ID из music_search и продолжай похожими треками.", true, false, One("track_id", "ID трека из music_search")),
         new("music_play_query", "Воспроизведение музыки по названию", "Найди и сразу включи музыку по названию, исполнителю или жанру; создай очередь треков.", true, false, One("query", "Что включить: название трека, исполнитель или жанр")),
+        new("music_play_liked", "Включить понравившиеся композиции", "Включи из Яндекс Музыки плейлист «Мне нравится» пользователя с автопереходом на следующую песню.", true, false,
+            new { type = "object", properties = new { }, required = Array.Empty<string>(), additionalProperties = false }),
+        new("music_list_playlists", "Список плейлистов Яндекс Музыки", "Получить названия и идентификаторы плейлистов авторизованного пользователя.", true, false,
+            new { type = "object", properties = new { }, required = Array.Empty<string>(), additionalProperties = false }),
+        new("music_play_playlist", "Включить плейлист Яндекс Музыки", "Включить плейлист пользователя по ID из music_list_playlists и продолжать воспроизведение.", true, false, One("kind", "Идентификатор плейлиста")),
         new("music_control", "Управление музыкальным плеером", "Пауза, продолжение, следующий, предыдущий, остановка или статус очереди на текущей колонке.", true, false,
             new { type = "object", properties = new {
                 action = new { type = "string", @enum = new[] { "pause", "resume", "next", "previous", "stop", "status" },
@@ -139,6 +144,24 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
                     .DistinctBy(t => t.Id).Take(50).ToArray();
                 return new AgentAction(new { playing = selected.Title, queued = queue.Length },
                     new { type = "music_queue", tracks = queue });
+            }
+            case "music_play_liked":
+            {
+                var liked = await music.LikedTracksAsync(ct);
+                if (liked.Length == 0) return new AgentAction(new { error = "Нет понравившихся треков" });
+                return new AgentAction(new { playing = "Мне нравится", queued = liked.Length },
+                    new { type = "music_queue", tracks = liked });
+            }
+            case "music_list_playlists":
+                return new AgentAction(await music.PlaylistsAsync(ct));
+            case "music_play_playlist":
+            {
+                string kind = Arg(args, "kind");
+                if (!Regex.IsMatch(kind, @"^\d{1,12}$")) throw new ArgumentException("Некорректный ID плейлиста");
+                var tracks = await music.PlaylistTracksAsync(kind, ct);
+                if (tracks.Length == 0) return new AgentAction(new { error = "Плейлист пуст" });
+                return new AgentAction(new { playing = "Плейлист", queued = tracks.Length },
+                    new { type = "music_queue", tracks });
             }
             case "music_control":
             {
