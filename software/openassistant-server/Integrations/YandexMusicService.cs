@@ -273,9 +273,17 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
         // single-word queries; never manufacture metadata from a prompt.
         var trackTask = SearchAsync(query, ct);
         var artistTask = SearchArtistsAsync(query, ct);
-        await Task.WhenAll(trackTask, artistTask);
         var tracksFound = await trackTask;
-        var artistsFound = await artistTask;
+        ArtistCandidate[] artistsFound;
+        try { artistsFound = await artistTask; }
+        catch (Exception ex) when (!ct.IsCancellationRequested &&
+            ex is HttpRequestException or JsonException or InvalidDataException)
+        {
+            // Track lookup can still succeed if the secondary artist-search
+            // endpoint is temporarily unavailable.
+            System.Diagnostics.Debug.WriteLine("Yandex artist search unavailable: " + ex.Message);
+            artistsFound = [];
+        }
 
         var rankedSongs = tracksFound.Select((x, i) =>
                 new { Track = x, Score = MatchScore(query, x.Title), Index = i })
