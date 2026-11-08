@@ -137,14 +137,83 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
             .Where(t => t.Id.Length > 0).ToArray();
     }
 
-    /// <summary>
-    /// Structured catalog selection: the LLM decides whether a request means
-    /// an artist or a track. The catalog API resolves that intent against real
-    /// artist IDs; no phrase-based command routing is performed here.
-    /// </summary>
-    public async Task<YandexMusicSelection> SelectAsync(string query, string kind, CancellationToken ct)
+    private static string NormalizedName(string text)
     {
-        query = (query ?? "").Trim();
+        text = (text ?? "").ToLowerInvariant().Replace('ё', 'е');
+        return string.Join(" ", Regex.Matches(text, @"[\p{L}\p{N}]+")
+            .Select(x => x.Value));
+    }
+
+    private static int MatchScore(string query, string candidate)
+    {
+        query = NormalizedName(query);
+        candidate = NormalizedName(candidate);
+        if (query.Length == 0 || candidate.Length == 0) return 0;
+        if (query == candidate) return 100;
+        if (candidate.StartsWith(query + " ", StringComparison.Ordinal)) return 78;
+        if (candidate.EndsWith(" " + query, StringComparison.Ordinal)) return 76;
+        if (candidate.Contains(" " + query + " ", StringComparison.Ordinal)) return 74;
+        if (query.StartsWith(candidate + " ", StringComparison.Ordinal)) return 55;
+        // Autocorrection/transcription errors are common in spoken music names.
+        // Retain Yandex's relevance order for approximate non-exact matches.
+        if (candidate.Contains(query, StringComparison.Ordinal)) return 60;
+        return 0;
+    }
+
+    private sealed record ArtistCandidate(string Id, string Name);
+
+    private async Task<ArtistCandidate[]> SearchArtistsAsync(string query, CancellationToken ct)
+    {
+        string path = "/search?text=" + Uri.EscapeDataString(query) +
+            "&type=artist&page=0&nocorrect=False";
+        using var request = await AuthorizedRequestAsync(path, ct);
+        using var response = await factory.CreateClient("yandex-music").SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        if (!document.RootElement.TryGetProperty("result", out var result) ||
+            result.ValueKind != JsonValueKind.Object ||
+            !result.TryGetProperty("artists", out var artists) ||
+            artists.ValueKind != JsonValueKind.Object ||
+            !artists.TryGetProperty("results", out var candidates) ||
+            candidates.ValueKind != JsonValueKind.Array) return [];
+
+        return candidates.EnumerateArray()
+            .Where(x => x.ValueKind == JsonValueKind.Object)
+            .Select(x => new ArtistCandidate(PropertyString(x, "id"),
+                PropertyString(x, "name")))
+            .Where(x => Regex.IsMatch(x.Id, @"^\d+$") && x.Name.Length > 0)
+            .Take(25).ToArray();
+    }
+
+    private async Task<YandexMusicSelection> ArtistTracksAsync(
+        ArtistCandidate artist, CancellationToken ct)
+    {
+        string path = "/artists/" + artist.Id + "/tracks?page=0&page-size=50";
+        using var request = await AuthorizedRequestAsync(path, ct);
+        using var response = await factory.CreateClient("yandex-music").SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        if (!document.RootElement.TryGetProperty("result", out var result) ||
+            result.ValueKind != JsonValueKind.Object ||
+            !result.TryGetProperty("tracks", out var items) ||
+            items.ValueKind != JsonValueKind.Array)
+            return new YandexMusicSelection("artist", artist.Name, []);
+
+        var tracks = items.EnumerateArray().Take(50).Select(ParseTrack)
+            .Where(x => Regex.IsMatch(x.Id, @"^\d+(?::\d+)?$"))
+            .DistinctBy(x => x.Id).ToArray();
+        return new YandexMusicSelection("artist", artist.Name, tracks);
+    }
+
+    /// <summary>
+    /// Resolve an arbitrary user-entered name against the actual Yandex music
+    /// catalog. No band or track names are hardcoded. Explicit artist/track
+    /// phrases are hints, not a requirement for the user.
+    /// </summary>
+    public async Task<YandexMusicSelection> SelectAsync(
+        string query, string kind, CancellationToken ct)
+    {
+        query = (query ?? "").Trim().Trim('"', '«', '»');
         if (query.Length is < 1 or > 120)
             throw new ArgumentException("Название исполнителя или композиции должно содержать 1–120 символов");
         if (kind is not ("artist" or "track" or "auto"))
@@ -152,55 +221,59 @@ public sealed class YandexMusicService(IHttpClientFactory factory, IWebHostEnvir
 
         if (kind == "artist")
         {
-            // Clean the entity name within an already selected artist search.
-            // This does not classify the user's request or route any commands.
-            query = Regex.Replace(query, @"^(?:группа|исполнитель|артист|певец|певица)\s+",
-                "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant).Trim();
-            if (query.Length == 0) throw new ArgumentException("Не указано имя исполнителя");
-            string path = "/search?text=" + Uri.EscapeDataString(query) +
-                "&type=artist&page=0&nocorrect=False";
-            using var request = await AuthorizedRequestAsync(path, ct);
-            using var response = await factory.CreateClient("yandex-music").SendAsync(request, ct);
-            response.EnsureSuccessStatusCode();
-            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
-            if (!document.RootElement.TryGetProperty("result", out var result) ||
-                result.ValueKind != JsonValueKind.Object ||
-                !result.TryGetProperty("artists", out var artists) ||
-                artists.ValueKind != JsonValueKind.Object ||
-                !artists.TryGetProperty("results", out var candidates) ||
-                candidates.ValueKind != JsonValueKind.Array)
+            var artists = await SearchArtistsAsync(query, ct);
+            var chosen = artists.Select(x => new { Artist = x, Score = MatchScore(query, x.Name) })
+                .OrderByDescending(x => x.Score).FirstOrDefault();
+            if (chosen is null || chosen.Score < 55)
                 return new YandexMusicSelection("artist", query, []);
-
-            var matches = candidates.EnumerateArray()
-                .Where(x => x.ValueKind == JsonValueKind.Object)
-                .Select(x => new { Id = PropertyString(x, "id"), Name = PropertyString(x, "name") })
-                .Where(x => Regex.IsMatch(x.Id, @"^\d+$") && x.Name.Length > 0)
-                .ToArray();
-            var found = matches.FirstOrDefault(x => string.Equals(x.Name, query,
-                StringComparison.OrdinalIgnoreCase))
-                ?? matches.FirstOrDefault(x => x.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
-            if (found is null) return new YandexMusicSelection("artist", query, []);
-
-            // Official catalog artist tracks, not a broad track search: this
-            // avoids accidentally playing covers and unrelated search matches.
-            string trackPath = "/artists/" + found.Id + "/tracks?page=0&page-size=50";
-            using var tracksRequest = await AuthorizedRequestAsync(trackPath, ct);
-            using var tracksResponse = await factory.CreateClient("yandex-music").SendAsync(tracksRequest, ct);
-            tracksResponse.EnsureSuccessStatusCode();
-            using var tracksDocument = JsonDocument.Parse(await tracksResponse.Content.ReadAsStringAsync(ct));
-            if (!tracksDocument.RootElement.TryGetProperty("result", out var tracksResult) ||
-                tracksResult.ValueKind != JsonValueKind.Object ||
-                !tracksResult.TryGetProperty("tracks", out var trackArray) ||
-                trackArray.ValueKind != JsonValueKind.Array)
-                return new YandexMusicSelection("artist", found.Name, []);
-
-            var selected = trackArray.EnumerateArray().Take(50).Select(ParseTrack)
-                .Where(x => Regex.IsMatch(x.Id, @"^\d+(?::\d+)?$"))
-                .DistinctBy(x => x.Id).ToArray();
-            return new YandexMusicSelection("artist", found.Name, selected);
+            return await ArtistTracksAsync(chosen.Artist, ct);
         }
 
-        return new YandexMusicSelection(kind, query, await SearchAsync(query, ct));
+        if (kind == "track")
+        {
+            var results = await SearchAsync(query, ct);
+            var sorted = results.Select((x, i) =>
+                    new { Track = x, Score = MatchScore(query, x.Title), Index = i })
+                .OrderByDescending(x => x.Score).ThenBy(x => x.Index)
+                .Select(x => x.Track).ToArray();
+            return new YandexMusicSelection("track", query, sorted);
+        }
+
+        // Unqualified "включи <name>" is resolved by live catalog results:
+        // prefer exact multi-word song titles, or exact artist names for
+        // single-word queries; never manufacture metadata from a prompt.
+        var trackTask = SearchAsync(query, ct);
+        var artistTask = SearchArtistsAsync(query, ct);
+        await Task.WhenAll(trackTask, artistTask);
+        var tracksFound = await trackTask;
+        var artistsFound = await artistTask;
+
+        var rankedSongs = tracksFound.Select((x, i) =>
+                new { Track = x, Score = MatchScore(query, x.Title), Index = i })
+            .OrderByDescending(x => x.Score).ThenBy(x => x.Index).ToArray();
+        var rankedArtists = artistsFound.Select((x, i) =>
+                new { Artist = x, Score = MatchScore(query, x.Name), Index = i })
+            .OrderByDescending(x => x.Score).ThenBy(x => x.Index).ToArray();
+
+        int bestTrack = rankedSongs.FirstOrDefault()?.Score ?? 0;
+        int bestArtist = rankedArtists.FirstOrDefault()?.Score ?? 0;
+        bool shortName = NormalizedName(query).Split(' ', StringSplitOptions.RemoveEmptyEntries).Length == 1;
+
+        if (bestArtist >= 78 &&
+            (bestArtist > bestTrack || (shortName && bestArtist == bestTrack)))
+        {
+            var artistTracks = await ArtistTracksAsync(rankedArtists[0].Artist, ct);
+            if (artistTracks.Tracks.Length > 0) return artistTracks;
+        }
+
+        if (rankedSongs.Length > 0)
+            return new YandexMusicSelection("track", query,
+                rankedSongs.Select(x => x.Track).ToArray());
+
+        if (bestArtist >= 60)
+            return await ArtistTracksAsync(rankedArtists[0].Artist, ct);
+
+        return new YandexMusicSelection("auto", query, []);
     }
 
     private static YandexTrack ParseTrack(JsonElement entry)
