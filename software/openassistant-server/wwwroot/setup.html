@@ -59,7 +59,7 @@
             <div class="options-heading"><h3>Параметры запуска</h3></div>
             <div class="guided-options">
               <div class="option"><label for="gpuSelect">Видеокарта</label><select id="gpuSelect"><option value="">Автоматический выбор</option></select></div>
-              <div class="option"><label for="contextSelect">Контекст</label><select id="contextSelect"><option value="4096" selected>4096 токенов</option><option value="8192">8192 токенов</option><option value="16384">16384 токенов</option></select></div>
+              <div class="option"><label for="contextSelect">Контекст</label><select id="contextSelect"><option value="4096">4096 токенов</option><option value="8192">8192 токенов</option><option value="16384">16384 токенов</option><option value="32768">32768 токенов</option><option value="65536" selected>65536 токенов (64K)</option></select><small class="muted">64K увеличивает потребление памяти KV-кеша. Убедитесь, что модель и GPU поддерживают такой контекст.</small></div>
               <div class="option"><label for="temperatureSelect">Температура</label><select id="temperatureSelect"><option value="0.3">0.3</option><option value="0.5" selected>0.5</option><option value="0.7">0.7</option><option value="1">1.0</option></select></div>
             </div>
             <div class="buttonrow">
