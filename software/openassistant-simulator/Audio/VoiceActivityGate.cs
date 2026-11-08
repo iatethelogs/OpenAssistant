@@ -84,7 +84,6 @@ public sealed class VoiceActivityGate
             _noSpeechTimeoutMs = Math.Clamp(noSpeechTimeoutMs, 3000, 60000);
             _capturing = true;
             _quietMs = _totalMs = _speechMs = 0;
-        _speechStartedAtMs = -1;
             _speechStartedAtMs = -1;
             while (_preRoll.TryDequeue(out var chunk)) SendAudio?.Invoke(chunk);
             _preRollBytes = 0;
@@ -99,6 +98,7 @@ public sealed class VoiceActivityGate
     {
         _capturing = false;
         _quietMs = _totalMs = _speechMs = 0;
+        _speechStartedAtMs = -1;
         _preRoll.Clear();
         _preRollBytes = 0;
     }
