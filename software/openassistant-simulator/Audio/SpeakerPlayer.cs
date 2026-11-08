@@ -1,4 +1,5 @@
 using NAudio.Wave;
+using System.Net.Http;
 
 namespace OpenAssistant.Simulator.Audio;
 
