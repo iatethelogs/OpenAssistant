@@ -60,6 +60,10 @@ public sealed class AudioUploadQueue : IAsyncDisposable
     /// <summary>передаёт слово активации перед фреймами текущей голосовой команды.</summary>
     public void QueueWake(string word) => _pending.Writer.TryWrite(new Packet(null, "wake", word, Volatile.Read(ref _generation)));
 
+    /// <summary>Forget the current conversational context without deleting persistent memory.</summary>
+    public void QueueConversationReset() => _pending.Writer.TryWrite(
+        new Packet(null, "conversation_reset", null, Volatile.Read(ref _generation)));
+
     /// <summary>очищает очередь при отключении и разрешает новую запись.</summary>
     public void Reset()
     {
