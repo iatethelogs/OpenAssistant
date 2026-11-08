@@ -405,6 +405,8 @@ public sealed class GuidedSetupService(
                 ["OPENASSISTANT_TTS_ENGINE"] = choice.Id.StartsWith("qwen-tts-fast-", StringComparison.Ordinal) && gpu is not null ? "faster" : "official"
             }
         };
+        if (piper)
+            profile.Environment["OPENASSISTANT_VOICE_DIR"] = Path.Combine(env.ContentRootPath, "models", "piper");
         await processes.SaveAsync(j.Role, profile, ct);
         await processes.RestartAsync(j.Role, ct);
         if (j.Role == "stt") await settings.UpdateSttUrlAsync("http://127.0.0.1:8016", ct);
