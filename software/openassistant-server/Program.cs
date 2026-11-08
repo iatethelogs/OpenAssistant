@@ -482,6 +482,15 @@ app.MapGet("/api/yandex/search", async (HttpContext ctx, string query, YandexMus
     try { return Results.Ok(await music.SearchAsync(query, ct)); }
     catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { return Results.BadRequest(new { error = ex.Message }); }
 });
+app.MapGet("/api/yandex/tracks/{trackId}/similar", async (
+    HttpContext ctx, string trackId, YandexMusicService music, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await music.SimilarAsync(trackId, ct)); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
+        HttpRequestException or JsonException or TaskCanceledException or InvalidDataException)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
 // на клиент передаём только короткоживущую ссылку, без oauth-токена и аудиопрокси.
 app.MapGet("/api/yandex/tracks/{trackId}/playback", async (
     HttpContext ctx, string trackId, YandexMusicService music, CancellationToken ct) =>
