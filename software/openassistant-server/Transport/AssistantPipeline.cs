@@ -116,6 +116,30 @@ public sealed class AssistantPipeline(
             bool canPlay = allowed.Any(x => x.Name == "music_play_query" && x.Enabled);
             if (canPlay)
             {
+                if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
+                        @"^(?:включи|поставь|проиграй)(?: мне)? (?:мою музыку|музыку|любимые треки|понравившиеся треки|плейлист мне нравится)$"))
+                {
+                    var liked = await music.LikedTracksAsync(ct);
+                    if (liked.Length == 0) return "В избранном пока нет треков.";
+                    await player.PlayQueueAsync(liked, ct);
+                    return "Включаю понравившиеся треки.";
+                }
+                var playlistCommand = System.Text.RegularExpressions.Regex.Match(phrase,
+                    @"^(?:включи|поставь|проиграй)(?: мне)? плейлист (.+)$");
+                if (playlistCommand.Success)
+                {
+                    string name = playlistCommand.Groups[1].Value.Trim(' ', '"', '«', '»');
+                    var playlists = await music.PlaylistsAsync(ct);
+                    var selected = playlists.FirstOrDefault(p =>
+                        p.Title.Equals(name, StringComparison.OrdinalIgnoreCase)) ??
+                        playlists.FirstOrDefault(p =>
+                            p.Title.Contains(name, StringComparison.OrdinalIgnoreCase));
+                    if (selected is null) return "Плейлист не найден.";
+                    var queue = await music.PlaylistTracksAsync(selected.Kind, ct);
+                    if (queue.Length == 0) return "Плейлист пуст.";
+                    await player.PlayQueueAsync(queue, ct);
+                    return "Включаю плейлист " + selected.Title + ".";
+                }
                 var match = System.Text.RegularExpressions.Regex.Match(phrase,
                     @"^(?:включи|поставь|проиграй|запусти)(?: мне)? (?:песню|трек|музыку|композицию) (.+)$");
                 if (match.Success)
