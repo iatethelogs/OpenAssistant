@@ -69,7 +69,7 @@ public sealed class MusicPlaybackSession(
     // safely rather than terminating the entire WebSocket on a CDN/API error.
     private async Task TryPlayFromAsync(int start, CancellationToken ct)
     {
-        for (int candidate = start; candidate < _queue.Count; candidate++)
+        for (int candidate = start; candidate < _queue.Count && candidate < start + 5; candidate++)
         {
             _index = candidate;
             try
@@ -90,6 +90,19 @@ public sealed class MusicPlaybackSession(
         _paused = false;
         await send(new { type = "stop_media" }, ct);
         await send(Snapshot(), ct);
+    }
+
+    public async Task<string?> CurrentTrackAsync(CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            if (_index < 0 || _index >= _queue.Count) return null;
+            var track = _queue[_index];
+            return track.Artists.Length == 0 ? track.Title :
+                string.Join(", ", track.Artists) + " — " + track.Title;
+        }
+        finally { _gate.Release(); }
     }
 
     public async Task StartedAsync(long playbackId, CancellationToken ct)
