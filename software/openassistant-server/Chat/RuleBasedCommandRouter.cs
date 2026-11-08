@@ -155,7 +155,10 @@ public sealed class RuleBasedCommandRouter(
         }
 
         if (Match(target, @"^(?:музыку|воспроизведение)$").Success)
-            return Call("music_control", new { action = activate ? "resume" : "stop" });
+            return activate ? Call("music_play_liked", new { }) :
+                Call("music_control", new { action = "stop" });
+        if (Match(target, @"^(?:песню|трек|композицию|группу|исполнителя|артиста)$").Success)
+            return Fail("Уточните название исполнителя или композиции.");
         if (activate && Match(target,
             @"^(?:мои|свои)?\s*(?:любимые|понравившиеся)(?:\s+(?:треки|песни|композиции))?$").Success)
             return Call("music_play_liked", new { });
