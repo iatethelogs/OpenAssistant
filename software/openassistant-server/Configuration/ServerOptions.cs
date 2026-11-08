@@ -12,6 +12,8 @@ public sealed class ServerOptions
     public string TtsModel { get; set; } = "Qwen3-TTS";
     public string TtsVoice { get; set; } = "default";
     public string TtsLanguage { get; set; } = "Russian";
+    // quality: fewer, longer TTS calls; fast: synthesize finished sentences while LLM streams.
+    public string TtsSpeechMode { get; set; } = "quality";
     public string HomeAssistantUrl { get; set; } = "";
     public string HomeAssistantToken { get; set; } = "";
     public string DeviceToken { get; set; } = "";
