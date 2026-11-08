@@ -304,3 +304,32 @@ footer a:hover{text-decoration:underline}
 #discoveredClients .connection-entry{padding:10px 0;border-bottom:1px solid var(--border-subtle)}
 #discoveredClients .connection-entry strong{display:block;margin-bottom:4px;font-size:12px}
 #discoveredClients .connection-entry small{font-size:11px;color:var(--secondary)}
+
+
+/* Provider-scoped skills: separate authorization from the LLM permissions. */
+.integration-tabs{display:flex;gap:6px;border-bottom:1px solid var(--border);padding:0 0 10px;margin:0 0 18px;flex-wrap:wrap}
+.integration-tab{border:1px solid transparent;border-radius:7px;background:transparent;color:var(--secondary);
+ padding:8px 15px;font-size:12px;font-weight:600;cursor:pointer}
+.integration-tab:hover{background:var(--surface-alt);color:var(--text)}
+.integration-tab.active{border-color:var(--border-strong);background:var(--surface-alt);color:var(--text)}
+.integration-pane[hidden]{display:none!important}
+.integration-pane>.panel{max-width:880px}
+.integration-enable{display:flex;align-items:center;gap:9px;margin:0;color:var(--text);font-size:12px;font-weight:650;cursor:pointer}
+.integration-enable input[type=checkbox]{flex:0 0 15px}
+.integration-pane .advanced-settings{margin-top:17px}
+.integration-pane .skills-list{margin-top:12px}
+.integration-pane .skill-option{padding:12px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface-alt);cursor:pointer}
+.integration-pane .skill-option strong{display:block;font-size:12px;color:var(--text)}
+.integration-pane .skill-option small{display:block;color:var(--secondary);margin-top:3px;line-height:1.45;font-size:11px}
+.integration-pane .skill-option:has(input:disabled){opacity:.65}
+.skill-wizard{width:min(640px,calc(100vw - 28px));max-height:min(85vh,830px);overflow:auto;padding:22px;
+ border:1px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--text);box-shadow:var(--shadow-popover)}
+.skill-wizard::backdrop{background:rgba(0,0,0,.68)}
+.skill-wizard .panel-heading{align-items:flex-start}
+.skill-wizard label:not(.tool-toggle){margin-top:12px}
+.skill-wizard [data-wizard-step][hidden]{display:none!important}
+.skill-wizard-steps{color:var(--secondary);font-size:11px;border-bottom:1px solid var(--border-subtle);padding:0 0 11px;margin-bottom:15px}
+.skill-wizard-summary{padding:13px;border:1px solid var(--border);border-radius:7px;background:var(--surface-alt);line-height:1.7;
+ font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.skill-wizard .tool-schema{min-height:180px}
+@media(max-width:690px){.skill-wizard{padding:16px}.integration-enable{margin-top:10px}.integration-tab{padding:8px 10px}}
