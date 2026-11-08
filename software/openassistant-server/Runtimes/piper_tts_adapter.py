@@ -15,7 +15,7 @@ from urllib.request import urlopen
 import numpy as np
 from scipy.signal import resample_poly
 from math import gcd
-from piper import PiperVoice
+from piper import PiperVoice, SynthesisConfig
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--port", type=int, default=8020)
@@ -91,10 +91,31 @@ class Handler(BaseHTTPRequestHandler):
             if not 1 <= len(text) <= 1200 or not 8000 <= rate <= 48000:
                 self.reply(400, {"error": "invalid text or sample rate"})
                 return
+            try:
+                length_scale = float(request.get("length_scale", 1.0))
+                noise_scale = float(request.get("noise_scale", 0.667))
+                noise_w_scale = float(request.get("noise_w_scale", 0.8))
+                volume = float(request.get("volume", 1.0))
+                normalize_audio = request.get("normalize_audio", True)
+            except (ValueError, TypeError):
+                self.reply(400, {"error": "invalid Piper parameters"})
+                return
+            import math
+            if (not all(map(math.isfinite, (length_scale, noise_scale, noise_w_scale, volume))) or
+                    not 0.5 <= length_scale <= 2.5 or
+                    not 0 <= noise_scale <= 2 or
+                    not 0 <= noise_w_scale <= 2 or
+                    not 0 <= volume <= 2 or type(normalize_audio) is not bool):
+                self.reply(400, {"error": "Piper parameters out of range"})
+                return
+            config = SynthesisConfig(
+                length_scale=length_scale, noise_scale=noise_scale,
+                noise_w_scale=noise_w_scale, volume=volume,
+                normalize_audio=normalize_audio)
             with lock:
                 original = io.BytesIO()
                 with wave.open(original, "wb") as wav:
-                    voice.synthesize_wav(text, wav)
+                    voice.synthesize_wav(text, wav, syn_config=config)
             original.seek(0)
             with wave.open(original, "rb") as wav:
                 if wav.getnchannels() != 1 or wav.getsampwidth() != 2:
