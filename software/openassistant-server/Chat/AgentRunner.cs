@@ -79,6 +79,7 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
         bool toolsSupported = true;
         bool planFurther = true;
         var completedTools = new List<object>();
+        var plannedSignatures = new HashSet<string>(StringComparer.Ordinal);
         for (int round = 0; round < 5; round++)
         {
             SkillDefinition[] enabled = toolsSupported
@@ -115,6 +116,14 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
 
                 if (decision is not null)
                 {
+                    var signature = decision.Name + ":" + decision.Arguments.GetRawText();
+                    if (!plannedSignatures.Add(signature))
+                    {
+                        logger.LogWarning("Planner attempted repeated identical tool {Tool}; falling back to final response", decision.Name);
+                        planFurther = false;
+                        toolsSupported = false;
+                        continue;
+                    }
                     if (++executed > 8)
                         throw new InvalidOperationException("Превышен лимит вызовов инструментов");
                     var toolResult = await InvokeToolAsync(decision.Name,
