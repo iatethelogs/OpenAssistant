@@ -14,7 +14,7 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
         var s = options.CurrentValue;
         return new {
             s.LlmUrl, s.LlmModel, s.SystemPrompt,
-            s.SttUrl, s.SttModel, s.TtsUrl, s.TtsModel, s.TtsVoice, s.TtsLanguage,
+            s.SttUrl, s.SttModel, s.TtsUrl, s.TtsModel, s.TtsVoice, s.TtsLanguage, s.TtsSpeechMode,
             s.HomeAssistantUrl, hasDeviceToken = !string.IsNullOrWhiteSpace(credentials.DeviceToken), hasHomeAssistantToken = !string.IsNullOrWhiteSpace(s.HomeAssistantToken),
             s.LlmTemperature, s.LlmTopP, s.LlmTopK, s.LlmRepeatPenalty, s.LlmMaxTokens,
             s.InputSampleRate, s.OutputSampleRate, s.RadioStations
@@ -36,6 +36,7 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
             TtsModel = s.TtsModel,
             TtsVoice = s.TtsVoice,
             TtsLanguage = s.TtsLanguage,
+            TtsSpeechMode = s.TtsSpeechMode,
             HomeAssistantUrl = url,
             HomeAssistantToken = token,
             DeviceToken = s.DeviceToken,
@@ -54,19 +55,21 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
     public Task UpdateLlmUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(url, null, null, null, ct);
     public Task UpdateSttUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(null, url, null, null, ct);
     public Task UpdateTtsUrlAsync(string url, CancellationToken ct) => UpdatePartialAsync(null, null, url, null, ct);
+    public Task UpdateTtsBackendAsync(string url, string model, CancellationToken ct) =>
+        UpdatePartialAsync(null, null, url, null, ct, ttsModel: model);
     public Task UpdateLlmTemperatureAsync(double temperature, CancellationToken ct)
     {
         if (temperature is < 0 or > 2) throw new ArgumentException("Температура должна быть от 0 до 2");
         return UpdatePartialAsync(null, null, null, null, ct, temperature);
     }
-    private Task UpdatePartialAsync(string? llmUrl, string? sttUrl, string? ttsUrl, string? deviceToken, CancellationToken ct, double? temperature = null)
+    private Task UpdatePartialAsync(string? llmUrl, string? sttUrl, string? ttsUrl, string? deviceToken, CancellationToken ct, double? temperature = null, string? ttsModel = null)
     {
         var s = options.CurrentValue;
         return SaveAsync(new SettingsUpdate {
             LlmUrl = llmUrl ?? s.LlmUrl, LlmModel = s.LlmModel, SystemPrompt = s.SystemPrompt,
             SttUrl = sttUrl ?? s.SttUrl, SttModel = s.SttModel,
-            TtsUrl = ttsUrl ?? s.TtsUrl, TtsModel = s.TtsModel, TtsVoice = s.TtsVoice,
-            TtsLanguage = s.TtsLanguage, HomeAssistantUrl = s.HomeAssistantUrl,
+            TtsUrl = ttsUrl ?? s.TtsUrl, TtsModel = ttsModel ?? s.TtsModel, TtsVoice = s.TtsVoice,
+            TtsLanguage = s.TtsLanguage, TtsSpeechMode = s.TtsSpeechMode, HomeAssistantUrl = s.HomeAssistantUrl,
             HomeAssistantToken = s.HomeAssistantToken, DeviceToken = deviceToken ?? s.DeviceToken,
             LlmTemperature = temperature ?? s.LlmTemperature, LlmTopP = s.LlmTopP,
             LlmTopK = s.LlmTopK, LlmRepeatPenalty = s.LlmRepeatPenalty,
@@ -96,6 +99,8 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
             !double.IsFinite(update.LlmRepeatPenalty) || update.LlmRepeatPenalty is < 0.5 or > 2 ||
             update.LlmMaxTokens is < 16 or > 8192)
             throw new ArgumentException("Некорректные параметры генерации LLM");
+        if (update.TtsSpeechMode is not ("fast" or "quality"))
+            throw new ArgumentException("Режим синтеза речи должен быть fast или quality");
         if (update.InputSampleRate is < 8000 or > 48000 || update.OutputSampleRate is < 8000 or > 48000)
             throw new ArgumentException("частота дискретизации вне допустимого диапазона");
         foreach (string value in new[] { update.LlmModel, update.SttModel, update.TtsModel, update.TtsVoice, update.TtsLanguage })
@@ -111,7 +116,7 @@ public sealed class SettingsStore(IWebHostEnvironment env, IOptionsMonitor<Serve
                 OpenAssistant = new {
                     update.LlmUrl, update.LlmModel, update.SystemPrompt,
                     update.SttUrl, update.SttModel, update.TtsUrl, update.TtsModel,
-                    update.TtsVoice, update.TtsLanguage, update.HomeAssistantUrl,
+                    update.TtsVoice, update.TtsLanguage, update.TtsSpeechMode, update.HomeAssistantUrl,
                     HomeAssistantToken = update.HomeAssistantToken is null ? current.HomeAssistantToken : update.HomeAssistantToken,
                     // Device key is now stored in ServerCredentialStore, outside the repository.
                     update.LlmTemperature, update.LlmTopP, update.LlmTopK, update.LlmRepeatPenalty, update.LlmMaxTokens,
@@ -146,6 +151,7 @@ public sealed class SettingsUpdate
     public string TtsModel { get; set; } = "";
     public string TtsVoice { get; set; } = "";
     public string TtsLanguage { get; set; } = "Russian";
+    public string TtsSpeechMode { get; set; } = "quality";
     public string HomeAssistantUrl { get; set; } = "";
     public string? HomeAssistantToken { get; set; }
     public string? DeviceToken { get; set; }

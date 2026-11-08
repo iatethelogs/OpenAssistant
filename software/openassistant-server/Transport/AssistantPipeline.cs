@@ -93,6 +93,9 @@ public sealed class AssistantPipeline(
         {
             if (string.IsNullOrWhiteSpace(text))
             {
+                // Every completed voice turn gets a transcript, even when STT
+                // hears silence; the client must be able to leave listening mode.
+                await JsonAsync(new { type = "transcript", text = "" }, ct);
                 await JsonAsync(new { type = "done" }, ct);
                 return;
             }
@@ -137,21 +140,64 @@ public sealed class AssistantPipeline(
             // Text still streams immediately; the first audio starts later.
             var complete = new StringBuilder();
             int outputRate = settings.CurrentValue.OutputSampleRate;
-            await foreach (var delta in agent.GenerateAsync(messages, ct))
+            bool fastSpeech = synthesize && settings.CurrentValue.TtsSpeechMode == "fast";
+            // Fast mode starts speaking completed phrases while the LLM is still
+            // generating. A single consumer preserves phrase playback order.
+            var phrases = fastSpeech ? Channel.CreateUnbounded<string>(
+                new UnboundedChannelOptions { SingleReader = true, SingleWriter = true }) : null;
+            using var speechStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            Task? speechWorker = phrases is null ? null : Task.Run(async () =>
             {
-                if (delta.Media is not null) await JsonAsync(delta.Media, ct);
-                if (delta.Tool is not null)
+                await foreach (var phrase in phrases.Reader.ReadAllAsync(speechStop.Token))
                 {
-                    conversationLog.Add("action", "tool: " + delta.Tool);
-                    await JsonAsync(new { type = "tool_result", name = delta.Tool, result = delta.Result }, ct);
+                    foreach (var chunk in SpeechChunks(phrase))
+                    {
+                        speechStop.Token.ThrowIfCancellationRequested();
+                        byte[] pcm = await speech.SynthesizeAsync(chunk, voice, outputRate, speechStop.Token);
+                        await AudioAsync(pcm, outputRate, speechStop.Token);
+                    }
                 }
-                if (string.IsNullOrEmpty(delta.Text)) continue;
-                complete.Append(delta.Text);
-                await JsonAsync(new { type = "text", delta = delta.Text }, ct);
+            }, speechStop.Token);
+            var segmenter = fastSpeech ? new SentenceSegmenter() : null;
+            try
+            {
+                await foreach (var delta in agent.GenerateAsync(messages, ct))
+                {
+                    if (delta.Media is not null) await JsonAsync(delta.Media, ct);
+                    if (delta.Tool is not null)
+                    {
+                        conversationLog.Add("action", "tool: " + delta.Tool);
+                        await JsonAsync(new { type = "tool_result", name = delta.Tool, result = delta.Result }, ct);
+                    }
+                    if (string.IsNullOrEmpty(delta.Text)) continue;
+                    complete.Append(delta.Text);
+                    await JsonAsync(new { type = "text", delta = delta.Text }, ct);
+                    if (phrases is not null)
+                        foreach (var phrase in segmenter!.PushAll(delta.Text))
+                            phrases.Writer.TryWrite(phrase);
+                }
+                if (phrases is not null && segmenter!.Flush() is { } remainder)
+                    phrases.Writer.TryWrite(remainder);
+            }
+            catch
+            {
+                speechStop.Cancel();
+                throw;
+            }
+            finally
+            {
+                phrases?.Writer.TryComplete();
+                if (speechWorker is not null)
+                {
+                    try { await speechWorker; }
+                    catch (OperationCanceledException) when (speechStop.IsCancellationRequested) { }
+                }
             }
             string reply = complete.ToString();
-            if (synthesize && !string.IsNullOrWhiteSpace(reply))
+            if (synthesize && !fastSpeech && !string.IsNullOrWhiteSpace(reply))
             {
+                // Quality mode retains the same voice contour for the entire
+                // reply whenever it fits the backend's per-call text limit.
                 foreach (string chunk in SpeechChunks(reply))
                 {
                     ct.ThrowIfCancellationRequested();
@@ -240,7 +286,10 @@ public sealed class AssistantPipeline(
                         if (activation.Length is < 1 or > 64 ||
                             !System.Text.RegularExpressions.Regex.IsMatch(activation, @"^[\p{L}\p{N} _-]+$"))
                             throw new JsonException("некорректное слово активации");
+                        bool interrupted = current is { IsCompleted: false };
                         await CancelAsync();
+                        if (interrupted)
+                            await JsonAsync(new { type = "interrupted" }, disconnected);
                         input.SetLength(0);
                         rejectingOversizedAudio = false;
                         pendingWakeWord = activation.Trim();

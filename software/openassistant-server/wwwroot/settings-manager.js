@@ -46,7 +46,7 @@
    info.textContent=sz+(item.source==="huggingface-cache"||item.source==="gigaam-cache"?"Кеш модели":"Файлы сервера");
    name.append(strong,path,info);row.append(name);
    const actions=document.createElement("div");actions.className="installed-actions";
-   if(roles.includes(item.role)&&item.path){
+   if(roles.includes(item.role)&&item.path&&item.source!=="piper-cache"){
      const selectButton=document.createElement("button");selectButton.type="button";selectButton.className="button secondary";selectButton.textContent="Выбрать";
      selectButton.onclick=()=>{
        select(item.role);mountRole(item.role);

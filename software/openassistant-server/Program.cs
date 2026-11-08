@@ -48,7 +48,7 @@ builder.Services.AddHttpClient("yandex-oauth", c => c.Timeout = TimeSpan.FromSec
 builder.Services.Configure<ServerOptions>(builder.Configuration.GetSection("OpenAssistant"));
 builder.Services.AddHttpClient("llm", c => c.Timeout = TimeSpan.FromMinutes(5));
 builder.Services.AddHttpClient("stt");
-builder.Services.AddHttpClient("tts");
+builder.Services.AddHttpClient("tts", c => c.Timeout = TimeSpan.FromMinutes(10));
 builder.Services.AddHttpClient("homeassistant");
 builder.Services.AddSingleton<VoiceProfileStore>();
 builder.Services.AddSingleton<SpeechService>();

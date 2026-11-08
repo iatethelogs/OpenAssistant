@@ -30,7 +30,7 @@ function modelCard(m){const b=document.createElement("button");b.type="button";b
  b.append(type,name,desc,foot);
  const installed=state.installed.filter(item=>item.role===m.role&&(
    (m.role==="stt"&&item.repo==="salute-developers/GigaAM") ||
-   (m.role==="tts"&&item.repo===m.repo) ||
+   (m.role==="tts"&&item.repo===m.repo&&(!m.id.startsWith("piper-")||item.name===m.file)) ||
    (m.role==="llm"&&item.path?.includes("/"+m.repo+"/"))));
  if(installed.length){
    const cached=installed.some(item=>item.source!=="manual-download");
@@ -50,7 +50,7 @@ function updateButtons(){
   const b=el("start"+role.toUpperCase().slice(0,1)+role.slice(1));if(!b)continue;
   const status=state.jobs[role]?.status,choice=state.catalog.find(m=>m.id===state.selected[role]);
   const cached=choice&&state.installed.some(item=>item.role===role&&item.source!=="manual-download"&&
-   (role==="stt" || (role==="tts"&&item.repo===choice.repo) ||
+   (role==="stt" || (role==="tts"&&item.repo===choice.repo&&(!choice.id.startsWith("piper-")||item.name===choice.file)) ||
     (role==="llm"&&item.path?.includes("/"+choice.repo+"/"))));
   b.disabled=status==="running";
   b.textContent=status==="ready"?"Установить другую модель":status==="running"?"Установка выполняется…":
@@ -161,10 +161,22 @@ function updateVoiceMode(){
  const design=choice.includes("design");
  const style=choice.includes("17")&&!design;
  const fast=choice.includes("-fast-");
+ const piper=choice.startsWith("piper-");
+ const gpu=el("ttsGpu");
+ if(piper){if(gpu.value!=="cpu")gpu.dataset.piperForced="1";gpu.value="cpu";}
+ else if(gpu.dataset.piperForced==="1"){gpu.value="";delete gpu.dataset.piperForced;}
+ gpu.disabled=piper;
  el("designedVoice").classList.toggle("hidden",!design);
- el("presetVoice").classList.toggle("hidden",design);
+ el("presetVoice").classList.toggle("hidden",design||piper);
  el("customStyle").classList.toggle("hidden",!style);
- el("ttsChoiceHelp").textContent=design
+ const sampling=el("ttsGenerationMode").closest(".guided-options");
+ sampling?.classList.toggle("hidden",piper);
+ sampling?.previousElementSibling?.classList.toggle("hidden",piper);
+ sampling?.nextElementSibling?.classList.toggle("hidden",piper);
+ el("ttsSaveVoice").closest(".inline-actions")?.classList.toggle("hidden",piper);
+ el("ttsChoiceHelp").textContent=piper
+   ? "Piper синтезирует русскую речь на CPU без VRAM. Голос определяется выбранной моделью."
+   :design
    ? "Голос создаётся по описанию. Можно менять тембр, характер и подачу; новый запуск может дать другой результат."
    :style
    ? "Выбирается готовый тембр. Можно отдельно изменить манеру речи и интонации."

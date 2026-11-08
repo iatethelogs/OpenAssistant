@@ -43,8 +43,12 @@ el("serverChip").textContent="Подключено";el("sideStatus").textContent
 async function poll(){if(state.loading)return;state.loading=true;try{const [models,system,devices,downloads]=await Promise.all([api("/api/models"),api("/api/control/system"),api("/api/control/devices"),api("/api/models/downloads")]);Object.assign(state,{models,system,devices,downloads});render()}catch(e){el("serverChip").textContent="Нет соединения";el("sideStatus").textContent="Нет подключения";}finally{state.loading=false}}
 function updateVoiceSamplingInputs(){
  const mode=el("voiceGenerationMode").value;
- el("voiceSeed").disabled=mode!=="seeded";
- for(const id of ["voiceTemperature","voiceTopP","voiceTopK"])el(id).disabled=mode==="greedy";
+ const piper=el("ttsEngineChoice")?.value?.startsWith("piper-");
+ el("voiceGenerationMode").disabled=!!piper;
+ el("voiceSeed").disabled=!!piper||mode!=="seeded";
+ for(const id of ["voiceTemperature","voiceTopP","voiceTopK"])el(id).disabled=!!piper||mode==="greedy";
+ el("voicePenalty").disabled=!!piper;
+ for(const id of ["voice","voiceStyleSetting","voiceDescriptionSetting"])el(id).disabled=!!piper;
 }
 el("voiceGenerationMode").onchange=updateVoiceSamplingInputs;
 function loadSettings(){
@@ -55,7 +59,7 @@ function loadSettings(){
  for(const [id,key,fallback] of [["topP","llmTopP",.9],["topK","llmTopK",40],["repeatPenalty","llmRepeatPenalty",1.1]])el(id).value=s[key]??fallback;
  for(const [id,key] of [["llmUrl","llmUrl"],["llmModel","llmModel"],["sttUrl","sttUrl"],["sttModel","sttModel"],["ttsUrl","ttsUrl"],["ttsModel","ttsModel"]])el(id).value=s[key]??"";
  el("voice").value=p.speaker??s.ttsVoice??"Ryan";
- el("language").value=s.ttsLanguage??"Russian";
+ el("language").value=s.ttsLanguage??"Russian";el("ttsSpeechMode").value=s.ttsSpeechMode??"quality";
  el("voiceModeSetting").value=p.mode||"custom";
  el("voiceGenerationMode").value=p.generationMode||"seeded";
  el("voiceSeed").value=p.seed??42;
@@ -88,7 +92,7 @@ el("settingsForm").onsubmit=async event=>{
    llmUrl:el("llmUrl").value.trim(),llmModel:el("llmModel").value.trim(),
    sttUrl:el("sttUrl").value.trim(),sttModel:el("sttModel").value.trim(),
    ttsUrl:el("ttsUrl").value.trim(),ttsModel:el("ttsModel").value.trim(),
-   ttsVoice:savedProfile.speaker,ttsLanguage:el("language").value.trim()};
+   ttsVoice:savedProfile.speaker,ttsLanguage:el("language").value.trim(),ttsSpeechMode:el("ttsSpeechMode").value};
   delete settings.hasDeviceToken;delete settings.hasHomeAssistantToken;
   await api("/api/settings","POST",settings);
   state.voiceProfile=savedProfile;state.settings=settings;
@@ -194,13 +198,71 @@ el("toolDelete").onclick=busy(el("toolDelete"),async()=>{
 resetToolEditor();
 function renderSkills(){const box=el("skillsList");box.replaceChildren();for(const skill of state.skills){const label=textNode("label","","skill-option");const check=document.createElement("input");check.type="checkbox";check.dataset.skill=skill.name;check.checked=skill.enabled;const section=document.createElement("div");section.append(textNode("strong",skill.title),textNode("small",skill.description+(skill.sensitive?" · Действие требует разрешения":"")));label.append(check,section);box.append(label)}}
 el("saveSkills").onclick=busy(el("saveSkills"),async()=>{const changes={};for(const input of document.querySelectorAll("#skillsList input"))changes[input.dataset.skill]=input.checked;state.skills=await api("/api/control/skills","PUT",changes);renderSkills();toast("Разрешения навыков обновлены")});
-async function init(){const page=location.hash.slice(1);show(page in names?page:"overview");loadDeviceKey().catch(e=>{el("deviceKey").textContent="Не удалось загрузить ключ: "+e.message});try{const [settings,skills,voiceProfile]=await Promise.all([api("/api/settings"),api("/api/control/skills"),api("/api/setup/voice")]);state.settings=settings;state.skills=skills;state.voiceProfile=voiceProfile;loadSettings();renderSkills()}catch(e){toast("Настройки: "+e.message,true)}await poll();await refreshConnections().catch(()=>{});await refreshModels().catch(()=>{});
+async function init(){const page=location.hash.slice(1);show(page in names?page:"overview");loadDeviceKey().catch(e=>{el("deviceKey").textContent="Не удалось загрузить ключ: "+e.message});try{const [settings,skills,voiceProfile]=await Promise.all([api("/api/settings"),api("/api/control/skills"),api("/api/setup/voice")]);state.settings=settings;state.skills=skills;state.voiceProfile=voiceProfile;loadSettings();renderSkills()}catch(e){toast("Настройки: "+e.message,true)}await poll();await refreshConnections().catch(()=>{});await refreshModels().catch(()=>{});await initTtsChoices().catch(e=>toast("Каталог TTS: "+e.message,true));
  if(!el("serverHost").value && location.hostname && location.hostname!=="localhost" && location.hostname!=="127.0.0.1"){
   el("serverHost").value=location.hostname;deviceAddress();
  }
 }
 init();setInterval(poll,6000);setInterval(()=>{if(document.getElementById("logs").classList.contains("active"))refreshServerLogs().catch(()=>{});if(document.getElementById("settings")?.classList.contains("active")&&!document.getElementById("settings-storage")?.hidden)refreshModels().catch(()=>{})},5000);
 
+
+// Engine setup is managed by the same backend as the first-run wizard.
+let ttsInstallPolling=false;
+async function pollTtsInstallation(){
+ if(ttsInstallPolling)return;
+ ttsInstallPolling=true;
+ const indicator=el("ttsEngineInstallStatus"),button=el("ttsEngineInstall");
+ button.disabled=true;
+ try{
+  while(true){
+   const status=await api("/api/setup/status");
+   const job=status.jobs?.find(x=>x.role==="tts");
+   if(!job||job.status!=="running"){
+    if(job)indicator.textContent=job.status==="ready"?"Модель запущена: "+job.name:"Ошибка: "+(job.error||job.description);
+    await refreshModels();
+    if(job?.status==="ready"){
+     const current=await api("/api/settings");
+     state.settings=current;
+     el("ttsModel").value=current.ttsModel??"";
+     state.voiceProfile=await api("/api/setup/voice");
+     el("voiceModeSetting").value=state.voiceProfile.mode||"custom";
+    }
+    break;
+   }
+   indicator.textContent=job.description||"Загрузка модели";
+   await new Promise(resolve=>setTimeout(resolve,1800));
+  }
+ }catch(error){indicator.textContent=error.message;}
+ finally{ttsInstallPolling=false;button.disabled=false;}
+}
+async function initTtsChoices(){
+ const catalog=await api("/api/setup/catalog"),picker=el("ttsEngineChoice");
+ const tts=catalog.filter(model=>model.role==="tts");
+ picker.replaceChildren(...tts.map(model=>new Option(model.name,model.id)));
+ const profile=state.models?.profiles?.tts;
+ const configured=profile?.environment?.OPENASSISTANT_MODEL;
+ const engine=profile?.environment?.OPENASSISTANT_TTS_ENGINE;
+ const selected=tts.find(model=>model.id.startsWith("piper-")
+   ? model.file===configured
+   : model.repo===configured&&model.id.startsWith("qwen-tts-fast-")===(engine==="faster"));
+ picker.value=selected?.id||"qwen-tts-fast-06";
+ picker.onchange=updateVoiceSamplingInputs;
+ updateVoiceSamplingInputs();
+ el("ttsEngineInstall").onclick=async()=>{
+  if(ttsInstallPolling)return;
+  const button=el("ttsEngineInstall");
+  button.disabled=true;
+  try{
+   const modelId=picker.value,piper=modelId.startsWith("piper-");
+   const job=await api("/api/setup/tts","POST",{modelId,gpuUuid:piper?"cpu":null});
+   el("ttsEngineInstallStatus").textContent=job.description||"Подготовка модели";
+   await pollTtsInstallation();
+  }catch(error){toast(error.message,true);}
+  finally{button.disabled=false;}
+ };
+ const status=await api("/api/setup/status");
+ if(status.jobs?.some(x=>x.role==="tts"&&x.status==="running"))void pollTtsInstallation();
+}
 
 /* Additional sections share the same layout and API. No nested pages or iframes. */
 const modelState={files:[],selected:new Set(),revision:"main"};
@@ -210,7 +272,10 @@ function renderModelCards(){
   const current=state.models?.status?.running?.[role];
   const card=textNode("article","","service");const head=textNode("div",role.toUpperCase(),"service-type");
   const model=state.models?.profiles?.[role];
-  const modelName=(current?.modelPath||model?.modelPath||"").split("/").pop();
+  const modelName=current?.displayName||model?.displayName||
+    (role==="stt"&&model?.environment?.OPENASSISTANT_MODEL==="v3_e2e_rnnt"?"GigaAM v3 · RNNT":null)||
+    (model?.environment?.OPENASSISTANT_MODEL||"").split("/").pop()||
+    (current?.modelPath||model?.modelPath||"").split(/[\\/]/).pop();
   const svc=serviceState(role);
   card.append(head,textNode("div",svc.label,"service-value"),
     textNode("div",modelName||"Модель не выбрана","service-caption"));

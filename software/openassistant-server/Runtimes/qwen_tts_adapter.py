@@ -144,8 +144,10 @@ class Handler(BaseHTTPRequestHandler):
             if sr != sample_rate:
                 common = gcd(sr, sample_rate)
                 samples = resample_poly(samples, sample_rate // common, sr // common)
-            if len(samples) > sample_rate * 35:
-                raise ValueError("generated audio is too long")
+            # Quality mode may synthesize up to 1100 characters in one call.
+            # 35 seconds previously rejected valid long answers mid-response.
+            if len(samples) > sample_rate * 300:
+                raise ValueError("generated audio exceeds five minutes")
             buffer = io.BytesIO()
             sf.write(buffer, samples, sample_rate, subtype="PCM_16", format="WAV")
             data = buffer.getvalue()

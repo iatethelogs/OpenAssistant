@@ -20,6 +20,7 @@ public sealed class ModelProcessManager(
     {
         public required Process Process { get; init; }
         public required string ModelPath { get; init; }
+        public string DisplayName { get; init; } = "";
         public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
         public Queue<string> Log { get; } = new();
     }
@@ -93,7 +94,7 @@ public sealed class ModelProcessManager(
             foreach (var (key, value) in profile.Environment)
                 start.Environment[key] = Expand(value, model);
             var process = Process.Start(start) ?? throw new InvalidOperationException("Движок не запустился");
-            var managed = new Managed { Process = process, ModelPath = model };
+            var managed = new Managed { Process = process, ModelPath = model, DisplayName = profile.DisplayName };
             _running[role] = managed;
             process.OutputDataReceived += (_, args) => Append(managed, "OUT", args.Data);
             process.ErrorDataReceived += (_, args) => Append(managed, "ERR", args.Data);
@@ -221,7 +222,7 @@ public sealed class ModelProcessManager(
                 string[] logs;
                 lock (managed.Log) logs = managed.Log.ToArray();
                 running[role] = new {
-                    running = live, pid = p.Id, modelPath = managed.ModelPath, exitCode = live ? (int?)null : p.ExitCode,
+                    running = live, pid = p.Id, modelPath = managed.ModelPath, displayName = managed.DisplayName, exitCode = live ? (int?)null : p.ExitCode,
                     startedAt = managed.StartedAt, logs,
                     loadingSeconds = live ? Math.Max(0, (int)(DateTimeOffset.UtcNow - managed.StartedAt).TotalSeconds) : 0,
                     loadingStage = live ? LoadingStage(logs) : "Процесс завершён"
@@ -395,6 +396,7 @@ public sealed class ModelLaunchProfile
     public string Executable { get; set; } = "";
     public string WorkingDirectory { get; set; } = "";
     public string ModelPath { get; set; } = "";
+    public string DisplayName { get; set; } = "";
     public string[] Arguments { get; set; } = [];
     public int[] Gpus { get; set; } = [0];
     public string[] GpuUuids { get; set; } = [];

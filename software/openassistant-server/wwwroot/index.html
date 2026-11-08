@@ -94,6 +94,17 @@
     </div>
     </section>
     <section class="settings-pane" id="settings-tts" data-settings-panel="tts" role="tabpanel" aria-labelledby="settings-tab-tts" hidden>
+    <div class="panel-heading"><div><h2>Движок и режим синтеза</h2></div></div>
+    <div class="field-grid">
+      <div><label for="ttsEngineChoice">Модель и голос TTS</label><select id="ttsEngineChoice"></select></div>
+      <div><label for="ttsSpeechMode">Способ озвучивания ответа</label>
+        <select id="ttsSpeechMode">
+          <option value="fast">Быстро — фразами во время генерации</option>
+          <option value="quality">Качественно — после полного ответа</option>
+        </select></div>
+    </div>
+    <div class="button-row"><button class="button secondary" type="button" id="ttsEngineInstall">Установить и переключить TTS</button><span id="ttsEngineInstallStatus" class="minor"></span></div>
+    <p class="minor">Piper использует CPU и готовые русские голоса. Для Qwen доступны отдельные варианты Faster и VoiceDesign. В режиме качества длинный ответ может делиться на части из-за ограничения модели.</p>
     <div class="panel-heading"><div><h2>Голос и повторяемость синтеза</h2><p>Профиль используется и мастером, и обычными ответами ассистента</p></div></div>
     <div class="field-grid">
       <div><label for="voiceModeSetting">Тип загруженной модели (меняется в мастере)</label><select id="voiceModeSetting" disabled><option value="custom">Готовый голос (CustomVoice)</option><option value="design">VoiceDesign по описанию</option></select></div>

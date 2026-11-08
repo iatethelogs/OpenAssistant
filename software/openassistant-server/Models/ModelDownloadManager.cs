@@ -367,6 +367,17 @@ public sealed class ModelDownloadManager(IHttpClientFactory clients, IWebHostEnv
                 repo = "", source = "local", removable = true,
                 bytes = SafeSize(file) });
 
+        // Installed Piper ONNX voice files live in the managed models directory.
+        // Their corresponding Python adapters are not themselves model weights.
+        foreach (var file in files.Where(x => x.EndsWith(".onnx", StringComparison.OrdinalIgnoreCase) &&
+                    Path.GetDirectoryName(x) == Path.Combine(Root, "piper") &&
+                    File.Exists(x + ".json")))
+        {
+            result.Add(new { role = "tts", name = Path.GetFileNameWithoutExtension(file),
+                path = file, repo = "rhasspy/piper-voices", source = "piper-cache",
+                removable = false, bytes = SafeSize(file) + SafeSize(file + ".json") });
+        }
+
         // Отдельно учитываем STT/TTS, загруженные вручную через каталог Hugging Face.
         // Они могут ещё не быть подключены к Python runtime, поэтому source отличается от кеша.
         var manual = new HashSet<string>(StringComparer.Ordinal);

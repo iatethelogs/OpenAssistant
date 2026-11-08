@@ -1,0 +1,40 @@
+name: Verify OpenAssistant
+
+on:
+  pull_request:
+    paths:
+      - 'software/openassistant-server/**'
+      - 'software/openassistant-simulator/**'
+      - '.github/workflows/verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build server
+        run: dotnet build software/openassistant-server/OpenAssistant.Server.csproj --configuration Release
+      - name: Validate Python adapters
+        run: python3 -m py_compile software/openassistant-server/Runtimes/*.py
+      - name: Validate browser scripts
+        run: |
+          node --check software/openassistant-server/wwwroot/dashboard.js
+          node --check software/openassistant-server/wwwroot/setup.js
+          node --check software/openassistant-server/wwwroot/settings-manager.js
+
+  simulator:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build Windows simulator
+        run: dotnet build software/openassistant-simulator/OpenAssistant.Simulator.csproj --configuration Release
