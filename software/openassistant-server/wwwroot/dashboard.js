@@ -43,8 +43,12 @@ el("serverChip").textContent="Подключено";el("sideStatus").textContent
 async function poll(){if(state.loading)return;state.loading=true;try{const [models,system,devices,downloads]=await Promise.all([api("/api/models"),api("/api/control/system"),api("/api/control/devices"),api("/api/models/downloads")]);Object.assign(state,{models,system,devices,downloads});render()}catch(e){el("serverChip").textContent="Нет соединения";el("sideStatus").textContent="Нет подключения";}finally{state.loading=false}}
 function updateVoiceSamplingInputs(){
  const mode=el("voiceGenerationMode").value;
- el("voiceSeed").disabled=mode!=="seeded";
- for(const id of ["voiceTemperature","voiceTopP","voiceTopK"])el(id).disabled=mode==="greedy";
+ const piper=el("ttsEngineChoice")?.value?.startsWith("piper-");
+ el("voiceGenerationMode").disabled=!!piper;
+ el("voiceSeed").disabled=!!piper||mode!=="seeded";
+ for(const id of ["voiceTemperature","voiceTopP","voiceTopK"])el(id).disabled=!!piper||mode==="greedy";
+ el("voicePenalty").disabled=!!piper;
+ for(const id of ["voice","voiceStyleSetting","voiceDescriptionSetting"])el(id).disabled=!!piper;
 }
 el("voiceGenerationMode").onchange=updateVoiceSamplingInputs;
 function loadSettings(){
@@ -234,6 +238,8 @@ async function initTtsChoices(){
    ? model.file===configured
    : model.repo===configured&&model.id.startsWith("qwen-tts-fast-")===(engine==="faster"));
  picker.value=selected?.id||"qwen-tts-fast-06";
+ picker.onchange=updateVoiceSamplingInputs;
+ updateVoiceSamplingInputs();
  el("ttsEngineInstall").onclick=busy(el("ttsEngineInstall"),async()=>{
   const modelId=picker.value,piper=modelId.startsWith("piper-");
   const job=await api("/api/setup/tts","POST",{modelId,gpuUuid:piper?"cpu":null});
