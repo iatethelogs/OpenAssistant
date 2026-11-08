@@ -5,7 +5,7 @@ using OpenAssistant.Server.Configuration;
 
 namespace OpenAssistant.Server.Audio;
 
-/// <summary>общий интерфейс локальных gpu-сервисов gigaam и qwen tts.</summary>
+/// <summary>Единый HTTP-клиент STT и локальных Qwen/Piper TTS-движков.</summary>
 public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<ServerOptions> settings, VoiceProfileStore voices)
 {
     /// <summary>отдаёт русскую речь gigaam через совместимый endpoint распознавания.</summary>
@@ -24,7 +24,7 @@ public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<Se
         return json.RootElement.GetProperty("text").GetString()?.Trim() ?? "";
     }
 
-    /// <summary>запрашивает у qwen синтез фразы выбранным голосом и возвращает pcm16 mono.</summary>
+    /// <summary>Синтезирует фразу через выбранный TTS-движок и возвращает PCM16 mono.</summary>
     public async Task<byte[]> SynthesizeAsync(string phrase, string? voice, int outputRate, CancellationToken ct, string? modelOverride = null)
     {
         var cfg = settings.CurrentValue;
@@ -66,7 +66,7 @@ public sealed class SpeechService(IHttpClientFactory clients, IOptionsMonitor<Se
             catch (JsonException) { }
             if (error.Length > 300) error = error[..300];
             throw new HttpRequestException(
-                $"Ошибка Qwen3-TTS (HTTP {(int)response.StatusCode}): {error}",
+                $"Ошибка TTS (HTTP {(int)response.StatusCode}): {error}",
                 null, response.StatusCode);
         }
         byte[] wav = await response.Content.ReadAsByteArrayAsync(ct);
