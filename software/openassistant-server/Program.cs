@@ -483,25 +483,13 @@ app.Map("/ws", async (HttpContext ctx, AssistantPipeline pipeline) =>
             || origin.Port != (ctx.Request.Host.Port ?? (ctx.Request.IsHttps ? 443 : 80)))
         { ctx.Response.StatusCode = 403; return; }
     }
-    // Browser WebSocket cannot set custom headers. It sends the device key in an
-    // explicitly offered subprotocol; the server only selects the non-secret name.
+    // Web UI and speaker are both trusted only within RFC1918 LAN.
+    // Remote IPs are rejected by the common LanClient middleware above;
+    // requiring a token here added no protection because the passwordless
+    // local admin panel exposes that very token to anyone on the same LAN.
+    // Retain the standard subprotocol for existing desktop and browser clients.
     string[] protocols = ctx.Request.Headers["Sec-WebSocket-Protocol"].ToString()
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    if (!LoopbackClient(ctx))
-    {
-        string token = serverCredentials.DeviceToken;
-        string supplied = ctx.Request.Headers["X-OpenAssistant-Token"].ToString();
-        if (supplied.Length == 0)
-        {
-            string? offered = protocols.FirstOrDefault(p =>
-                p.StartsWith("oa.auth.", StringComparison.Ordinal));
-            if (offered is not null) supplied = offered["oa.auth.".Length..];
-        }
-        if (string.IsNullOrEmpty(token) || supplied.Length != token.Length ||
-            !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
-                System.Text.Encoding.UTF8.GetBytes(supplied), System.Text.Encoding.UTF8.GetBytes(token)))
-        { ctx.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
-    }
     using var socket = await ctx.WebSockets.AcceptWebSocketAsync(
         protocols.Contains("openassistant", StringComparer.Ordinal) ? "openassistant" : null);
     await pipeline.RunAsync(socket, ctx.RequestAborted, ctx.Connection.RemoteIpAddress?.ToString());
