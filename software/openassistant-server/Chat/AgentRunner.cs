@@ -36,7 +36,20 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
         if (normalized.Count == 0 || normalized[^1].Role != "user")
             throw new ArgumentException("История должна заканчиваться запросом пользователя");
         var result = new List<object>();
-        result.Add(new { role = "system", content = string.Join("\n\n", instructions.Append(NoEmoji.Instruction)) });
+        // The model decides intent, not a server-side chain of keyword checks.
+        // Keep external actions grounded in explicit tool calls and their results.
+        const string toolUsage = """
+            Если пользователь просит выполнить внешнее действие, выбирай подходящий доступный инструмент
+            и вызывай его. Не утверждай, что действие выполнено, пока не получишь результат вызова.
+            Различай музыку и управление устройствами по смыслу, а не по одному слову «включи».
+            «Включи группу Кино» означает музыку исполнителя Кино: вызови music_play_query
+            с query="Кино", kind="artist". «Включи песню Звезда по имени Солнце» —
+            music_play_query с kind="track". «Включи свет» относится к Home Assistant,
+            а не к Яндекс Музыке. Не выдумывай ID треков, исполнителей и устройств.
+            Если вызов функции недоступен или завершился ошибкой, сообщи об этом прямо.
+            """;
+        result.Add(new { role = "system", content = string.Join("\n\n",
+            instructions.Append(NoEmoji.Instruction).Append(toolUsage)) });
         result.AddRange(normalized.Select(entry => (object)new {
             role = entry.Role, content = entry.Content
         }));

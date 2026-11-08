@@ -1,13 +1,13 @@
 "use strict";
 const el=id=>document.getElementById(id);
 const state={settings:null,models:null,devices:null,system:null,downloads:null,skills:[],voiceProfile:null,voiceUrl:null,key:"",loading:false};
-const names={overview:"Обзор системы",settings:"Настройки ассистента",tests:"Проверка работы",devices:"Подключение устройства",integrations:"Интеграции",tools:"Инструменты",models:"Модели и загрузки",chat:"Диалог",media:"Музыка и радио",events:"События",logs:"Журнал сервера"};
+const names={overview:"Обзор системы",settings:"Настройки ассистента",tests:"Проверка работы",devices:"Подключение устройства",integrations:"Сервисы и навыки",models:"Модели и загрузки",chat:"Диалог",media:"Музыка и радио",events:"События",logs:"Журнал сервера"};
 function toast(msg,error=false){const box=el("toast");box.textContent=msg;box.className="toast show"+(error?" error":"");clearTimeout(toast.timer);toast.timer=setTimeout(()=>box.className="toast",5000)}
 async function api(url,method="GET",data){const init={method,cache:"no-store"};if(data!==undefined){init.headers={"Content-Type":"application/json"};init.body=JSON.stringify(data)}const r=await fetch(url,init),v=await r.json().catch(()=>({}));if(!r.ok)throw Error(v.error||v.message||"HTTP "+r.status);return v}
 function numericDecimal(id,min,max){const raw=el(id).value.trim().replace(",",".");const n=Number(raw);if(!raw||!Number.isFinite(n)||n<=min||n>max)throw Error("Параметр "+id+": число больше "+min+" и не больше "+max);return n}
 function textNode(tag,text,className){const e=document.createElement(tag);e.textContent=String(text??"");if(className)e.className=className;return e}
 function busy(btn,fn){return async()=>{btn.disabled=true;try{await fn()}catch(e){toast(e.message,true)}finally{btn.disabled=false}}}
-function show(view){if(!(view in names))return;const storage=view==="models";if(storage)view="settings";for(const node of document.querySelectorAll(".view"))node.classList.toggle("active",node.id===view);for(const node of document.querySelectorAll("#navigation [data-view]")){const selected=node.dataset.view===(storage?"models":view);node.classList.toggle("active",selected);if(selected)node.setAttribute("aria-current","page");else node.removeAttribute("aria-current")}el("pageName").textContent=storage?names.models:names[view];history.replaceState(null,"","#"+(storage?"models":view));if(storage)window.OpenAssistantModelUI?.select("storage");if(view==="chat")queueMicrotask(()=>connectChat(true));if(view==="tools")queueMicrotask(()=>refreshCustomTools().catch(e=>toast(e.message,true)));}
+function show(view){if(view==="tools")view="integrations";if(!(view in names))return;const storage=view==="models";if(storage)view="settings";for(const node of document.querySelectorAll(".view"))node.classList.toggle("active",node.id===view);for(const node of document.querySelectorAll("#navigation [data-view]")){const selected=node.dataset.view===(storage?"models":view);node.classList.toggle("active",selected);if(selected)node.setAttribute("aria-current","page");else node.removeAttribute("aria-current")}el("pageName").textContent=storage?names.models:names[view];history.replaceState(null,"","#"+(storage?"models":view));if(storage)window.OpenAssistantModelUI?.select("storage");if(view==="chat")queueMicrotask(()=>connectChat(true));if(view==="integrations"&&activeSkillTab==="custom")queueMicrotask(()=>refreshCustomTools().catch(e=>toast(e.message,true)));}
 for(const b of document.querySelectorAll("[data-view]"))b.onclick=()=>show(b.dataset.view);
 function pct(a,b){return b>0?Math.min(100,Math.max(0,100*a/b)):0}
 function serviceState(role){
@@ -161,60 +161,199 @@ el("createKey").onclick=busy(el("createKey"),async()=>{
  toast("Ключ перевыпущен и сохранён на сервере");
 });
 
+/* Custom tools live in the integrations area, with a separate guided editor. */
 const emptyToolSchema=()=>({type:"object",properties:{},required:[],additionalProperties:false});
-let customTools=[],editingTool=null;
+const searchToolSchema=()=>({type:"object",properties:{query:{type:"string",description:"Слова запроса пользователя"}},required:["query"],additionalProperties:false});
+let customTools=[],editingTool=null,skillWizardStep=1;
+const dialog=el("skillWizard");
+el("customToolForm").noValidate=true;
 function resetToolEditor(){
- editingTool=null;el("toolName").disabled=false;el("toolName").value="";el("toolTitle").value="";
+ editingTool=null;
+ el("toolName").disabled=false;el("toolName").value="";el("toolTitle").value="";
  el("toolDescription").value="";el("toolSchema").value=JSON.stringify(emptyToolSchema(),null,2);
- el("toolEnabled").checked=false;el("toolDelete").disabled=true;el("toolMode").textContent="Новый инструмент";
+ el("toolSchemaPreset").value="none";el("toolSchema").readOnly=true;
+ el("toolEnabled").checked=false;
+ el("toolDelete").disabled=true;el("toolMode").textContent="Новый навык";
  el("toolSaveStatus").textContent="";
 }
 function editTool(item){
  editingTool=item.name;el("toolName").value=item.name;el("toolName").disabled=true;
  el("toolTitle").value=item.title;el("toolDescription").value=item.description;
  el("toolSchema").value=JSON.stringify(item.parameters,null,2);
+ el("toolSchemaPreset").value="custom";el("toolSchema").readOnly=false;
  el("toolEnabled").checked=!!item.enabled;el("toolDelete").disabled=false;
- el("toolMode").textContent=item.implemented?"Обработчик подключён":"Описание без обработчика";
+ el("toolMode").textContent=item.implemented?"Обработчик подключён":"Обработчик пока не подключён";
  el("toolSaveStatus").textContent="";
 }
 function renderCustomTools(){
  const box=el("customToolsList");box.replaceChildren();
- if(!customTools.length){box.append(textNode("p","Инструментов пока нет. Создайте первое описание.","muted"));return}
+ if(!customTools.length){
+  box.append(textNode("p","Пользовательских навыков нет. Создайте описание через мастер.","muted"));return;
+ }
  for(const item of customTools){
   const button=textNode("button","","tool-item");button.type="button";
   button.classList.toggle("selected",item.name===editingTool);
   button.append(textNode("strong",item.title),textNode("code",item.name),
-   textNode("small",item.implemented?"Обработчик подключён":item.enabled?"Схема активна · нет обработчика":"Схема отключена"));
-  button.onclick=()=>{editTool(item);renderCustomTools()};box.append(button);
+   textNode("small",item.implemented?(item.enabled?"Подключён · активен":"Подключён · выключен"):
+    item.enabled?"Описание включено · нет обработчика":"Черновик · нет обработчика"));
+  button.onclick=()=>{editTool(item);renderCustomTools();openSkillWizard(false)};
+  box.append(button);
  }
 }
 async function refreshCustomTools(){
  customTools=await api("/api/tools");renderCustomTools();
- if(editingTool){const previous=customTools.find(x=>x.name===editingTool);if(previous)editTool(previous);else resetToolEditor()}
 }
-el("toolNew").onclick=()=>{resetToolEditor();renderCustomTools();el("toolName").focus()};
+function setSkillWizardStep(step){
+ skillWizardStep=step;
+ for(const pane of dialog.querySelectorAll("[data-wizard-step]"))
+  pane.hidden=Number(pane.dataset.wizardStep)!==step;
+ el("skillWizardProgress").textContent="Шаг "+step+" из 3 · "+
+  (["", "Описание навыка", "Аргументы функции", "Проверка и сохранение"][step]);
+ el("skillWizardBack").hidden=step===1;
+ el("skillWizardNext").hidden=step===3;
+ el("toolSave").hidden=step!==3;
+ if(step===3){
+  const current=customTools.find(x=>x.name===editingTool);
+  const implemented=!!current?.implemented;
+  el("skillWizardSummary").textContent=
+   "Название: "+el("toolTitle").value.trim()+"\nФункция: "+el("toolName").value.trim()+
+   "\nНазначение: "+el("toolDescription").value.trim()+
+   "\nСхема: "+el("toolSchema").value;
+  el("skillHandlerStatus").textContent=implemented?
+   "Обработчик функции зарегистрирован на сервере.":
+   "Обработчик пока отсутствует. Создаётся описание навыка, а не исполняемая интеграция. Включённое описание может вызываться LLM, но вернёт ошибку «Обработчик не подключён».";
+ }
+}
+function openSkillWizard(clear){
+ if(clear)resetToolEditor();
+ setSkillWizardStep(1);
+ dialog.showModal();
+ el("toolTitle").focus();
+}
+function validWizardStep(){
+ if(skillWizardStep===1){
+  for(const id of ["toolTitle","toolName","toolDescription"]){
+   const input=el(id);
+   if(!input.checkValidity()){input.reportValidity();return false}
+  }
+  return true;
+ }
+ if(skillWizardStep===2){
+  let schema;
+  try{schema=JSON.parse(el("toolSchema").value)}catch(e){toast("Ошибка JSON Schema: "+e.message,true);return false}
+  if(schema?.type!=="object"||typeof schema.properties!=="object"||Array.isArray(schema.properties)||!schema.properties){
+   toast("JSON Schema должна содержать type: object и properties",true);return false;
+  }
+  return true;
+ }
+ return true;
+}
+el("toolSchemaPreset").onchange=()=>{
+ const choice=el("toolSchemaPreset").value;
+ if(choice==="none")el("toolSchema").value=JSON.stringify(emptyToolSchema(),null,2);
+ if(choice==="query")el("toolSchema").value=JSON.stringify(searchToolSchema(),null,2);
+ el("toolSchema").readOnly=choice!=="custom";
+};
+el("toolSchema").readOnly=true;
+el("toolNew").onclick=()=>openSkillWizard(true);
+el("skillWizardClose").onclick=()=>dialog.close();
+el("skillWizardBack").onclick=()=>setSkillWizardStep(Math.max(1,skillWizardStep-1));
+el("skillWizardNext").onclick=()=>{
+ if(!validWizardStep())return;
+ setSkillWizardStep(Math.min(3,skillWizardStep+1));
+};
 el("customToolForm").onsubmit=async event=>{
- event.preventDefault();const btn=el("toolSave");
+ event.preventDefault();
+ if(skillWizardStep!==3){if(validWizardStep())setSkillWizardStep(Math.min(3,skillWizardStep+1));return}
+ const btn=el("toolSave");
  await busy(btn,async()=>{
   let schema;
   try{schema=JSON.parse(el("toolSchema").value)}
   catch(e){throw Error("Ошибка JSON Schema: "+e.message)}
   const name=el("toolName").value.trim();
-  const entry={name,title:el("toolTitle").value.trim(),description:el("toolDescription").value.trim(),
-   parameters:schema,enabled:el("toolEnabled").checked};
+  const entry={name,title:el("toolTitle").value.trim(),
+   description:el("toolDescription").value.trim(),parameters:schema,enabled:el("toolEnabled").checked};
   await api("/api/tools/"+encodeURIComponent(name),"PUT",entry);
-  editingTool=name;await refreshCustomTools();renderCustomTools();
-  el("toolSaveStatus").textContent="Сохранено";toast("Описание инструмента сохранено");
- })
+  editingTool=name;await refreshCustomTools();
+  dialog.close();toast("Навык сохранён");
+ })();
 };
 el("toolDelete").onclick=busy(el("toolDelete"),async()=>{
- if(!editingTool||!confirm("Удалить инструмент "+editingTool+"?"))return;
+ if(!editingTool||!confirm("Удалить пользовательский навык "+editingTool+"?"))return;
  await api("/api/tools/"+encodeURIComponent(editingTool),"DELETE");
- resetToolEditor();await refreshCustomTools();toast("Инструмент удалён");
+ resetToolEditor();await refreshCustomTools();
+ dialog.close();toast("Навык удалён");
 });
 resetToolEditor();
-function renderSkills(){const box=el("skillsList");box.replaceChildren();for(const skill of state.skills){const label=textNode("label","","skill-option");const check=document.createElement("input");check.type="checkbox";check.dataset.skill=skill.name;check.checked=skill.enabled;const section=document.createElement("div");section.append(textNode("strong",skill.title),textNode("small",skill.description+(skill.sensitive?" · Действие требует разрешения":"")));label.append(check,section);box.append(label)}}
-el("saveSkills").onclick=busy(el("saveSkills"),async()=>{const changes={};for(const input of document.querySelectorAll("#skillsList input"))changes[input.dataset.skill]=input.checked;state.skills=await api("/api/control/skills","PUT",changes);renderSkills();toast("Разрешения навыков обновлены")});
+
+/* Provider-scoped permissions. One integration switch manages its skills;
+   advanced settings retain per-action control. Sensitive HA write remains off
+   unless explicitly enabled. */
+const skillGroups=[
+ {key:"music",prefix:"music_",container:"ymSkillDetails",toggle:"ymSkillEnabled"},
+ {key:"radio",prefix:"radio_",container:"radioSkillDetails",toggle:"radioSkillEnabled"},
+ {key:"home",prefix:"ha_",container:"haSkillDetails",toggle:"haSkillEnabled"}
+];
+let updatingSkills=false;
+function renderSkills(){
+ for(const group of skillGroups){
+  const related=state.skills.filter(s=>s.name.startsWith(group.prefix)),box=el(group.container);
+  box.replaceChildren();
+  const toggle=el(group.toggle);
+  toggle.checked=related.some(s=>s.enabled);
+  toggle.indeterminate=related.some(s=>s.enabled)&&related.some(s=>!s.enabled);
+  for(const skill of related){
+   const label=textNode("label","","skill-option");
+   const input=document.createElement("input");
+   input.type="checkbox";input.checked=skill.enabled;
+   input.dataset.skill=skill.name;
+   input.onchange=()=>setSkillPermissions({[skill.name]:input.checked},input);
+   const details=document.createElement("div");
+   details.append(textNode("strong",skill.title),
+    textNode("small",skill.description+(skill.sensitive?" · Внимание: управление устройствами":"")));
+   label.append(input,details);box.append(label);
+  }
+ }
+}
+async function setSkillPermissions(changes,control){
+ if(updatingSkills)return;
+ updatingSkills=true;
+ for(const item of document.querySelectorAll(".integration-enable input, .integration-pane .skill-option input"))item.disabled=true;
+ try{
+  state.skills=await api("/api/control/skills","PUT",changes);
+  renderSkills();toast("Разрешения обновлены");
+ }catch(e){
+  renderSkills();toast(e.message,true);
+ }finally{
+  updatingSkills=false;
+  for(const item of document.querySelectorAll(".integration-enable input, .integration-pane .skill-option input"))item.disabled=false;
+ }
+}
+for(const group of skillGroups){
+ el(group.toggle).onchange=()=>{
+  const enabled=el(group.toggle).checked,changes={};
+  for(const skill of state.skills.filter(s=>s.name.startsWith(group.prefix))){
+   // Never implicitly grant a smart-home write capability.
+   changes[skill.name]=enabled && (!skill.sensitive || skill.enabled);
+  }
+  void setSkillPermissions(changes,el(group.toggle));
+ };
+}
+let activeSkillTab="music";
+function selectSkillTab(tab){
+ if(!["music","radio","home","custom"].includes(tab))return;
+ activeSkillTab=tab;
+ for(const button of document.querySelectorAll("[data-skill-tab]")){
+  const active=button.dataset.skillTab===tab;
+  button.classList.toggle("active",active);button.setAttribute("aria-selected",String(active));
+ }
+ for(const pane of document.querySelectorAll("[data-skill-panel]"))
+  pane.hidden=pane.dataset.skillPanel!==tab;
+ if(tab==="custom")refreshCustomTools().catch(e=>toast(e.message,true));
+}
+for(const button of document.querySelectorAll("[data-skill-tab]"))
+ button.onclick=()=>selectSkillTab(button.dataset.skillTab);
+selectSkillTab("music");
 async function init(){const page=location.hash.slice(1);show(page in names?page:"overview");loadDeviceKey().catch(e=>{el("deviceKey").textContent="Не удалось загрузить ключ: "+e.message});try{const [settings,skills,voiceProfile]=await Promise.all([api("/api/settings"),api("/api/control/skills"),api("/api/setup/voice")]);state.settings=settings;state.skills=skills;state.voiceProfile=voiceProfile;loadSettings();renderSkills()}catch(e){toast("Настройки: "+e.message,true)}await poll();await refreshConnections().catch(()=>{});await refreshModels().catch(()=>{});await initTtsChoices().catch(e=>toast("Каталог TTS: "+e.message,true));
  if(!el("serverHost").value && location.hostname && location.hostname!=="localhost" && location.hostname!=="127.0.0.1"){
   el("serverHost").value=location.hostname;deviceAddress();

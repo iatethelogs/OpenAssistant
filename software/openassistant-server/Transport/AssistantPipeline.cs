@@ -14,8 +14,7 @@ namespace OpenAssistant.Server.Transport;
 /// <summary>независимый сеанс устройства: речь, llm, tts и музыкальные команды.</summary>
 public sealed class AssistantPipeline(
     SpeechService speech, AgentRunner agent, ToolRegistry tools,
-    ConversationMemoryStore memory, VerifiedHomeAssistantService homeAssistant,
-    AgentToolService skills, ConversationLog conversationLog, DeviceRegistry devices,
+    ConversationMemoryStore memory, ConversationLog conversationLog, DeviceRegistry devices,
     YandexMusicService music, DisplaySettingsStore displaySettings, IOptionsMonitor<ServerOptions> settings, ILogger<AssistantPipeline> logger)
 {
     /// <summary>принимает аудио и команды клиента до отключения websocket.</summary>
@@ -78,87 +77,6 @@ public sealed class AssistantPipeline(
 
         // Deterministic handling makes short Russian music commands work even
         // with LLMs that don't support OpenAI tool_calls.
-        async Task<string?> HandleDirectMusicAsync(string utterance, SkillDefinition[] allowed, CancellationToken ct)
-        {
-            string phrase = utterance.Trim().TrimEnd('.', '!', '?').ToLowerInvariant();
-            bool canControl = allowed.Any(x => x.Name == "music_control" && x.Enabled);
-            if (canControl)
-            {
-                if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
-                    @"^(?:что (?:сейчас )?играет|какая (?:сейчас )?(?:песня|музыка) играет|что за (?:трек|песня)(?: играет)?)$"))
-                {
-                    string? title = await player.CurrentTrackAsync(ct);
-                    return title is null ? "Сейчас музыка не воспроизводится." : "Сейчас играет " + title + ".";
-                }
-                string? action = null;
-                if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
-                        @"^(?:(?:поставь|поставить|ставь) (?:музыку |трек )?на паузу|пауза|приостанови (?:музыку|трек))$"))
-                    action = "pause";
-                else if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
-                         @"^(?:продолжи|возобнови|сними с паузы|играй дальше)(?: (?:музыку|трек|воспроизведение))?$"))
-                    action = "resume";
-                else if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
-                         @"^(?:следующ(?:ий|ую)(?: трек| песню)?|дальше|переключи(?: на)? следующ(?:ий|ую)(?: трек| песню)?|пропусти(?: трек| песню)?)$"))
-                    action = "next";
-                else if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
-                         @"^(?:предыдущ(?:ий|ую)(?: трек| песню)?|назад|верни предыдущ(?:ий|ую)(?: трек| песню)?)$"))
-                    action = "previous";
-                else if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
-                         @"^(?:останови|выключи|стоп)(?: (?:музыку|трек|воспроизведение))$"))
-                    action = "stop";
-                if (action is not null)
-                {
-                    await player.ControlAsync(action, ct);
-                    return action switch
-                    {
-                        "pause" => "Музыка на паузе.",
-                        "resume" => "Продолжаю воспроизведение.",
-                        "next" => "Следующий трек.",
-                        "previous" => "Предыдущий трек.",
-                        _ => "Музыка остановлена."
-                    };
-                }
-            }
-            bool canPlay = allowed.Any(x => x.Name == "music_play_query" && x.Enabled);
-            if (canPlay)
-            {
-                if (System.Text.RegularExpressions.Regex.IsMatch(phrase,
-                        @"^(?:включи|поставь|проиграй)(?: мне)? (?:мою музыку|музыку|любимые треки|понравившиеся треки|плейлист мне нравится)$"))
-                {
-                    var liked = await music.LikedTracksAsync(ct);
-                    if (liked.Length == 0) return "В избранном пока нет треков.";
-                    await player.PlayQueueAsync(liked, ct);
-                    return "Включаю понравившиеся треки.";
-                }
-                var playlistCommand = System.Text.RegularExpressions.Regex.Match(phrase,
-                    @"^(?:включи|поставь|проиграй)(?: мне)? плейлист (.+)$");
-                if (playlistCommand.Success)
-                {
-                    string name = playlistCommand.Groups[1].Value.Trim(' ', '"', '«', '»');
-                    var playlists = await music.PlaylistsAsync(ct);
-                    var selected = playlists.FirstOrDefault(p =>
-                        p.Title.Equals(name, StringComparison.OrdinalIgnoreCase)) ??
-                        playlists.FirstOrDefault(p =>
-                            p.Title.Contains(name, StringComparison.OrdinalIgnoreCase));
-                    if (selected is null) return "Плейлист не найден.";
-                    var queue = await music.PlaylistTracksAsync(selected.Kind, ct);
-                    if (queue.Length == 0) return "Плейлист пуст.";
-                    await player.PlayQueueAsync(queue, ct);
-                    return "Включаю плейлист " + selected.Title + ".";
-                }
-                var match = System.Text.RegularExpressions.Regex.Match(phrase,
-                    @"^(?:включи|поставь|проиграй|запусти)(?: мне)? (?:песню|трек|музыку|композицию) (.+)$");
-                if (match.Success)
-                {
-                    var found = await music.SearchAsync(match.Groups[1].Value, ct);
-                    if (found.Length == 0) return "Не удалось найти музыку.";
-                    await player.PlayQueueAsync(found, ct);
-                    return "Включаю " + found[0].Title + ".";
-                }
-            }
-            return null;
-        }
-
         Task DisplayStateAsync(string state, CancellationToken ct) =>
             JsonAsync(new { type = "display_state", state }, ct);
 
@@ -214,33 +132,8 @@ public sealed class AssistantPipeline(
             await JsonAsync(new { type = "transcript", text }, ct);
             conversationLog.Add(fromAudio ? "stt" : "user", text);
 
-            var permissions = await skills.ListAsync(ct);
-            string? musicResponse = await HandleDirectMusicAsync(text, permissions, ct);
-            if (musicResponse is not null)
-            {
-                await JsonAsync(new { type = "text", delta = musicResponse }, ct);
-                conversationLog.Add("action", "music: " + musicResponse);
-                await JsonAsync(new { type = "done" }, ct);
-                return;
-            }
-            bool readHa = permissions.Any(s => s.Name == "ha_get_state" && s.Enabled);
-            bool writeHa = permissions.Any(s => s.Name == "ha_call_service" && s.Enabled);
-            string? verified = await homeAssistant.TryHandleAsync(text, readHa, writeHa, ct);
-            if (verified is not null)
-            {
-                verified = NoEmoji.Strip(verified);
-                await JsonAsync(new { type = "text", delta = verified }, ct);
-                conversationLog.Add("llm", verified);
-                await memory.SaveExchangeAsync(profile, text, verified, ct);
-                if (synthesize)
-                {
-                    byte[] audio = await speech.SynthesizeAsync(verified, voice,
-                        settings.CurrentValue.OutputSampleRate, ct);
-                    await AudioAsync(audio, settings.CurrentValue.OutputSampleRate, ct);
-                }
-                await JsonAsync(new { type = "done" }, ct);
-                return;
-            }
+            // Intent is selected by the LLM through advertised tools.
+            // No keyword dispatch for music or Home Assistant is performed here.
             var recalled = await memory.RecallAsync(profile, text, ct);
             var context = new List<ChatMessage> {
                 new("system", settings.CurrentValue.SystemPrompt),
