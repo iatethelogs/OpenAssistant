@@ -221,7 +221,7 @@ public sealed class RuleBasedCommandRouter(
             {
                 // An unqualified "включи <name>" must match an actual HA
                 // name by complete normalized words. Partial prefixes would
-                // accidentally hijack artist names such as "Кино".
+                // accidentally treat partial music titles as device names.
                 if (features.Length == 0 ||
                     !features.All(f => Array.IndexOf(name, f) >= 0)) continue;
             }
