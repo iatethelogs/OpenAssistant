@@ -207,54 +207,101 @@
  </section>
 
  <section class="view" id="integrations">
-    <div class="page-title"><h1>Сервисы и навыки</h1></div>
-
-    
- 
- <div class="test-grid extra-panel">
-  <article class="panel"><div class="panel-heading"><div><h2>Яндекс Музыка</h2><p id="ymState">Проверка подключения</p></div></div>
-    <div class="button-row"><button id="ymStart" class="button primary" type="button">Авторизоваться</button><button id="ymDisconnect" class="button secondary" type="button">Отключить</button></div>
-    <div id="ymPair" class="oauth-pair hidden"><strong id="ymCode"></strong><a id="ymLink" href="#" rel="noopener noreferrer" target="_blank">Открыть Яндекс ↗</a><p id="ymProgress"></p><button id="ymCancel" class="button secondary" type="button">Отмена</button></div>
-    <label for="ymToken">Или подключить по токену</label><input id="ymToken" type="password" autocomplete="off"><button id="ymSaveToken" class="button secondary extra-gap" type="button">Подключить</button>
-  </article>
-  <article class="panel"><div class="panel-heading"><div><h2>Home Assistant</h2><p id="haState">Проверка подключения</p></div></div>
-    <label for="haUrl">Адрес Home Assistant</label><input id="haUrl" placeholder="http://homeassistant.local:8123">
-    <label for="haToken">Токен доступа</label><input id="haToken" type="password" autocomplete="off">
-    <div class="button-row"><button id="haConnect" class="button primary" type="button">Подключить</button><button id="haDisconnect" class="button secondary" type="button">Отключить</button></div>
-    <div class="ha-inventory"><div class="button-row"><span class="minor">Состояния устройств</span><button id="haRefreshEntities" class="button secondary" type="button">Обновить</button></div>
-      <div id="haEntities" class="ha-entities">Устройства не загружены</div>
-    </div>
-  </article>
- </div>
-</section>
-
-
- <section class="view" id="tools">
-  <div class="page-title"><h1>Инструменты модели</h1><p>Описание функций для LLM и подготовка обработчиков.</p></div>
-  <div class="tool-workspace">
-    <article class="panel">
-      <div class="panel-heading"><div><h2>Пользовательские инструменты</h2><p>Определения сохраняются на сервере.</p></div><button id="toolNew" class="button secondary" type="button">Создать</button></div>
-      <div id="customToolsList" class="custom-tools-list"><p class="muted">Загрузка…</p></div>
-    </article>
-    <article class="panel">
-      <div class="panel-heading"><div><h2>Описание инструмента</h2><p id="toolMode">Новый инструмент</p></div></div>
-      <form id="customToolForm">
-        <div class="field-grid">
-          <div><label for="toolName">Имя функции (латиница)</label><input id="toolName" maxlength="64" spellcheck="false" placeholder="get_weather" required pattern="[a-z][a-z0-9_]{2,63}"></div>
-          <div><label for="toolTitle">Название</label><input id="toolTitle" maxlength="100" placeholder="Получить погоду" required></div>
-        </div>
-        <label for="toolDescription">Что делает инструмент — описание для модели</label><textarea id="toolDescription" rows="3" maxlength="1000" required></textarea>
-        <label for="toolSchema">Параметры — JSON Schema</label>
-        <textarea id="toolSchema" rows="9" spellcheck="false" class="tool-schema" required></textarea>
-        <label class="tool-toggle"><input id="toolEnabled" type="checkbox"> Предоставлять схему модели</label>
-        <p class="minor">Если обработчик ещё не написан, модель получит ответ «Обработчик не подключён». Никакие действия не выполняются.</p>
-        <div class="button-row tool-editor-actions"><button id="toolSave" type="submit" class="button primary">Сохранить</button><button id="toolDelete" type="button" class="button secondary" disabled>Удалить</button><span id="toolSaveStatus" class="minor" role="status"></span></div>
-      </form>
-    </article>
-  </div>
-      <article class="panel"><div class="panel-heading"><div><h2>Доступные действия</h2><p>Выберите, к каким действиям ассистент может обращаться</p></div></div>
-      <div id="skillsList" class="skills-list"><p class="muted">Загружаем навыки…</p></div><div class="form-footer"><span class="minor"></span><button id="saveSkills" type="button" class="button primary">Сохранить разрешения</button></div>
-    </article>
+   <div class="page-title"><h1>Сервисы и навыки</h1><p>Подключения и доступные ассистенту действия.</p></div>
+   <div class="integration-tabs" role="tablist" aria-label="Категории навыков">
+     <button type="button" role="tab" class="integration-tab active" data-skill-tab="music" aria-selected="true">Музыка</button>
+     <button type="button" role="tab" class="integration-tab" data-skill-tab="radio" aria-selected="false">Радио</button>
+     <button type="button" role="tab" class="integration-tab" data-skill-tab="home" aria-selected="false">Умный дом</button>
+     <button type="button" role="tab" class="integration-tab" data-skill-tab="custom" aria-selected="false">Мои навыки</button>
+   </div>
+   <div data-skill-panel="music" role="tabpanel" class="integration-pane">
+     <article class="panel">
+       <div class="panel-heading"><div><h2>Яндекс Музыка</h2><p id="ymState">Проверка подключения</p></div>
+         <label class="integration-enable"><input id="ymSkillEnabled" type="checkbox"> Разрешить навык ассистенту</label>
+       </div>
+       <div class="button-row"><button id="ymStart" class="button primary" type="button">Авторизоваться</button><button id="ymDisconnect" class="button secondary" type="button">Отключить</button></div>
+       <div id="ymPair" class="oauth-pair hidden"><strong id="ymCode"></strong><a id="ymLink" href="#" rel="noopener noreferrer" target="_blank">Открыть Яндекс ↗</a><p id="ymProgress"></p><button id="ymCancel" class="button secondary" type="button">Отмена</button></div>
+       <details class="advanced-settings"><summary>Подключение через OAuth-токен</summary>
+         <label for="ymToken">Токен</label><input id="ymToken" type="password" autocomplete="off">
+         <button id="ymSaveToken" class="button secondary extra-gap" type="button">Подключить по токену</button>
+       </details>
+       <details class="advanced-settings"><summary>Возможности Яндекс Музыки</summary>
+         <p class="minor">Выбор композиций и исполнителей выполняет LLM; настройки ниже разрешают конкретные вызовы инструментов.</p>
+         <div id="ymSkillDetails" class="skills-list"></div>
+       </details>
+     </article>
+   </div>
+   <div data-skill-panel="radio" role="tabpanel" class="integration-pane" hidden>
+     <article class="panel">
+       <div class="panel-heading"><div><h2>Интернет-радио</h2><p>Radio Browser · станции без авторизации</p></div>
+         <label class="integration-enable"><input id="radioSkillEnabled" type="checkbox"> Разрешить навык ассистенту</label>
+       </div>
+       <p class="minor">Ассистент может найти и запустить радиостанцию. Радио не заменяет музыкальные настройки Яндекс Музыки.</p>
+       <details class="advanced-settings"><summary>Возможности радио</summary><div id="radioSkillDetails" class="skills-list"></div></details>
+     </article>
+   </div>
+   <div data-skill-panel="home" role="tabpanel" class="integration-pane" hidden>
+     <article class="panel">
+       <div class="panel-heading"><div><h2>Home Assistant</h2><p id="haState">Проверка подключения</p></div>
+         <label class="integration-enable"><input id="haSkillEnabled" type="checkbox"> Разрешить навык ассистенту</label>
+       </div>
+       <label for="haUrl">Адрес Home Assistant</label><input id="haUrl" placeholder="http://homeassistant.local:8123">
+       <label for="haToken">Токен доступа</label><input id="haToken" type="password" autocomplete="off">
+       <div class="button-row"><button id="haConnect" class="button primary" type="button">Подключить</button><button id="haDisconnect" class="button secondary" type="button">Отключить</button></div>
+       <div class="ha-inventory"><div class="button-row"><span class="minor">Состояния устройств</span><button id="haRefreshEntities" class="button secondary" type="button">Обновить</button></div>
+         <div id="haEntities" class="ha-entities">Устройства не загружены</div>
+       </div>
+       <details class="advanced-settings"><summary>Разрешения и действия Home Assistant</summary>
+         <p class="minor">Управление устройствами выключено по умолчанию. Разрешение на изменение состояния выдаётся отдельно.</p>
+         <div id="haSkillDetails" class="skills-list"></div>
+       </details>
+     </article>
+   </div>
+   <div data-skill-panel="custom" role="tabpanel" class="integration-pane" hidden>
+     <article class="panel">
+       <div class="panel-heading"><div><h2>Пользовательские навыки</h2><p>Создание и редактирование через пошаговый мастер</p></div>
+         <button id="toolNew" class="button primary" type="button">Создать навык</button>
+       </div>
+       <div id="customToolsList" class="custom-tools-list"><p class="muted">Загрузка…</p></div>
+       <p class="minor">Описание нового навыка само по себе не выполняет действие. Для реального вызова требуется зарегистрированный обработчик. Мастер показывает его состояние перед включением.</p>
+     </article>
+   </div>
+   <dialog id="skillWizard" class="skill-wizard" aria-labelledby="skillWizardTitle">
+     <form id="customToolForm">
+       <div class="panel-heading"><div><h2 id="skillWizardTitle">Мастер создания навыка</h2><p id="toolMode">Новый навык</p></div>
+         <button id="skillWizardClose" type="button" class="button secondary">Закрыть</button>
+       </div>
+       <div class="skill-wizard-steps" id="skillWizardProgress">Шаг 1 из 3</div>
+       <section data-wizard-step="1">
+         <label for="toolTitle">Название навыка</label><input id="toolTitle" maxlength="100" placeholder="Например, управление освещением" required>
+         <label for="toolName">Имя функции для LLM</label><input id="toolName" maxlength="64" spellcheck="false" placeholder="control_lights" required pattern="[a-z][a-z0-9_]{2,63}">
+         <label for="toolDescription">Когда модель должна использовать навык</label><textarea id="toolDescription" rows="4" maxlength="1000" required placeholder="Опишите назначение и пример запроса пользователя"></textarea>
+       </section>
+       <section data-wizard-step="2" hidden>
+         <label for="toolSchemaPreset">Аргументы функции</label>
+         <select id="toolSchemaPreset">
+           <option value="none">Без аргументов</option>
+           <option value="query">Текстовый запрос</option>
+           <option value="custom">Расширенная JSON Schema</option>
+         </select>
+         <label for="toolSchema">Схема параметров (JSON Schema)</label>
+         <textarea id="toolSchema" rows="9" spellcheck="false" class="tool-schema" required></textarea>
+       </section>
+       <section data-wizard-step="3" hidden>
+         <h3>Проверка навыка</h3>
+         <div id="skillWizardSummary" class="skill-wizard-summary"></div>
+         <label class="tool-toggle"><input id="toolEnabled" type="checkbox"> Предлагать этот навык языковой модели</label>
+         <p id="skillHandlerStatus" class="minor"></p>
+       </section>
+       <div class="button-row tool-editor-actions">
+         <button id="skillWizardBack" class="button secondary" type="button" hidden>Назад</button>
+         <button id="skillWizardNext" class="button primary" type="button">Далее</button>
+         <button id="toolSave" class="button primary" type="submit" hidden>Сохранить навык</button>
+         <button id="toolDelete" class="button secondary" type="button" disabled>Удалить</button>
+         <span id="toolSaveStatus" class="minor" role="status"></span>
+       </div>
+     </form>
+   </dialog>
  </section>
 
  <section class="view" id="models">
@@ -341,6 +388,6 @@
 </main></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/audio-test.js" defer></script>
-<script src="/dashboard.js?v=20261108-startup" defer></script>
+<script src="/dashboard.js?v=20261108-skills-wizard" defer></script>
 <script src="/settings-manager.js?v=20261106c" defer></script><script src="/display-editor.js?v=2" defer></script>
 </body></html>
