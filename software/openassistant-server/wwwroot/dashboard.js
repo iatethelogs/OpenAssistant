@@ -459,14 +459,76 @@ el("refreshEvents").onclick=busy(el("refreshEvents"),refreshEvents);
 /* Radio and music */
 function drawSearch(results,target,play){
  const box=el(target);box.replaceChildren();
- for(const item of (Array.isArray(results)?results:[]).slice(0,20)){
-  const row=textNode("div","","search-row");const title=item.name||item.title||item.trackTitle||JSON.stringify(item).slice(0,100);
+ for(const [index,item] of (Array.isArray(results)?results:[]).slice(0,25).entries()){
+  const row=textNode("div","","search-row");
+  const title=item.name||item.title||item.trackTitle||JSON.stringify(item).slice(0,100);
   row.append(textNode("span",title),textNode("button","Слушать","button secondary"));
-  row.querySelector("button").onclick=()=>play(item).catch(e=>toast(e.message,true));box.append(row);
- }if(!box.children.length)box.textContent="Ничего не найдено";
+  row.querySelector("button").onclick=()=>play(item,index).catch(e=>toast(e.message,true));
+  box.append(row);
+ }
+ if(!box.children.length)box.textContent="Ничего не найдено";
 }
-el("searchRadio").onclick=busy(el("searchRadio"),async()=>{const r=await api("/api/radio/search?name="+encodeURIComponent(el("radioQuery").value.trim()));drawSearch(r,"radioResults",async x=>{const url=x.url||x.urlResolved;if(!url)throw Error("Нет адреса потока");el("mediaPlayer").src=url;await el("mediaPlayer").play().catch(()=>{})})});
-el("searchMusic").onclick=busy(el("searchMusic"),async()=>{const r=await api("/api/yandex/search?query="+encodeURIComponent(el("musicQuery").value.trim()));drawSearch(r,"musicResults",async x=>{const id=x.id||x.trackId;if(!id)throw Error("Отсутствует ID трека");const r=await api("/api/yandex/tracks/"+encodeURIComponent(id)+"/playback");el("mediaPlayer").src=r.url;await el("mediaPlayer").play().catch(()=>{})})});
+const browserPlayer=el("mediaPlayer");
+let browserQueue=[],browserIndex=-1,browserSource="",browserEpoch=0;
+function renderBrowserQueue(){
+ const list=el("musicQueue");list.replaceChildren();
+ for(const [i,track] of browserQueue.slice(0,40).entries()){
+  const row=textNode("div","","search-row");
+  const title=(track.artists?.join(", ")||"")+(track.artists?.length?" — ":"")+(track.title||"Трек");
+  row.append(textNode("span",(i===browserIndex?"▶ ":"")+title),textNode("button","Слушать","button secondary"));
+  row.querySelector("button").onclick=()=>playBrowserTrack(i).catch(e=>toast(e.message,true));
+  list.append(row);
+ }
+ el("musicQueueStatus").textContent=browserQueue.length?
+  "Трек "+(browserIndex+1)+" из "+browserQueue.length+" · автопереход включён":"Очередь пуста";
+}
+async function playBrowserTrack(index){
+ if(index<0||index>=browserQueue.length)return;
+ const epoch=++browserEpoch,track=browserQueue[index];
+ browserSource="yandex";browserIndex=index;renderBrowserQueue();
+ const title=(track.artists?.join(", ")||"")+(track.artists?.length?" — ":"")+(track.title||"Трек");
+ el("musicCurrent").textContent=title+" · получение аудиоссылки";
+ const info=await api("/api/yandex/tracks/"+encodeURIComponent(track.id)+"/playback");
+ if(epoch!==browserEpoch)return;
+ browserPlayer.src=info.url;el("musicCurrent").textContent=title;
+ try{await browserPlayer.play()}
+ catch(error){el("musicQueueStatus").textContent="Не удалось воспроизвести: "+error.message;throw error}
+}
+async function browserNext(){
+ if(browserSource!=="yandex")return;
+ if(browserIndex+1>=browserQueue.length&&browserQueue.length){
+  try{
+   const recommendations=await api("/api/yandex/tracks/"+encodeURIComponent(browserQueue.at(-1).id)+"/similar");
+   const known=new Set(browserQueue.map(x=>x.id));
+   browserQueue.push(...recommendations.filter(x=>!known.has(x.id)&&known.add(x.id)).slice(0,30));
+  }catch(error){toast("Продолжение музыки: "+error.message,true)}
+ }
+ if(browserIndex+1>=browserQueue.length){
+  el("musicQueueStatus").textContent="Очередь закончилась";return;
+ }
+ await playBrowserTrack(browserIndex+1);
+}
+browserPlayer.addEventListener("ended",()=>{void browserNext().catch(e=>toast(e.message,true))});
+el("musicPrev").onclick=busy(el("musicPrev"),async()=>{if(browserSource==="yandex")await playBrowserTrack(Math.max(0,browserIndex-1))});
+el("musicNext").onclick=busy(el("musicNext"),browserNext);
+el("musicPause").onclick=busy(el("musicPause"),async()=>{if(!browserPlayer.src)return;if(browserPlayer.paused)await browserPlayer.play();else browserPlayer.pause()});
+el("musicStop").onclick=()=>{
+ browserEpoch++;browserSource="";browserPlayer.pause();browserPlayer.removeAttribute("src");
+ browserPlayer.load();browserIndex=-1;browserQueue=[];el("musicCurrent").textContent="Трек не выбран";renderBrowserQueue();
+};
+el("searchRadio").onclick=busy(el("searchRadio"),async()=>{
+ const r=await api("/api/radio/search?name="+encodeURIComponent(el("radioQuery").value.trim()));
+ drawSearch(r,"radioResults",async x=>{
+  const url=x.url||x.urlResolved;if(!url)throw Error("Нет адреса потока");
+  browserEpoch++;browserSource="radio";browserQueue=[];browserIndex=-1;
+  renderBrowserQueue();el("musicCurrent").textContent=x.name||"Радио";
+  browserPlayer.src=url;await browserPlayer.play();
+ });
+});
+el("searchMusic").onclick=busy(el("searchMusic"),async()=>{
+ const r=await api("/api/yandex/search?query="+encodeURIComponent(el("musicQuery").value.trim()));
+ drawSearch(r,"musicResults",async(_,index)=>{browserQueue=r;await playBrowserTrack(index)});
+});
 /* Chat directly via the device websocket */
 let chatSocket=null,chatBuffer=[],chatSampleRate=24000;
 function chatAppend(s){const box=el("chatHistory");box.textContent+=s;box.scrollTop=box.scrollHeight}
