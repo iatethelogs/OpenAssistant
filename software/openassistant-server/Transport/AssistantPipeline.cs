@@ -106,9 +106,11 @@ public sealed class AssistantPipeline(
                 string title = value.TryGetProperty("title", out var t)
                     ? t.GetString() ?? "Радио" : "Радио";
                 string url = value.GetProperty("url").GetString() ?? "";
+                string codec = value.TryGetProperty("codec", out var codecNode) &&
+                    codecNode.ValueKind == JsonValueKind.String ? codecNode.GetString() ?? "" : "";
                 await PlaybackEventAsync(new {
                     type = "play_media", source = "radio_browser",
-                    title, url, playbackId
+                    title, url, playbackId, codec
                 }, ct);
                 return await playbackAck.WaitAsync(ct);
             }
