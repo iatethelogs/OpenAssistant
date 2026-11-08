@@ -46,7 +46,6 @@ function updateVoiceSamplingInputs(){
  el("piperVoiceFields").hidden=!piper;
  el("qwenVoiceFields").hidden=piper;
  const mode=el("voiceGenerationMode").value;
- const piper=el("ttsEngineChoice")?.value?.startsWith("piper-");
  el("voiceGenerationMode").disabled=!!piper;
  el("voiceSeed").disabled=!!piper||mode!=="seeded";
  for(const id of ["voiceTemperature","voiceTopP","voiceTopK"])el(id).disabled=!!piper||mode==="greedy";
@@ -537,7 +536,7 @@ el("loadYmPlaylists").onclick=busy(el("loadYmPlaylists"),async()=>{
 });
 el("playYmPlaylist").onclick=busy(el("playYmPlaylist"),async()=>{
  const kind=el("ymPlaylistSelect").value;
- if(!/^\\d{1,12}$/.test(kind))throw Error("Выберите плейлист");
+ if(!/^\d{1,12}$/.test(kind))throw Error("Выберите плейлист");
  const tracks=await api("/api/yandex/playlists/"+kind+"/tracks");
  if(!tracks.length)throw Error("Плейлист пуст");
  browserQueue=tracks;await playBrowserTrack(0);
