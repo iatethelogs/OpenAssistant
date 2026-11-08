@@ -124,6 +124,11 @@
                  <StackPanel Grid.Column="2"><TextBlock Text="Порог" Style="{StaticResource FieldLabel}"/><TextBox x:Name="WakeThreshold" Text="0.87"/></StackPanel>
                </Grid>
                <CheckBox x:Name="BargeInOnMusic" Content="Приглушать музыку при «Мартин»" IsChecked="True"/>
+               <CheckBox x:Name="FollowUpEnabled" Content="Продолжать диалог без повторного «Мартин»" IsChecked="True" Margin="0,12,0,0"/>
+               <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                 <TextBlock Text="Ожидание ответа, с" Foreground="{StaticResource Secondary}" VerticalAlignment="Center"/>
+                 <TextBox x:Name="FollowUpTimeoutSeconds" Width="50" Text="15" Margin="12,0,0,0"/>
+               </StackPanel>
                
              </StackPanel>
            </Border>
