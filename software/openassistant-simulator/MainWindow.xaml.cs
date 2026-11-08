@@ -72,7 +72,7 @@ public partial class MainWindow : Window
             long ended = _musicPlaybackId;
             if (ended == 0 || !_socket.Connected) return;
             _musicPlaybackId = 0;
-            _ = NotifyMusicEndedAsync(ended);
+            _ = NotifyMusicEventAsync("media_ended", ended);
         });
         _upload.Error += message => Ui(() =>
         {
@@ -148,10 +148,10 @@ public partial class MainWindow : Window
         }
         return Math.Sqrt(energy/count);
     }
-    private async Task NotifyMusicEndedAsync(long playbackId)
+    private async Task NotifyMusicEventAsync(string type, long playbackId)
     {
-        try { await _socket.SendControlAsync(new { type = "media_ended", playbackId }); }
-        catch (Exception ex) { Ui(() => Log("Следующий трек: " + ex.Message)); }
+        try { await _socket.SendControlAsync(new { type, playbackId }); }
+        catch (Exception ex) { Ui(() => Log("Состояние музыки: " + ex.Message)); }
     }
 
     private async Task PlayActivationChimeAsync(bool completed = false)
@@ -306,6 +306,9 @@ public partial class MainWindow : Window
                     else if(!_gate.Capturing)SetMode(DisplayMode.Music,"Музыка: "+_musicTitle);
                     MusicText.Text="Музыка: "+_musicTitle;
                     break;
+                case "media_error":
+                    Log("Яндекс Музыка: "+(packet.TryGetProperty("message",out var msg)?msg.GetString():"Неизвестная ошибка"));
+                    break;
                 case "media_status":
                     if(packet.TryGetProperty("active",out var activeTrack) && activeTrack.ValueKind==JsonValueKind.False)
                     {
@@ -338,10 +341,13 @@ public partial class MainWindow : Window
 
     private async Task StartMusicAsync(string url,string title)
     {
+        long playbackId=_musicPlaybackId;
         try
         {
             MusicStreamInfo? media=await _speaker.PlayUrlAsync(url);
             if(media is null||_closing)return;
+            if(playbackId>0 && playbackId==_musicPlaybackId)
+                _=NotifyMusicEventAsync("media_started",playbackId);
             _musicTitle=title;
             if (_bargeInEnabled && (_resumeMusic || _gate.Capturing || _speaker.SpeechActive))
             {
@@ -357,7 +363,15 @@ public partial class MainWindow : Window
             if(!_gate.Capturing&&!_speaker.SpeechActive)SetMode(DisplayMode.Music,"Музыка: "+title);
             Log("Музыка: "+title);
         }
-        catch(Exception ex){if(!_closing)Log("Воспроизведение: "+ex.Message);}
+        catch(Exception ex)
+        {
+            if(!_closing)Log("Воспроизведение: "+ex.Message);
+            if(playbackId>0 && playbackId==_musicPlaybackId)
+            {
+                _musicPlaybackId=0;
+                _=NotifyMusicEventAsync("media_failed",playbackId);
+            }
+        }
     }
     private async Task FinishPlayingSpeechAsync()
     {
