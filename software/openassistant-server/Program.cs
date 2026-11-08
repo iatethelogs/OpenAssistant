@@ -482,6 +482,31 @@ app.MapGet("/api/yandex/search", async (HttpContext ctx, string query, YandexMus
     try { return Results.Ok(await music.SearchAsync(query, ct)); }
     catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { return Results.BadRequest(new { error = ex.Message }); }
 });
+app.MapGet("/api/yandex/playlists", async (HttpContext ctx, YandexMusicService music, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await music.PlaylistsAsync(ct)); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
+        HttpRequestException or JsonException or TaskCanceledException or InvalidDataException)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapGet("/api/yandex/playlists/{kind}/tracks", async (
+    HttpContext ctx, string kind, YandexMusicService music, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await music.PlaylistTracksAsync(kind, ct)); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
+        HttpRequestException or JsonException or TaskCanceledException or InvalidDataException)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
+app.MapGet("/api/yandex/liked", async (HttpContext ctx, YandexMusicService music, CancellationToken ct) =>
+{
+    if (!localOnly(ctx)) return Results.StatusCode(403);
+    try { return Results.Ok(await music.LikedTracksAsync(ct)); }
+    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
+        HttpRequestException or JsonException or TaskCanceledException or InvalidDataException)
+    { return Results.BadRequest(new { error = ex.Message }); }
+});
 app.MapGet("/api/yandex/tracks/{trackId}/similar", async (
     HttpContext ctx, string trackId, YandexMusicService music, CancellationToken ct) =>
 {
