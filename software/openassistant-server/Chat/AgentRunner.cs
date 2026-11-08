@@ -72,7 +72,8 @@ public sealed class AgentRunner(IHttpClientFactory clients, IOptionsMonitor<Serv
                 ex is HttpRequestException or InvalidOperationException or JsonException or TaskCanceledException)
             {
                 logger.LogWarning(ex, "Intent classifier unavailable");
-                planFailure = "Не удалось определить действие: модель классификации сейчас недоступна.";
+                planFailure = "Не удалось определить действие: " +
+                    ex.Message[..Math.Min(ex.Message.Length, 240)];
             }
             if (planFailure is not null)
             {
