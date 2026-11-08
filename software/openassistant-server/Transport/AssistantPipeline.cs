@@ -74,6 +74,10 @@ public sealed class AssistantPipeline(
             await JsonAsync(payload, ct);
         }
         var player = new MusicPlaybackSession(music, PlaybackEventAsync);
+        // Ephemeral conversation per WebSocket. A follow-up keeps this context;
+        // a fresh wake word or silence timeout clears it without deleting the
+        // user's deliberately persistent profile memory.
+        var dialogue = new List<ChatMessage>();
 
         async Task<PlaybackAcknowledgement.Outcome?> HandleMediaAsync(
             object media, CancellationToken ct)
@@ -177,7 +181,16 @@ public sealed class AssistantPipeline(
 
             // Intent is selected by the LLM through advertised tools.
             // No keyword dispatch for music or Home Assistant is performed here.
-            var recalled = await memory.RecallAsync(profile, text, ct);
+            // Persistent memory is consulted only when explicitly recalled;
+            // it must not silently resurrect the previous conversation after
+            // the client has ended its short-dialogue session.
+            bool asksForMemory = System.Text.RegularExpressions.Regex.IsMatch(
+                text, @"\b(?:помни|раньше|прошл|вспомни|обсуждали|говорили)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+            var recalled = asksForMemory
+                ? await memory.RecallAsync(profile, text, ct)
+                : Array.Empty<ChatMessage>();
             var context = new List<ChatMessage> {
                 new("system", settings.CurrentValue.SystemPrompt),
                 new("system", profile == "Общий" ?
@@ -186,6 +199,7 @@ public sealed class AssistantPipeline(
                     ". Это имя указано клиентом, а не распознано по голосу.")
             };
             context.AddRange(recalled);
+            context.AddRange(dialogue.TakeLast(16));
             context.Add(new ChatMessage("user", text));
             var messages = context.ToArray();
             // Synthesizing each sentence independently causes Qwen3-TTS to reset
@@ -296,6 +310,11 @@ public sealed class AssistantPipeline(
                 }
             }
             ct.ThrowIfCancellationRequested();
+            dialogue.Add(new ChatMessage("user",
+                text[..Math.Min(text.Length, 800)]));
+            dialogue.Add(new ChatMessage("assistant",
+                reply[..Math.Min(reply.Length, 1500)]));
+            while (dialogue.Count > 16) dialogue.RemoveRange(0, 2);
             await memory.SaveExchangeAsync(profile, text, reply, ct);
             conversationLog.Add("llm", reply);
             await JsonAsync(new { type = "done" }, ct);
@@ -370,6 +389,14 @@ public sealed class AssistantPipeline(
                         await DisplayConfigAsync(disconnected);
                         continue;
                     }
+                    if (kind == "conversation_reset")
+                    {
+                        await CancelAsync();
+                        dialogue.Clear();
+                        logger.LogInformation("Conversation context cleared: {Session}", sessionId);
+                        await JsonAsync(new { type = "conversation_reset" }, disconnected);
+                        continue;
+                    }
                     if (kind == "media_ended")
                     {
                         long playbackId = root.GetProperty("playbackId").GetInt64();
@@ -413,6 +440,7 @@ public sealed class AssistantPipeline(
                             throw new JsonException("некорректное слово активации");
                         bool interrupted = current is { IsCompleted: false };
                         await CancelAsync();
+                        dialogue.Clear();
                         if (interrupted)
                             await JsonAsync(new { type = "interrupted" }, disconnected);
                         input.SetLength(0);
@@ -427,6 +455,7 @@ public sealed class AssistantPipeline(
                         string selected = ConversationMemoryStore.NormalizeProfile(
                             root.GetProperty("name").GetString());
                         await CancelAsync();
+                        dialogue.Clear();
                         profile = selected;
                         await JsonAsync(new { type = "profile", name = profile }, disconnected);
                         continue;
