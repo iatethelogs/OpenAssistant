@@ -42,9 +42,20 @@ const sys=state.system||{};el("cpuValue").textContent=sys.cpuThreads??"—";el("
 el("serverChip").textContent="Подключено";el("sideStatus").textContent="Сервер доступен"}
 async function poll(){if(state.loading)return;state.loading=true;try{const [models,system,devices,downloads]=await Promise.all([api("/api/models"),api("/api/control/system"),api("/api/control/devices"),api("/api/models/downloads")]);Object.assign(state,{models,system,devices,downloads});render()}catch(e){el("serverChip").textContent="Нет соединения";el("sideStatus").textContent="Нет подключения";}finally{state.loading=false}}
 function updateVoiceSamplingInputs(){
- const piper=el("ttsEngineChoice")?.value?.startsWith("piper-")===true;
- el("piperVoiceFields").hidden=!piper;
- el("qwenVoiceFields").hidden=piper;
+ const picker=el("ttsEngineChoice");
+ const profile=state.models?.profiles?.tts;
+ const configured=String(profile?.environment?.OPENASSISTANT_MODEL||"").toLowerCase();
+ const engine=String(profile?.environment?.OPENASSISTANT_TTS_ENGINE||"").toLowerCase();
+ const piper=picker?.value?.startsWith("piper-")===true||
+   (!picker?.value&&(engine==="piper"||configured.endsWith(".onnx")));
+ const known=!!picker?.value||!!configured;
+ el("piperVoiceFields").hidden=!known||!piper;
+ el("qwenVoiceFields").hidden=!known||piper;
+ el("ttsEngineDescription").textContent=!known?"Выберите движок синтеза.":
+   piper?"Piper · настройки Qwen скрыты.":"Qwen TTS · настройки Piper скрыты.";
+ const design=!piper&&el("voiceModeSetting").value==="design";
+ el("qwenStyleField").hidden=piper||design;
+ el("qwenDescriptionField").hidden=piper||!design;
  const mode=el("voiceGenerationMode").value;
  el("voiceGenerationMode").disabled=!!piper;
  el("voiceSeed").disabled=!!piper||mode!=="seeded";
@@ -53,6 +64,7 @@ function updateVoiceSamplingInputs(){
  for(const id of ["voice","voiceStyleSetting","voiceDescriptionSetting"])el(id).disabled=!!piper;
 }
 el("voiceGenerationMode").onchange=updateVoiceSamplingInputs;
+el("voiceModeSetting").onchange=updateVoiceSamplingInputs;
 function loadSettings(){
  const s=state.settings||{},p=state.voiceProfile||{};
  el("prompt").value=s.systemPrompt??"";
@@ -86,30 +98,47 @@ el("settingsForm").onsubmit=async event=>{
    if(!Number.isFinite(value)||value<min||value>max)throw Error("Параметр Piper "+id+": диапазон "+min+"–"+max);
    return value;
   };
-  const profile={...state.voiceProfile,
-   mode:el("voiceModeSetting").value,speaker:el("voice").value.trim(),
-   generationMode:el("voiceGenerationMode").value,seed:Number(el("voiceSeed").value),
-   temperature:Number(el("voiceTemperature").value),topP:numericDecimal("voiceTopP",0,1),
-   topK:Number(el("voiceTopK").value),repetitionPenalty:Number(el("voicePenalty").value),
-   style:el("voiceStyleSetting").value.trim(),description:el("voiceDescriptionSetting").value.trim(),
-   piperLengthScale:piperValue("piperLengthScale",0.5,2.5),
-   piperNoiseScale:piperValue("piperNoiseScale",0,2),
-   piperNoiseWScale:piperValue("piperNoiseWScale",0,2),
-   piperVolume:piperValue("piperVolume",0,2),
-   piperNormalizeAudio:el("piperNormalizeAudio").checked};
-  // Each settings tab can be saved independently. A broken/unconfigured TTS
-  // runtime must not prevent an LLM or STT settings change.
   const activePane=document.querySelector("[data-settings-panel]:not([hidden])")?.dataset.settingsPanel;
-  const savedProfile=activePane==="tts"
-    ? await api("/api/setup/voice","PUT",profile)
-    : (state.voiceProfile||profile);
-  const settings={...state.settings,systemPrompt:el("prompt").value.trim(),
-   llmTemperature:Number(el("temperature").value),llmMaxTokens:Number(el("maxTokens").value),
-   llmTopP:numericDecimal("topP",0,1),llmTopK:Number(el("topK").value),llmRepeatPenalty:Number(el("repeatPenalty").value),
-   llmUrl:el("llmUrl").value.trim(),llmModel:el("llmModel").value.trim(),
-   sttUrl:el("sttUrl").value.trim(),sttModel:el("sttModel").value.trim(),
-   ttsUrl:el("ttsUrl").value.trim(),ttsModel:el("ttsModel").value.trim(),
-   ttsVoice:savedProfile.speaker,ttsLanguage:el("language").value.trim(),ttsSpeechMode:el("ttsSpeechMode").value};
+  const editingTts=activePane==="tts";
+  const editingPiper=el("ttsEngineChoice").value.startsWith("piper-");
+  const profile={...state.voiceProfile};
+  if(editingTts){
+   if(editingPiper){
+    Object.assign(profile,{
+     piperLengthScale:piperValue("piperLengthScale",0.5,2.5),
+     piperNoiseScale:piperValue("piperNoiseScale",0,2),
+     piperNoiseWScale:piperValue("piperNoiseWScale",0,2),
+     piperVolume:piperValue("piperVolume",0,2),
+     piperNormalizeAudio:el("piperNormalizeAudio").checked});
+   }else{
+    Object.assign(profile,{
+     mode:el("voiceModeSetting").value,speaker:el("voice").value.trim(),
+     generationMode:el("voiceGenerationMode").value,seed:Number(el("voiceSeed").value),
+     temperature:Number(el("voiceTemperature").value),topP:numericDecimal("voiceTopP",0,1),
+     topK:Number(el("voiceTopK").value),repetitionPenalty:Number(el("voicePenalty").value),
+     style:el("voiceStyleSetting").value.trim(),description:el("voiceDescriptionSetting").value.trim()});
+   }
+  }
+  const savedProfile=editingTts
+   ?await api("/api/setup/voice","PUT",profile):(state.voiceProfile||profile);
+  const settings={...state.settings};
+  if(activePane==="assistant")settings.systemPrompt=el("prompt").value.trim();
+  if(activePane==="llm"){
+   settings.llmTemperature=Number(el("temperature").value);
+   settings.llmMaxTokens=Number(el("maxTokens").value);
+   settings.llmTopP=numericDecimal("topP",0,1);
+   settings.llmTopK=Number(el("topK").value);
+   settings.llmRepeatPenalty=Number(el("repeatPenalty").value);
+   settings.llmUrl=el("llmUrl").value.trim();settings.llmModel=el("llmModel").value.trim();
+  }
+  if(activePane==="stt"){
+   settings.sttUrl=el("sttUrl").value.trim();settings.sttModel=el("sttModel").value.trim();
+  }
+  if(editingTts){
+   settings.ttsUrl=el("ttsUrl").value.trim();settings.ttsModel=el("ttsModel").value.trim();
+   settings.ttsVoice=savedProfile.speaker;settings.ttsLanguage=el("language").value.trim();
+   settings.ttsSpeechMode=el("ttsSpeechMode").value;
+  }
   delete settings.hasDeviceToken;delete settings.hasHomeAssistantToken;
   await api("/api/settings","POST",settings);
   state.voiceProfile=savedProfile;state.settings=settings;
@@ -404,7 +433,10 @@ async function initTtsChoices(){
  const selected=tts.find(model=>model.id.startsWith("piper-")
    ? model.file===configured
    : model.repo===configured&&model.id.startsWith("qwen-tts-fast-")===(engine==="faster"));
- picker.value=selected?.id||"qwen-tts-fast-06";
+ const piperConfigured=engine==="piper"||String(configured||"").toLowerCase().endsWith(".onnx");
+ picker.value=selected?.id||(piperConfigured
+   ?tts.find(x=>x.id.startsWith("piper-"))?.id
+   :tts.find(x=>x.id==="qwen-tts-fast-06")?.id)||tts[0]?.id||"";
  picker.onchange=updateVoiceSamplingInputs;
  updateVoiceSamplingInputs();
  el("ttsEngineInstall").onclick=async()=>{
@@ -881,7 +913,6 @@ function sendChat(){
  el("chatInput").value="";
 }
 el("chatSend").onclick=sendChat;el("chatInput").onkeydown=e=>{if(e.key==="Enter")sendChat()};el("chatCancel").onclick=()=>{if(chatSocket?.readyState===1)chatSocket.send(JSON.stringify({type:"cancel"}))};
-el("assistantDefaults").onclick=busy(el("assistantDefaults"),async()=>{
  const p=await api("/api/control/assistant-defaults");
  el("prompt").value=p.systemPrompt;el("temperature").value=p.llmTemperature;el("maxTokens").value=p.llmMaxTokens;el("topP").value=p.llmTopP;el("topK").value=p.llmTopK;el("repeatPenalty").value=p.llmRepeatPenalty;
  toast("Параметры выставлены. Нажмите «Сохранить настройки».");
