@@ -913,10 +913,7 @@ function sendChat(){
  el("chatInput").value="";
 }
 el("chatSend").onclick=sendChat;el("chatInput").onkeydown=e=>{if(e.key==="Enter")sendChat()};el("chatCancel").onclick=()=>{if(chatSocket?.readyState===1)chatSocket.send(JSON.stringify({type:"cancel"}))};
- const p=await api("/api/control/assistant-defaults");
- el("prompt").value=p.systemPrompt;el("temperature").value=p.llmTemperature;el("maxTokens").value=p.llmMaxTokens;el("topP").value=p.llmTopP;el("topK").value=p.llmTopK;el("repeatPenalty").value=p.llmRepeatPenalty;
- toast("Параметры выставлены. Нажмите «Сохранить настройки».");
-});
+
 el("haRefreshEntities").onclick=busy(el("haRefreshEntities"),async()=>{
  const list=await api("/api/integrations/homeassistant/entities");
  const box=el("haEntities");box.replaceChildren();
