@@ -338,3 +338,10 @@ footer a:hover{text-decoration:underline}
 .chat-media-controls{margin:9px 0;align-items:center}
 #chatPlayPending[hidden]{display:none}
 #chatMediaState{overflow-wrap:anywhere}
+
+/* One music surface: login, search and playback inside Services and Skills. */
+#integrationsPlayback[hidden]{display:none!important}
+#integrationsPlayback{max-width:880px;margin-top:16px}
+.integration-test{padding-top:12px}
+.integration-test .button-row{margin-top:8px;margin-bottom:10px}
+.integration-test .search-results{margin-top:8px}
