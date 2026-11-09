@@ -179,8 +179,8 @@ public sealed class AssistantPipeline(
             await JsonAsync(new { type = "transcript", text }, ct);
             conversationLog.Add(fromAudio ? "stt" : "user", text);
 
-            // Intent is selected by the LLM through advertised tools.
-            // No keyword dispatch for music or Home Assistant is performed here.
+            // Native tool calling is decided by the configured LLM; C#
+            // executes and verifies only the tools that are explicitly allowed.
             // Persistent memory is consulted only when explicitly recalled;
             // it must not silently resurrect the previous conversation after
             // the client has ended its short-dialogue session.
@@ -207,9 +207,8 @@ public sealed class AssistantPipeline(
             // the whole reply, then synthesize it once whenever it fits.
             // Text still streams immediately; the first audio starts later.
             var complete = new StringBuilder();
-            string? lastTool = null;
-            object? lastResult = null;
-            PlaybackAcknowledgement.Outcome? lastPlayback = null;
+            var actionResults = new List<(string Name, object? Result,
+                PlaybackAcknowledgement.Outcome? Playback)>();
             int outputRate = settings.CurrentValue.OutputSampleRate;
             bool fastSpeech = synthesize && settings.CurrentValue.TtsSpeechMode == "fast";
             // Fast mode starts speaking completed phrases while the LLM is still
@@ -236,33 +235,37 @@ public sealed class AssistantPipeline(
                 {
                     if (delta.Tool is not null)
                     {
-                        lastTool = delta.Tool;
-                        lastResult = delta.Result;
-                        lastPlayback = null;
+                        PlaybackAcknowledgement.Outcome? playback = null;
                         if (delta.Media is not null)
                         {
-                            try { lastPlayback = await HandleMediaAsync(delta.Media, ct); }
+                            try { playback = await HandleMediaAsync(delta.Media, ct); }
                             catch (Exception ex) when (!ct.IsCancellationRequested &&
                                 ex is ArgumentException or HttpRequestException or InvalidOperationException or
                                     InvalidDataException or NotSupportedException or TaskCanceledException)
                             {
                                 logger.LogWarning(ex, "Unable to initiate playback on {Session}", sessionId);
-                                lastPlayback = new PlaybackAcknowledgement.Outcome(false, "", ex.Message);
+                                playback = new PlaybackAcknowledgement.Outcome(false, "", ex.Message);
                             }
                         }
-                        logger.LogInformation("Tool {Name} completed for {Session}; media confirmed: {Confirmed}",
-                            delta.Tool, sessionId, lastPlayback?.Started);
+
+                        actionResults.Add((delta.Tool, delta.Result, playback));
+                        logger.LogInformation(
+                            "Tool {Name} completed for {Session}; playback confirmation: {Confirmed}",
+                            delta.Tool, sessionId, playback?.Started);
                         conversationLog.Add("action", "tool: " + delta.Tool +
-                            (lastPlayback is null ? "" : lastPlayback.Started
+                            (playback is null ? "" : playback.Started
                                 ? " (playback started)" : " (playback NOT started)"));
+
                         await JsonAsync(new { type = "tool_result", name = delta.Tool,
-                            result = lastPlayback is null ? delta.Result : new {
-                                playbackStarted = lastPlayback.Started,
-                                title = lastPlayback.Title, reason = lastPlayback.Reason
+                            result = delta.Result,
+                            playback = playback is null ? null : new {
+                                started = playback.Started, title = playback.Title,
+                                reason = playback.Reason
                             } }, ct);
                         continue;
                     }
-                    if (lastTool is not null || string.IsNullOrEmpty(delta.Text)) continue;
+                    // Do not show speculative LLM text after any tool call.
+                    if (actionResults.Count > 0 || string.IsNullOrEmpty(delta.Text)) continue;
                     complete.Append(delta.Text);
                     await JsonAsync(new { type = "text", delta = delta.Text }, ct);
                     if (phrases is not null)
@@ -270,15 +273,27 @@ public sealed class AssistantPipeline(
                             phrases.Writer.TryWrite(phrase);
                 }
 
-                // The final message for actions is generated from actual service
-                // and device results, never from model speculation.
-                if (lastTool is not null)
+                if (actionResults.Count > 0)
                 {
-                    string confirmed = ActionResponseFormatter.Format(lastTool,
-                        lastResult, lastPlayback);
-                    complete.Append(confirmed);
-                    await JsonAsync(new { type = "text", delta = confirmed }, ct);
-                    if (phrases is not null) phrases.Writer.TryWrite(confirmed);
+                    // Discovery tools are intermediate when followed by an
+                    // effect. The user receives a single factual result for
+                    // each requested action instead of a verbose entity list.
+                    bool hasEffects = actionResults.Any(x => x.Name is not (
+                        "ha_list_entities" or "ha_get_state" or "music_search" or
+                        "music_list_playlists" or "radio_search"));
+                    var visible = hasEffects
+                        ? actionResults.Where(x => x.Name is not (
+                            "ha_list_entities" or "ha_get_state" or "music_search" or
+                            "music_list_playlists" or "radio_search")).ToArray()
+                        : actionResults.ToArray();
+                    string confirmed = string.Join(" ", visible.Select(x =>
+                        ActionResponseFormatter.Format(x.Name, x.Result, x.Playback)));
+                    if (!string.IsNullOrWhiteSpace(confirmed))
+                    {
+                        complete.Append(confirmed);
+                        await JsonAsync(new { type = "text", delta = confirmed }, ct);
+                        if (phrases is not null) phrases.Writer.TryWrite(confirmed);
+                    }
                 }
                 if (phrases is not null && segmenter!.Flush() is { } remainder)
                     phrases.Writer.TryWrite(remainder);
