@@ -57,6 +57,23 @@ public static class ActionResponseFormatter
                     "status" => "Запросил состояние музыкального плеера.",
                     _ => "Команда плееру отправлена."
                 };
+            case "ha_control_named":
+            {
+                string friendly = Field(node, "friendly_name", "FriendlyName");
+                string state = Field(node, "observed_state", "ObservedState",
+                    "expected_state");
+                if (Field(node, "verified", "Verified") == "true")
+                {
+                    string count = Field(node, "entity_count");
+                    return count.Length > 0
+                        ? "Освещение в помещении «" + friendly + "»: " + count +
+                          " светильников, состояние «" + state + "» подтверждено."
+                        : friendly + ": состояние «" + state + "» подтверждено Home Assistant.";
+                }
+                return "Home Assistant не подтвердил действие" +
+                    (friendly.Length > 0 ? " для «" + friendly + "»" : "") +
+                    ": " + Field(node, "message", "Message") + ".";
+            }
             case "ha_call_service":
                 string nameOfDevice = Field(node, "friendly_name", "FriendlyName",
                     "entity_id", "EntityId");
