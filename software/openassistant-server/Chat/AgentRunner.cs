@@ -287,8 +287,13 @@ public sealed class AgentRunner(IHttpClientFactory clients,
             string body = content.GetString()?.Trim() ?? "";
             if (structuredFallback)
             {
-                // Do not execute malformed or unstructured model text.
-                // No permissive JSON extraction from prose or markdown.
+                // Accept only the entire JSON object, optionally wrapped
+                // in one exact markdown code fence. Do not extract JSON
+                // from surrounding natural-language assertions.
+                var fenced = System.Text.RegularExpressions.Regex.Match(body,
+                    @"^```(?:json)?\s*([\s\S]*?)\s*```$",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (fenced.Success) body = fenced.Groups[1].Value.Trim();
                 using var structured = JsonDocument.Parse(body,
                     new JsonDocumentOptions { MaxDepth = 12 });
                 var root = structured.RootElement;
