@@ -27,7 +27,8 @@ builder.Services.AddSingleton<ModelProcessManager>();
 builder.Services.AddSingleton<ModelDownloadManager>();
 builder.Services.AddSingleton<AgentToolService>();
 builder.Services.AddSingleton<CustomToolStore>();
-builder.Services.AddSingleton<RuleBasedCommandRouter>();
+// Legacy fixed-rule intent router retained for rollback, but disabled.
+// builder.Services.AddSingleton<RuleBasedCommandRouter>();
 builder.Services.AddSingleton<AgentRunner>();
 builder.Services.AddSingleton<ConversationMemoryStore>();
 builder.Services.AddSingleton<VerifiedHomeAssistantService>();
