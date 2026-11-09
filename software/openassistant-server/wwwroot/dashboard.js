@@ -1,13 +1,13 @@
 "use strict";
 const el=id=>document.getElementById(id);
 const state={settings:null,models:null,devices:null,system:null,downloads:null,skills:[],voiceProfile:null,voiceUrl:null,key:"",loading:false};
-const names={overview:"Обзор системы",settings:"Настройки ассистента",tests:"Проверка работы",devices:"Подключение устройства",integrations:"Сервисы и навыки",models:"Модели и загрузки",chat:"Диалог",media:"Музыка и радио",events:"События",logs:"Журнал сервера"};
+const names={overview:"Обзор системы",settings:"Настройки ассистента",tests:"Проверка работы",devices:"Подключение устройства",integrations:"Сервисы и навыки",models:"Модели и загрузки",chat:"Диалог",events:"События",logs:"Журнал сервера"};
 function toast(msg,error=false){const box=el("toast");box.textContent=msg;box.className="toast show"+(error?" error":"");clearTimeout(toast.timer);toast.timer=setTimeout(()=>box.className="toast",5000)}
 async function api(url,method="GET",data){const init={method,cache:"no-store"};if(data!==undefined){init.headers={"Content-Type":"application/json"};init.body=JSON.stringify(data)}const r=await fetch(url,init),v=await r.json().catch(()=>({}));if(!r.ok)throw Error(v.error||v.message||"HTTP "+r.status);return v}
 function numericDecimal(id,min,max){const raw=el(id).value.trim().replace(",",".");const n=Number(raw);if(!raw||!Number.isFinite(n)||n<=min||n>max)throw Error("Параметр "+id+": число больше "+min+" и не больше "+max);return n}
 function textNode(tag,text,className){const e=document.createElement(tag);e.textContent=String(text??"");if(className)e.className=className;return e}
 function busy(btn,fn){return async()=>{btn.disabled=true;try{await fn()}catch(e){toast(e.message,true)}finally{btn.disabled=false}}}
-function show(view){if(view==="tools")view="integrations";if(!(view in names))return;const storage=view==="models";if(storage)view="settings";for(const node of document.querySelectorAll(".view"))node.classList.toggle("active",node.id===view);for(const node of document.querySelectorAll("#navigation [data-view]")){const selected=node.dataset.view===(storage?"models":view);node.classList.toggle("active",selected);if(selected)node.setAttribute("aria-current","page");else node.removeAttribute("aria-current")}el("pageName").textContent=storage?names.models:names[view];history.replaceState(null,"","#"+(storage?"models":view));if(storage)window.OpenAssistantModelUI?.select("storage");if(view==="chat")queueMicrotask(()=>connectChat(true));if(view==="integrations"&&activeSkillTab==="custom")queueMicrotask(()=>refreshCustomTools().catch(e=>toast(e.message,true)));}
+function show(view){if(view==="tools"||view==="media")view="integrations";if(!(view in names))return;const storage=view==="models";if(storage)view="settings";for(const node of document.querySelectorAll(".view"))node.classList.toggle("active",node.id===view);for(const node of document.querySelectorAll("#navigation [data-view]")){const selected=node.dataset.view===(storage?"models":view);node.classList.toggle("active",selected);if(selected)node.setAttribute("aria-current","page");else node.removeAttribute("aria-current")}el("pageName").textContent=storage?names.models:names[view];history.replaceState(null,"","#"+(storage?"models":view));if(storage)window.OpenAssistantModelUI?.select("storage");if(view==="chat")queueMicrotask(()=>connectChat(true));if(view==="integrations"&&activeSkillTab==="custom")queueMicrotask(()=>refreshCustomTools().catch(e=>toast(e.message,true)));}
 for(const b of document.querySelectorAll("[data-view]"))b.onclick=()=>show(b.dataset.view);
 function pct(a,b){return b>0?Math.min(100,Math.max(0,100*a/b)):0}
 function serviceState(role){
@@ -349,12 +349,15 @@ function selectSkillTab(tab){
  }
  for(const pane of document.querySelectorAll("[data-skill-panel]"))
   pane.hidden=pane.dataset.skillPanel!==tab;
+ // Shared browser audio element remains mounted for WebSocket chat playback.
+ // Only show its test controls while viewing music or radio integrations.
+ el("integrationsPlayback").hidden=tab!=="music"&&tab!=="radio";
  if(tab==="custom")refreshCustomTools().catch(e=>toast(e.message,true));
 }
 for(const button of document.querySelectorAll("[data-skill-tab]"))
  button.onclick=()=>selectSkillTab(button.dataset.skillTab);
 selectSkillTab("music");
-async function init(){const page=location.hash.slice(1);show(page in names?page:"overview");loadDeviceKey().catch(e=>{el("deviceKey").textContent="Не удалось загрузить ключ: "+e.message});try{const [settings,skills,voiceProfile]=await Promise.all([api("/api/settings"),api("/api/control/skills"),api("/api/setup/voice")]);state.settings=settings;state.skills=skills;state.voiceProfile=voiceProfile;loadSettings();renderSkills()}catch(e){toast("Настройки: "+e.message,true)}await poll();await refreshConnections().catch(()=>{});await refreshModels().catch(()=>{});await initTtsChoices().catch(e=>toast("Каталог TTS: "+e.message,true));
+async function init(){const page=location.hash.slice(1);show(page==="media"?"integrations":page in names?page:"overview");loadDeviceKey().catch(e=>{el("deviceKey").textContent="Не удалось загрузить ключ: "+e.message});try{const [settings,skills,voiceProfile]=await Promise.all([api("/api/settings"),api("/api/control/skills"),api("/api/setup/voice")]);state.settings=settings;state.skills=skills;state.voiceProfile=voiceProfile;loadSettings();renderSkills()}catch(e){toast("Настройки: "+e.message,true)}await poll();await refreshConnections().catch(()=>{});await refreshModels().catch(()=>{});await initTtsChoices().catch(e=>toast("Каталог TTS: "+e.message,true));
  if(!el("serverHost").value && location.hostname && location.hostname!=="localhost" && location.hostname!=="127.0.0.1"){
   el("serverHost").value=location.hostname;deviceAddress();
  }
