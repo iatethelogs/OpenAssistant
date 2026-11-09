@@ -114,6 +114,13 @@
    }
    if(editor){
      editor.id="sharedRoleEditor";
+     editor.classList.add("model-profile-inline");
+     const heading=editor.querySelector(".panel-heading");
+     if(heading){
+       heading.querySelector("h2").textContent="Запуск движка";
+       const sub=heading.querySelector("p");
+       if(sub)sub.textContent="Путь модели, GPU и управление процессом";
+     }
      $("roleMountLlm").append(editor);
      const mainFields=editor.querySelector(".field-grid");
      if(mainFields){
@@ -130,16 +137,26 @@
        const buttonRow=editor.querySelector(".button-row");
        editor.insertBefore(advanced,buttonRow||null);
      }
+     const logs=$("profileLogs");
+     if(logs){
+       const disclosure=document.createElement("details");
+       disclosure.className="profile-logs";
+       const title=document.createElement("summary");
+       title.textContent="Журнал процесса";
+       disclosure.append(title);
+       logs.before(disclosure);
+       disclosure.append(logs);
+     }
      const roleSelect=$("profileRole");
      roleSelect.classList.add("hidden");
      const label=document.querySelector('label[for="profileRole"]');label?.classList.add("hidden");
    }
+   // Model sampling is authored directly in the LLM section. Voice and
+   // language are authored directly in the TTS section; do not move controls
+   // into hidden Qwen panels when Piper is selected.
    const llm=$("llmSamplingFields");
-   for(const id of ["temperature","maxTokens"]){const input=$(id);if(input&&llm)llm.append(input.parentElement)}
    const extra=$("llmExtraFields");
    if(extra&&llm){while(extra.firstElementChild)llm.append(extra.firstElementChild);extra.remove()}
-   const tts=$("qwenVoiceFields")?.querySelector(".field-grid");
-   for(const id of ["language","voice"]){const input=$(id);if(input&&tts)tts.prepend(input.parentElement)}
    // Keep existing model operations and API calls, only relocate their UI.
    old.remove();
    const toolsRow=document.createElement("div");toolsRow.className="library-tools";
