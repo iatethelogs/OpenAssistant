@@ -123,3 +123,9 @@
 #settings-storage .overview-grid.wide{gap:16px}
 @media(max-width:950px){#settingsForm>.settings-tabbar{grid-template-columns:repeat(3,minmax(0,1fr))}#settings-tts #qwenVoiceFields .field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){#settingsForm>.settings-tabbar{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsForm>.settings-pane#settings-assistant,#settingsForm>.settings-pane#settings-tts{padding:16px}#settings-tts #qwenVoiceFields .field-grid{grid-template-columns:1fr}}
+
+/* TTS uses one surface; runtime profile is an unboxed continuation. */
+#settings-tts #sharedRoleEditor{background:transparent;border:0;border-top:1px solid var(--border-subtle);border-radius:0;margin-top:24px;padding:22px 0 0}
+#settings-tts #sharedRoleEditor .panel-heading{margin-bottom:13px}
+#settings-tts #roleMountTts{margin:22px 0 0}
+#settings-tts #roleMountTts:empty{display:none}
