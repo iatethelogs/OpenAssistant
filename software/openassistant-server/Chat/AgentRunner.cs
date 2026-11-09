@@ -315,7 +315,32 @@ public sealed class AgentRunner(IHttpClientFactory clients,
                 else throw new InvalidDataException(
                     "LLM не вернула reply либо actions в JSON.");
             }
-            else reply = body;
+            else
+            {
+                // Some Gemma templates encode valid function arguments as
+                // ordinary JSON content without the tool_calls wrapper.
+                // Accept ONLY a complete, valid object with known actions.
+                if (body.Length is > 2 and < 10000 &&
+                    body.StartsWith("{", StringComparison.Ordinal) &&
+                    body.EndsWith("}", StringComparison.Ordinal))
+                {
+                    try
+                    {
+                        using var rawJson = JsonDocument.Parse(body,
+                            new JsonDocumentOptions { MaxDepth = 12 });
+                        if (rawJson.RootElement.ValueKind == JsonValueKind.Object &&
+                            rawJson.RootElement.TryGetProperty("actions", out _))
+                            actions = ParsePlan(rawJson.RootElement, enabled);
+                        else if (rawJson.RootElement.ValueKind == JsonValueKind.Object &&
+                                 rawJson.RootElement.TryGetProperty("reply", out var rawReply) &&
+                                 rawReply.ValueKind == JsonValueKind.String)
+                            reply = rawReply.GetString();
+                        else reply = body;
+                    }
+                    catch (JsonException) { reply = body; }
+                }
+                else reply = body;
+            }
         }
         if (actions is not null)
         {
