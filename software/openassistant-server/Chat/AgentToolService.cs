@@ -9,7 +9,8 @@ public sealed record AgentAction(object Result, object? Media = null);
 
 /// <summary>Разрешённые навыки LLM. Вызовы ограничены по времени, аргументам и списку инструментов.</summary>
 public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserService radio,
-    YandexMusicService music, HomeAssistantTool ha)
+    YandexMusicService music, HomeAssistantTool ha,
+    VerifiedHomeAssistantService verified)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private string FilePath => Path.Combine(env.ContentRootPath, "agent-tools.local.json");
@@ -42,6 +43,15 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
                 action = new { type = "string", @enum = new[] { "pause", "resume", "next", "previous", "stop", "status" },
                     description = "pause: пауза; resume: продолжить; next: следующий; previous: предыдущий; stop: остановить; status: состояние" }
             }, required = new[] { "action" }, additionalProperties = false }),
+        new("ha_control_named", "Управление устройством или освещением в комнате",
+            "Найти реальное устройство или помещение по словам пользователя и выполнить действие; " +
+            "scope=all разрешает управлять ВСЕМИ светильниками только в реально существующей комнате.", false, true,
+            new { type = "object", properties = new {
+                target = new { type = "string", description = "Имя устройства или категория 'свет'" },
+                area = new { type = "string", description = "Комната пользователя, пустая строка если неизвестна" },
+                action = new { type = "string", @enum = new[] { "turn_on", "turn_off", "open_cover", "close_cover" } },
+                scope = new { type = "string", @enum = new[] { "one", "all" } }
+            }, required = new[] { "target", "area", "action", "scope" }, additionalProperties = false }),
         new("ha_list_entities", "Устройства Home Assistant", "Найди реальные устройства и их состояния без угадывания идентификаторов.", true, false,
             new { type = "object", properties = new {
                 filter = new { type = "string", description = "Часть имени или entity_id, можно оставить пустым" }
@@ -186,6 +196,15 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
                     throw new ArgumentException("Неизвестная команда музыки");
                 return new AgentAction(new { requested = action },
                     new { type = "music_control", action });
+            }
+            case "ha_control_named":
+            {
+                string target = args.TryGetProperty("target", out var t) &&
+                    t.ValueKind == JsonValueKind.String ? t.GetString() ?? "" : "";
+                string area = args.TryGetProperty("area", out var room) &&
+                    room.ValueKind == JsonValueKind.String ? room.GetString() ?? "" : "";
+                string scope = Arg(args, "scope"), action = Arg(args, "action");
+                return new AgentAction(await verified.ControlNamedAsync(target, area, scope, action, ct));
             }
             case "ha_list_entities":
             {
