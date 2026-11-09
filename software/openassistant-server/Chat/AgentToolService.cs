@@ -21,12 +21,15 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
     private static readonly SkillDefinition[] Catalog = [
         new("radio_search", "Поиск радио", "Найди радиостанцию по названию или жанру, верни список.", true, false, One("query", "Поисковый запрос")),
         new("radio_play", "Включить радио", "Найди станцию и начни воспроизведение на устройстве.", true, false, One("query", "Название станции")),
-        new("music_search", "Поиск Яндекс Музыки", "Найди треки и верни их ID для последующего воспроизведения.", true, false, One("query", "Название или исполнитель")),
-        new("music_play", "Включить Яндекс Музыку", "Включи композицию по ID из music_search и продолжай похожими треками.", true, false, One("track_id", "ID трека из music_search")),
+        new("music_search", "Поиск Яндекс Музыки", "Только поиск треков, без воспроизведения. Если пользователь хочет именно включить музыку по названию, используй music_play_query сразу.", true, false, One("query", "Название или исполнитель")),
+        new("music_play", "Включить Яндекс Музыку", "Включить трек по реальному ID, полученному ранее через music_search; никогда не придумывать ID. Для поиска и запуска по названию используй music_play_query.", true, false, One("track_id", "ID трека из music_search")),
         new("music_play_query", "Включить музыку: исполнитель или композиция",
-            "Воспроизводит исполнителя или композицию по произвольному названию. " +
-            "kind=artist выбирает исполнителя; kind=track — композицию; " +
-            "kind=auto сравнивает реальные результаты музыкального каталога.", true, false,
+            "Запускает конкретную песню или песни исполнителя через подключённую Яндекс Музыку. " +
+            "Используй по прямой просьбе включить исполнителя, группу, песню или трек. " +
+            "query — только название из запроса пользователя, без командных слов. " +
+            "kind=artist при явном исполнителе/группе, kind=track при явной композиции, " +
+            "kind=auto если уточнения типа нет. Не вызывай для приветствий, света, устройств. " +
+            "Фактическое воспроизведение подтверждает клиент.", true, false,
             new { type = "object", properties = new {
                 query = new { type = "string", description = "Свободное название композиции или исполнителя" },
                 kind = new { type = "string", @enum = new[] { "artist", "track", "auto" },
@@ -36,13 +39,13 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
             new { type = "object", properties = new { }, required = Array.Empty<string>(), additionalProperties = false }),
         new("music_list_playlists", "Список плейлистов Яндекс Музыки", "Получить названия и идентификаторы плейлистов авторизованного пользователя.", true, false,
             new { type = "object", properties = new { }, required = Array.Empty<string>(), additionalProperties = false }),
-        new("music_play_playlist", "Включить плейлист Яндекс Музыки", "Включить плейлист пользователя по ID из music_list_playlists и продолжать воспроизведение.", true, false, One("kind", "Идентификатор плейлиста")),
+        new("music_play_playlist", "Включить плейлист Яндекс Музыки", "Включить плейлист по реальному ID kind после вызова music_list_playlists. Не выдумывай kind по названию.", true, false, One("kind", "Идентификатор плейлиста")),
         new("music_control", "Управление музыкальным плеером", "Пауза, продолжение, следующий, предыдущий, остановка или статус очереди на текущей колонке.", true, false,
             new { type = "object", properties = new {
                 action = new { type = "string", @enum = new[] { "pause", "resume", "next", "previous", "stop", "status" },
                     description = "pause: пауза; resume: продолжить; next: следующий; previous: предыдущий; stop: остановить; status: состояние" }
             }, required = new[] { "action" }, additionalProperties = false }),
-        new("ha_list_entities", "Устройства Home Assistant", "Найди реальные устройства и их состояния без угадывания идентификаторов.", true, false,
+        new("ha_list_entities", "Устройства Home Assistant", "Получить реальные entity_id и состояния перед управлением. Для управления устройством сначала вызови эту функцию; не придумывай entity_id.", true, false,
             new { type = "object", properties = new {
                 filter = new { type = "string", description = "Часть имени или entity_id, можно оставить пустым" }
             }, required = new[] { "filter" }, additionalProperties = false }),
@@ -145,7 +148,7 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
                 if (selection.Tracks.Length == 0)
                     return new AgentAction(new { error = "В каталоге Яндекс Музыки ничего не найдено",
                         query = selection.Name, kind = selection.Kind });
-                return new AgentAction(new { playing = selection.Name, kind = selection.Kind,
+                return new AgentAction(new { selected = selection.Name, kind = selection.Kind,
                     firstTrack = selection.Tracks[0].Title, queued = selection.Tracks.Length },
                     new { type = "music_queue", tracks = selection.Tracks });
             }
@@ -158,14 +161,14 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
                     new YandexTrack(id, "Выбранный трек", []);
                 var queue = new[] { selected }.Concat(similar.Where(t => t.Id != id))
                     .DistinctBy(t => t.Id).Take(50).ToArray();
-                return new AgentAction(new { playing = selected.Title, queued = queue.Length },
+                return new AgentAction(new { selected = selected.Title, queued = queue.Length },
                     new { type = "music_queue", tracks = queue });
             }
             case "music_play_liked":
             {
                 var liked = await music.LikedTracksAsync(ct);
                 if (liked.Length == 0) return new AgentAction(new { error = "Нет понравившихся треков" });
-                return new AgentAction(new { playing = "Мне нравится", queued = liked.Length },
+                return new AgentAction(new { selected = "Мне нравится", queued = liked.Length },
                     new { type = "music_queue", tracks = liked });
             }
             case "music_list_playlists":
@@ -176,7 +179,7 @@ public sealed class AgentToolService(IWebHostEnvironment env, RadioBrowserServic
                 if (!Regex.IsMatch(kind, @"^\d{1,12}$")) throw new ArgumentException("Некорректный ID плейлиста");
                 var tracks = await music.PlaylistTracksAsync(kind, ct);
                 if (tracks.Length == 0) return new AgentAction(new { error = "Плейлист пуст" });
-                return new AgentAction(new { playing = "Плейлист", queued = tracks.Length },
+                return new AgentAction(new { selected = "Плейлист", queued = tracks.Length },
                     new { type = "music_queue", tracks });
             }
             case "music_control":
