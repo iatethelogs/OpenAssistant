@@ -91,3 +91,35 @@
 .role-mount .model-editor .profile-advanced .field-grid{margin-top:12px}
 #settingsForm #settings-tts .model-settings-heading{margin:8px 0 14px}
 @media(max-width:690px){.library-tools .button{margin-left:0}}
+
+/* Clean settings hierarchy: one working surface per engine, no stacked cards. */
+#settingsForm>.settings-tabbar{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));width:100%;max-width:1160px;gap:3px;padding:4px;margin-bottom:24px;border:1px solid var(--border);border-radius:11px;background:var(--surface-alt)}
+#settingsForm>.settings-tabbar .settings-tab{width:100%;min-width:0;padding:10px 8px;text-align:center;font-size:12px;white-space:normal}
+#settingsForm>.settings-pane{max-width:1080px;animation:none}
+#settingsForm>.settings-pane#settings-assistant,
+#settingsForm>.settings-pane#settings-tts{padding:23px 26px}
+#settingsForm>.settings-pane .settings-params{padding:20px 24px;margin-bottom:12px}
+#settingsForm>.settings-pane .role-mount{margin-top:12px;margin-bottom:0}
+#settingsForm>.settings-pane .model-profile-inline{padding:20px 24px;border:1px solid var(--border);background:var(--surface);border-radius:var(--radius);box-shadow:none}
+#settingsForm .model-profile-inline>.panel-heading{margin-bottom:13px}
+#settingsForm .model-profile-inline .field-grid{display:grid;grid-template-columns:minmax(0,1fr);margin:12px 0}
+#settingsForm .model-profile-inline .field-grid>div{min-width:0}
+#settingsForm .model-profile-inline .button-row{margin:18px 0 0}
+#settingsForm .model-profile-inline .profile-advanced{margin-top:15px;border-top:1px solid var(--border-subtle);padding-top:12px}
+#settingsForm .model-profile-inline .profile-advanced>summary,
+#settingsForm .model-profile-inline .profile-logs>summary{color:var(--secondary);font-size:12px;cursor:pointer}
+#settingsForm .model-profile-inline .profile-logs{margin-top:18px;border-top:1px solid var(--border-subtle);padding-top:12px}
+#settingsForm .model-profile-inline .profile-logs[open]>summary{margin-bottom:10px}
+#settingsForm #profileLogs{max-height:220px;min-height:90px}
+#settings-assistant #prompt{width:100%;min-height:280px;max-width:100%;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace}
+#settings-tts .engine-specific[hidden],
+#settings-tts #qwenStyleField[hidden],
+#settings-tts #qwenDescriptionField[hidden]{display:none!important}
+#settings-tts .engine-specific{margin-top:19px;padding-top:18px;border-top:1px solid var(--border-subtle)}
+#settings-tts #ttsCommonFields{margin:4px 0 14px}
+#settings-tts #ttsEngineDescription{margin:10px 0 0}
+#settings-tts #qwenVoiceFields .field-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+#settings-storage #modelCards{margin-bottom:16px}
+#settings-storage .overview-grid.wide{gap:16px}
+@media(max-width:950px){#settingsForm>.settings-tabbar{grid-template-columns:repeat(3,minmax(0,1fr))}#settings-tts #qwenVoiceFields .field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){#settingsForm>.settings-tabbar{grid-template-columns:repeat(2,minmax(0,1fr))}#settingsForm>.settings-pane#settings-assistant,#settingsForm>.settings-pane#settings-tts{padding:16px}#settings-tts #qwenVoiceFields .field-grid{grid-template-columns:1fr}}
