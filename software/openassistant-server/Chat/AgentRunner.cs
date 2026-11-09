@@ -156,7 +156,8 @@ public sealed class AgentRunner(IHttpClientFactory clients,
         scope is "one" or "all" ? scope :
         throw new InvalidDataException("Неверный scope умного дома");
 
-    private static object[] Messages(IReadOnlyList<ChatMessage> history)
+    private static object[] Messages(IReadOnlyList<ChatMessage> history,
+        bool structuredFallback = false)
     {
         var systems = history.Where(x => x.Role == "system" &&
             !string.IsNullOrWhiteSpace(x.Content)).Select(x => x.Content.Trim()).ToArray();
@@ -184,6 +185,20 @@ public sealed class AgentRunner(IHttpClientFactory clients,
             Не утверждай, что действие уже выполнено: его подтверждает сервер после исполнения.
             """;
         string instructions = string.Join("\n\n", systems.Append(NoEmoji.Instruction).Append(guidance));
+        if (structuredFallback)
+            instructions += """
+
+                РЕЖИМ СОВМЕСТИМОСТИ: JSON вместо native tool_calls.
+                Верни только один JSON-объект без оформления:
+                Для разговора: {"reply":"твой ответ"}.
+                Для реального действия: {"actions":[{"name":"music_play_query","query":"название из запроса","kind":"auto"}]}.
+                Для нескольких действий — один массив actions в порядке пользователя.
+                Допустимые name: music_play_query, music_play_liked, music_control,
+                radio_play, ha_list_entities, ha_control_named.
+                Не выполняй действия для приветствия и обычных вопросов.
+                Не выдумывай исполнителей, песни, устройства и успешные результаты.
+                """;
+
         var messages = new List<object> { new { role = "system", content = instructions } };
         foreach (var msg in dialogue)
             messages.Add(new { role = msg.Role, content = msg.Content });
