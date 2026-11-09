@@ -283,7 +283,7 @@ public sealed class VerifiedHomeAssistantService(IHttpClientFactory factory,
             .Where(x => x is not ("в" or "на" or "мне" or "этот" or "эту" or "весь" or "все"))
             .ToArray();
         var candidates = entities.Where(x =>
-            x.Id.Split('.')[0] is "light" or "switch" or "input_boolean" or "fan" or "cover" &&
+            (x.Id.Split('.')[0] is "light" or "switch" or "input_boolean" or "fan" or "cover") &&
             words.Length > 0 && words.All(w =>
                 Normalize(x.Name + " " + x.Id.Replace('_', ' ')).Split(' ')
                     .Any(t => t == w || (w.Length >= 4 && t.StartsWith(w[..Math.Min(4,w.Length)], StringComparison.Ordinal)))))
