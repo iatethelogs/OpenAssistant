@@ -227,15 +227,47 @@ public sealed class AgentRunner(IHttpClientFactory clients,
                 top_p = cfg.LlmTopP, max_tokens = Math.Max(512, Math.Min(2048, cfg.LlmMaxTokens))
             })
         };
-        using var response = await client.SendAsync(request, ct);
-        if (!response.IsSuccessStatusCode)
+        string jsonResponse;
+        bool structuredFallback = false;
+        using (var response = await client.SendAsync(request, ct))
         {
-            string error = await response.Content.ReadAsStringAsync(ct);
-            throw new InvalidOperationException(
-                "LLM не приняла запрос с инструментами: HTTP " + (int)response.StatusCode +
-                " — " + error[..Math.Min(error.Length, 300)]);
+            jsonResponse = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                bool toolUnsupported = canAct &&
+                    (response.StatusCode == System.Net.HttpStatusCode.BadRequest ||
+                     response.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity) &&
+                    (jsonResponse.Contains("tool", StringComparison.OrdinalIgnoreCase) ||
+                     jsonResponse.Contains("jinja", StringComparison.OrdinalIgnoreCase) ||
+                     jsonResponse.Contains("template", StringComparison.OrdinalIgnoreCase));
+                if (!toolUnsupported)
+                    throw new InvalidOperationException(
+                        "LLM HTTP " + (int)response.StatusCode + ": " +
+                        jsonResponse[..Math.Min(jsonResponse.Length, 300)]);
+                structuredFallback = true;
+                logger.LogWarning("llama.cpp rejected native tools; retrying with structured JSON on the same LLM");
+            }
         }
-        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        if (structuredFallback)
+        {
+            using var backup = new HttpRequestMessage(HttpMethod.Post, endpoint) {
+                Content = JsonContent.Create(new {
+                    model = cfg.LlmModel,
+                    stream = false,
+                    messages = Messages(history, structuredFallback: true),
+                    temperature = 0.1,
+                    top_p = cfg.LlmTopP,
+                    max_tokens = Math.Max(512, Math.Min(2048, cfg.LlmMaxTokens))
+                })
+            };
+            using var response = await client.SendAsync(backup, ct);
+            jsonResponse = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException(
+                    "LLM JSON fallback HTTP " + (int)response.StatusCode + ": " +
+                    jsonResponse[..Math.Min(jsonResponse.Length, 300)]);
+        }
+        using var document = JsonDocument.Parse(jsonResponse);
         if (!document.RootElement.TryGetProperty("choices", out var choices) ||
             choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0 ||
             !choices[0].TryGetProperty("message", out var message) ||
