@@ -59,9 +59,6 @@ public sealed class AgentRunner(IHttpClientFactory clients,
                                     area = new { type = "string", description = "Название комнаты из фразы пользователя. Никогда не угадывай." },
                                     scope = new { type = "string", @enum = new[] { "one", "all" },
                                         description = "all только если пользователь явно просит все устройства категории в комнате." },
-                                    domain = new { type = "string", description = "HA domain только для известного реального entity_id." },
-                                    service = new { type = "string", description = "HA service только для известного реального entity_id." },
-                                    entity_id = new { type = "string", description = "Реальный entity_id из предыдущего результата; не выдумывай." },
                                     filter = new { type = "string", description = "Поисковая строка для ha_list_entities." }
                                 },
                                 required = new[] { "name" },
@@ -82,17 +79,7 @@ public sealed class AgentRunner(IHttpClientFactory clients,
         node.TryGetProperty(key, out var p) && p.ValueKind == JsonValueKind.String
             ? p.GetString()?.Trim() : null;
 
-    private static bool IsError(object? result)
-    {
-        if (result is null) return true;
-        var node = JsonSerializer.SerializeToElement(result);
-        return node.ValueKind == JsonValueKind.Object &&
-            (node.TryGetProperty("error", out _) ||
-             node.TryGetProperty("Error", out _));
-    }
-
-    private static List<PlannedAction> ParsePlan(JsonElement arguments,
-        HashSet<string> enabled)
+    private static List<PlannedAction> ParsePlan(JsonElement arguments)
     {
         if (arguments.ValueKind != JsonValueKind.Object ||
             !arguments.TryGetProperty("actions", out var actions) ||
@@ -180,8 +167,8 @@ public sealed class AgentRunner(IHttpClientFactory clients,
             music_play_liked — только для просьбы о понравившихся/любимых треках.
             Для HA по человеческим именам и помещениям используй ha_control_named.
             scope=all только при явном "весь/все"; иначе scope=one.
-            ha_call_service разрешён только для реально известного entity_id;
-            не придумывай имена, области и идентификаторы устройств.
+            Для группового света передавай target=свет и реальную комнату area.
+            Никогда не выдумывай имена, области и идентификаторы устройств.
             Не утверждай, что действие уже выполнено: его подтверждает сервер после исполнения.
             """;
         string instructions = string.Join("\n\n", systems.Append(NoEmoji.Instruction).Append(guidance));
@@ -292,7 +279,7 @@ public sealed class AgentRunner(IHttpClientFactory clients,
                 throw new InvalidDataException("Некорректный JSON аргументов инструмента.");
             using var planDocument = JsonDocument.Parse(raw,
                 new JsonDocumentOptions { MaxDepth = 12 });
-            actions = ParsePlan(planDocument.RootElement, enabled);
+            actions = ParsePlan(planDocument.RootElement);
         }
         else if (message.TryGetProperty("content", out var content) &&
                  content.ValueKind == JsonValueKind.String)
@@ -308,7 +295,7 @@ public sealed class AgentRunner(IHttpClientFactory clients,
                 if (root.ValueKind != JsonValueKind.Object)
                     throw new InvalidDataException("Некорректный JSON ответа модели.");
                 if (root.TryGetProperty("actions", out _))
-                    actions = ParsePlan(root, enabled);
+                    actions = ParsePlan(root);
                 else if (root.TryGetProperty("reply", out var answer) &&
                     answer.ValueKind == JsonValueKind.String)
                     reply = answer.GetString();
@@ -330,7 +317,7 @@ public sealed class AgentRunner(IHttpClientFactory clients,
                             new JsonDocumentOptions { MaxDepth = 12 });
                         if (rawJson.RootElement.ValueKind == JsonValueKind.Object &&
                             rawJson.RootElement.TryGetProperty("actions", out _))
-                            actions = ParsePlan(rawJson.RootElement, enabled);
+                            actions = ParsePlan(rawJson.RootElement);
                         else if (rawJson.RootElement.ValueKind == JsonValueKind.Object &&
                                  rawJson.RootElement.TryGetProperty("reply", out var rawReply) &&
                                  rawReply.ValueKind == JsonValueKind.String)
