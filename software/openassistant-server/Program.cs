@@ -27,7 +27,7 @@ builder.Services.AddSingleton<ModelProcessManager>();
 builder.Services.AddSingleton<ModelDownloadManager>();
 builder.Services.AddSingleton<AgentToolService>();
 builder.Services.AddSingleton<CustomToolStore>();
-builder.Services.AddSingleton<RuleBasedCommandRouter>();
+// Legacy RuleBasedCommandRouter is disabled. Tool calling is handled by AgentRunner.
 builder.Services.AddSingleton<AgentRunner>();
 builder.Services.AddSingleton<ConversationMemoryStore>();
 builder.Services.AddSingleton<VerifiedHomeAssistantService>();
