@@ -8,6 +8,9 @@ public sealed class HomeAssistantTool(VerifiedHomeAssistantService verified) : I
         string action = args.GetProperty("action").GetString() ?? "";
         if (action == "list_states") return (await verified.EntitiesAsync(ct)).Take(1000).ToArray();
         if (action == "get_state") return await verified.GetAsync(args.GetProperty("entity_id").GetString() ?? "", ct);
+        if (action == "area_lights") return await verified.ChangeAreaLightsAsync(
+            args.GetProperty("area").GetString() ?? "",
+            args.GetProperty("service").GetString() ?? "", ct);
         if (action == "call_service") return await verified.ChangeAsync(
             args.GetProperty("data").GetProperty("entity_id").GetString() ?? "",
             args.GetProperty("domain").GetString() ?? "",
