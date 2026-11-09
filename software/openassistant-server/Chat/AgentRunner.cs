@@ -274,13 +274,15 @@ public sealed class AgentRunner(IHttpClientFactory clients,
             message.ValueKind != JsonValueKind.Object)
             throw new InvalidDataException("LLM вернула некорректный ответ.");
 
-        if (message.TryGetProperty("tool_calls", out var toolCalls) &&
+        List<PlannedAction>? actions = null;
+        string? reply = null;
+        if (!structuredFallback &&
+            message.TryGetProperty("tool_calls", out var toolCalls) &&
             toolCalls.ValueKind == JsonValueKind.Array &&
             toolCalls.GetArrayLength() > 0)
         {
-            // One planned tool call. Never run multiple untrusted unvalidated
-            // plans returned by a model that ignored parallel_tool_calls=false.
             if (toolCalls.GetArrayLength() != 1 ||
+                toolCalls[0].ValueKind != JsonValueKind.Object ||
                 !toolCalls[0].TryGetProperty("function", out var function) ||
                 function.ValueKind != JsonValueKind.Object ||
                 StringField(function, "name") != "submit_action_plan")
@@ -290,12 +292,56 @@ public sealed class AgentRunner(IHttpClientFactory clients,
                 throw new InvalidDataException("Некорректный JSON аргументов инструмента.");
             using var planDocument = JsonDocument.Parse(raw,
                 new JsonDocumentOptions { MaxDepth = 12 });
-            List<PlannedAction> actions = ParsePlan(planDocument.RootElement, enabled);
+            actions = ParsePlan(planDocument.RootElement, enabled);
+        }
+        else if (message.TryGetProperty("content", out var content) &&
+                 content.ValueKind == JsonValueKind.String)
+        {
+            string body = content.GetString()?.Trim() ?? "";
+            if (structuredFallback)
+            {
+                // Do not execute malformed or unstructured model text.
+                // No permissive JSON extraction from prose or markdown.
+                using var structured = JsonDocument.Parse(body,
+                    new JsonDocumentOptions { MaxDepth = 12 });
+                var root = structured.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                    throw new InvalidDataException("Некорректный JSON ответа модели.");
+                if (root.TryGetProperty("actions", out _))
+                    actions = ParsePlan(root, enabled);
+                else if (root.TryGetProperty("reply", out var answer) &&
+                    answer.ValueKind == JsonValueKind.String)
+                    reply = answer.GetString();
+                else throw new InvalidDataException(
+                    "LLM не вернула reply либо actions в JSON.");
+            }
+            else reply = body;
+        }
+        if (actions is not null)
+        {
+            // Last-resort safety guard for obviously non-action greetings.
+            if (System.Text.RegularExpressions.Regex.IsMatch(
+                history.LastOrDefault(x => x.Role == "user")?.Content?.Trim() ?? "",
+                @"^(?:мартин[,!. ]*)?(?:привет|здравствуй|здравствуйте|добрый день|доброе утро|добрый вечер)[!. ]*$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+            {
+                yield return new AgentDelta(Text: "Привет!");
+                yield break;
+            }
 
             logger.LogInformation("LLM selected {Count} actions: {Actions}",
                 actions.Count, string.Join(", ", actions.Select(a => a.Name)));
+            var executed = new HashSet<string>(StringComparer.Ordinal);
             foreach (var action in actions)
             {
+                string signature = action.Name + ":" + action.Args.GetRawText();
+                if (!executed.Add(signature))
+                {
+                    yield return new AgentDelta(Tool: action.Name,
+                        Result: new { error = "Повторное действие заблокировано" });
+                    continue;
+                }
                 object result;
                 object? media = null;
                 try
@@ -320,16 +366,26 @@ public sealed class AgentRunner(IHttpClientFactory clients,
             yield break;
         }
 
-        // No function call: normal dialogue. The model's ordinary response
-        // cannot execute music, radio or home actions.
-        if (message.TryGetProperty("content", out var content) &&
-            content.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrWhiteSpace(content.GetString()))
+        if (!string.IsNullOrWhiteSpace(reply))
         {
-            yield return new AgentDelta(Text: NoEmoji.Strip(content.GetString()!));
+            // An ordinary chat response never invokes services. Explicit
+            // unsupported action claims are not treated as actual success.
+            string last = history.LastOrDefault(x => x.Role == "user")?.Content ?? "";
+            if (System.Text.RegularExpressions.Regex.IsMatch(last,
+                    @"\b(?:включи|выключи|запусти|поставь|открой|закрой)\b",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase) &&
+                System.Text.RegularExpressions.Regex.IsMatch(reply,
+                    @"\b(?:включил|включаю|выключил|выключаю|запустил|запускаю)\b",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                yield return new AgentDelta(Text:
+                    "Модель не вызвала инструмент. Действие не выполнено.");
+                yield break;
+            }
+            yield return new AgentDelta(Text: NoEmoji.Strip(reply));
             yield break;
         }
         throw new InvalidDataException(
-            "LLM не вернула ни текст, ни вызов инструмента. Проверьте --jinja и chat template модели.");
+            "LLM не вернула текст или вызов инструмента. Проверьте --jinja и chat template модели.");
     }
 }
