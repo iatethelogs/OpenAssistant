@@ -1,3 +1,4 @@
+#if false // Legacy hard-coded command classifier; retained for rollback only.
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using OpenAssistant.Server.Integrations;
@@ -258,3 +259,5 @@ public sealed class RuleBasedCommandRouter(
         });
     }
 }
+
+#endif
