@@ -15,7 +15,6 @@
   <div class="nav-section-heading">Основное</div>
   <button type="button" class="nav-item active" data-view="overview" aria-current="page"><span class="symbol" data-icon="grid"></span>Обзор</button>
   <button type="button" class="nav-item" data-view="chat"><span class="symbol" data-icon="message"></span>Диалог</button>
-  <button type="button" class="nav-item" data-view="media"><span class="symbol" data-icon="music"></span>Музыка</button>
   <button type="button" class="nav-item" data-view="devices"><span class="symbol" data-icon="speaker"></span>Устройства</button>
   <div class="nav-section-heading">Конфигурация</div>
   <button type="button" class="nav-item" data-view="models"><span class="symbol" data-icon="layers"></span>Модели</button>
@@ -228,6 +227,16 @@
          <p class="minor">Выбор композиций и исполнителей выполняет LLM; настройки ниже разрешают конкретные вызовы инструментов.</p>
          <div id="ymSkillDetails" class="skills-list"></div>
        </details>
+       <details class="advanced-settings"><summary>Поиск музыки и проверка воспроизведения</summary>
+         <div class="integration-test">
+           <label for="musicQuery">Название композиции или исполнитель</label>
+           <div class="button-row"><input id="musicQuery" placeholder="Поиск в Яндекс Музыке"><button id="searchMusic" class="button secondary" type="button">Найти</button></div>
+           <div id="musicResults" class="search-results"></div>
+           <div class="button-row"><button id="loadYmPlaylists" class="button secondary" type="button">Мои плейлисты</button><button id="playYmLiked" class="button secondary" type="button">Мне нравится</button></div>
+           <label for="ymPlaylistSelect">Плейлист</label>
+           <div class="button-row"><select id="ymPlaylistSelect" aria-label="Плейлист Яндекс Музыки"><option value="">Загрузите плейлисты</option></select><button id="playYmPlaylist" class="button secondary" type="button">Включить плейлист</button></div>
+         </div>
+       </details>
      </article>
    </div>
    <div data-skill-panel="radio" role="tabpanel" class="integration-pane" hidden>
@@ -237,6 +246,13 @@
        </div>
        <p class="minor">Ассистент может найти и запустить радиостанцию. Радио не заменяет музыкальные настройки Яндекс Музыки.</p>
        <details class="advanced-settings"><summary>Возможности радио</summary><div id="radioSkillDetails" class="skills-list"></div></details>
+       <details class="advanced-settings"><summary>Поиск и проверка радиостанций</summary>
+         <div class="integration-test">
+           <label for="radioQuery">Радиостанция</label>
+           <div class="button-row"><input id="radioQuery" placeholder="Название станции"><button id="searchRadio" class="button secondary" type="button">Найти</button></div>
+           <div id="radioResults" class="search-results"></div>
+         </div>
+       </details>
      </article>
    </div>
    <div data-skill-panel="home" role="tabpanel" class="integration-pane" hidden>
@@ -265,6 +281,21 @@
        <p class="minor">Описание нового навыка само по себе не выполняет действие. Для реального вызова требуется зарегистрированный обработчик. Мастер показывает его состояние перед включением.</p>
      </article>
    </div>
+   <div id="integrationsPlayback" class="panel extra-panel" role="region" aria-label="Браузерный плеер">
+     <div class="panel-heading"><div><h2>Браузерный плеер</h2><p>Проверка музыки и радио</p></div></div>
+     <div id="musicCurrent" class="minor">Трек не выбран</div>
+     <audio id="mediaPlayer" controls preload="none"></audio>
+     <div class="button-row">
+       <button id="musicPrev" class="button secondary" type="button">Предыдущий</button>
+       <button id="musicPause" class="button secondary" type="button">Пауза / продолжить</button>
+       <button id="musicNext" class="button secondary" type="button">Следующий</button>
+       <button id="musicStop" class="button secondary" type="button">Остановить</button>
+     </div>
+     <p id="musicQueueStatus" class="minor">Очередь пуста</p>
+     <div id="musicQueue" class="search-results"></div>
+     <p class="minor">Браузерный плеер независим от аудиовыхода подключённой колонки.</p>
+   </div>
+
    <dialog id="skillWizard" class="skill-wizard" aria-labelledby="skillWizardTitle">
      <form id="customToolForm">
        <div class="panel-heading"><div><h2 id="skillWizardTitle">Мастер создания навыка</h2><p id="toolMode">Новый навык</p></div>
@@ -347,37 +378,6 @@
   </div>
  </section>
 
- <section class="view" id="media">
-  <div class="page-title"><h1>Музыка и радио</h1></div>
-  <div class="providers-landscape"><div class="provider-title"><h2>Источники музыки</h2></div><div class="provider-grid">
-<div class="provider-panel available"><span class="provider-symbol">Я</span><strong>Яндекс Музыка</strong><small>Авторизация на вкладке «Интеграции»</small><span class="provider-state">Подключение в настройках</span></div>
-<div class="provider-panel"><span class="provider-symbol">VK</span><strong>VK Музыка</strong><small>Нет подключения</small><span class="provider-state">Недоступно</span></div>
-<div class="provider-panel"><span class="provider-symbol">◉</span><strong>Spotify</strong><small>Нет подключения</small><span class="provider-state">Недоступно</span></div>
-<div class="provider-panel"><span class="provider-symbol">⌁</span><strong>Локальная медиатека</strong><small>Каталоги, NAS и файлы</small><span class="provider-state">Недоступно</span></div>
-<div class="provider-panel"><span class="provider-symbol">♫</span><strong>Apple Music</strong><small>Нет подключения</small><span class="provider-state">Недоступно</span></div>
-<div class="provider-panel"><span class="provider-symbol">▶</span><strong>YouTube Music</strong><small>Нет подключения</small><span class="provider-state">Недоступно</span></div>
-</div></div>
-  <div class="test-grid"><article class="panel"><h2>Поиск радио</h2><label for="radioQuery">Станция</label><div class="button-row"><input id="radioQuery" placeholder="Название станции"><button id="searchRadio" class="button secondary">Найти</button></div><div id="radioResults" class="search-results"></div></article>
-  <article class="panel"><h2>Яндекс Музыка</h2><label for="musicQuery">Название или исполнитель</label><div class="button-row"><input id="musicQuery" placeholder="Поиск композиции"><button id="searchMusic" class="button secondary">Найти</button></div><div id="musicResults" class="search-results"></div>
-     <div class="button-row"><button id="loadYmPlaylists" class="button secondary" type="button">Мои плейлисты</button><button id="playYmLiked" class="button secondary" type="button">Мне нравится</button></div>
-     <label for="ymPlaylistSelect">Плейлист</label>
-     <div class="button-row"><select id="ymPlaylistSelect" aria-label="Плейлист Яндекс Музыки"><option value="">Загрузите плейлисты</option></select><button id="playYmPlaylist" class="button secondary" type="button">Включить плейлист</button></div>
-     </article></div>
-  <div class="panel extra-panel"><h2>Браузерный музыкальный плеер</h2>
-    <div id="musicCurrent" class="minor">Трек не выбран</div>
-    <audio id="mediaPlayer" controls preload="none"></audio>
-    <div class="button-row">
-      <button id="musicPrev" class="button secondary" type="button">Предыдущий</button>
-      <button id="musicPause" class="button secondary" type="button">Пауза / продолжить</button>
-      <button id="musicNext" class="button secondary" type="button">Следующий</button>
-      <button id="musicStop" class="button secondary" type="button">Остановить</button>
-    </div>
-    <p id="musicQueueStatus" class="minor">После трека автоматически включается следующий из результатов поиска.</p>
-    <div id="musicQueue" class="search-results"></div>
-    <p class="minor">Плеер этой страницы независим от аудиовыхода колонки. Голосовые команды управляют плеером подключённого устройства.</p>
-  </div>
- </section>
-
  <section class="view" id="events">
   <div class="page-title"><h1>История запросов</h1></div>
   <div class="panel"><div class="button-row"><button id="refreshEvents" class="button secondary">Обновить</button></div><pre id="eventsOutput" class="output-lines">Событий нет</pre></div>
@@ -391,6 +391,6 @@
 </main></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/audio-test.js" defer></script>
-<script src="/dashboard.js?v=20261108-confirmed-actions" defer></script>
+<script src="/dashboard.js?v=20261109-single-music" defer></script>
 <script src="/settings-manager.js?v=20261106c" defer></script><script src="/display-editor.js?v=2" defer></script>
 </body></html>
