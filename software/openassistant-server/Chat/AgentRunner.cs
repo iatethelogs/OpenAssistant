@@ -161,7 +161,7 @@ public sealed class AgentRunner(IHttpClientFactory clients,
     {
         var systems = history.Where(x => x.Role == "system" &&
             !string.IsNullOrWhiteSpace(x.Content)).Select(x => x.Content.Trim()).ToArray();
-        var dialogue = history.Where(x => x.Role is "user" or "assistant" &&
+        var dialogue = history.Where(x => (x.Role is "user" or "assistant") &&
             !string.IsNullOrWhiteSpace(x.Content)).TakeLast(12).ToArray();
 
         const string guidance = """
@@ -360,6 +360,18 @@ public sealed class AgentRunner(IHttpClientFactory clients,
             var executed = new HashSet<string>(StringComparer.Ordinal);
             foreach (var action in actions)
             {
+                if (action.Name == "ha_control_named" &&
+                    action.Args.TryGetProperty("scope", out var scope) &&
+                    scope.GetString() == "all" &&
+                    !System.Text.RegularExpressions.Regex.IsMatch(
+                        history.LastOrDefault(x => x.Role == "user")?.Content ?? "",
+                        @"\b(?:весь|все|всё|всю|всех|кажд\w*|полностью)\b",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                {
+                    yield return new AgentDelta(Tool: action.Name,
+                        Result: new { error = "Групповая команда требует явного указания «все/весь»" });
+                    continue;
+                }
                 string signature = action.Name + ":" + action.Args.GetRawText();
                 if (!executed.Add(signature))
                 {
