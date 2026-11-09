@@ -23,8 +23,7 @@ public sealed class AgentRunner(IHttpClientFactory clients,
 
     private static readonly HashSet<string> Supported = new(StringComparer.Ordinal) {
         "music_play_query", "music_play_liked", "music_control",
-        "radio_play", "ha_list_entities", "ha_get_state", "ha_call_service",
-        "ha_control_named"
+        "radio_play", "ha_list_entities", "ha_control_named"
     };
     private const int MaxActions = 5;
 
@@ -49,8 +48,7 @@ public sealed class AgentRunner(IHttpClientFactory clients,
                                 properties = new {
                                     name = new { type = "string", @enum = new[] {
                                         "music_play_query", "music_play_liked", "music_control",
-                                        "radio_play", "ha_list_entities", "ha_get_state",
-                                        "ha_call_service", "ha_control_named" } },
+                                        "radio_play", "ha_list_entities", "ha_control_named" } },
                                     query = new { type = "string", description = "Свободное название трека, исполнителя или станции. Не заменяй его примерами, не придумывай названия." },
                                     kind = new { type = "string", @enum = new[] { "artist", "track", "auto" },
                                         description = "artist для исполнителя/группы; track для песни; auto если неясно." },
@@ -108,8 +106,11 @@ public sealed class AgentRunner(IHttpClientFactory clients,
             if (item.ValueKind != JsonValueKind.Object)
                 throw new InvalidDataException("Некорректный элемент плана LLM.");
             string name = StringField(item, "name") ?? "";
-            if (!Supported.Contains(name) || !enabled.Contains(name))
-                throw new InvalidOperationException("Инструмент недоступен или отключён: " + name);
+            if (!Supported.Contains(name))
+                throw new InvalidOperationException("Неизвестный инструмент: " + name);
+            // A disabled tool is still validated as a plan item. Its executor
+            // rejects it independently, allowing other requested actions to
+            // finish and preventing silent omission from the final response.
 
             static string Required(JsonElement x, string key, int max = 120)
             {
@@ -129,12 +130,6 @@ public sealed class AgentRunner(IHttpClientFactory clients,
                 },
                 "radio_play" => new { query = Required(item, "query") },
                 "ha_list_entities" => new { filter = StringField(item, "filter") ?? "" },
-                "ha_get_state" => new { entity_id = Required(item, "entity_id", 120) },
-                "ha_call_service" => new {
-                    domain = Required(item, "domain", 32),
-                    service = Required(item, "service", 32),
-                    entity_id = Required(item, "entity_id", 120)
-                },
                 "ha_control_named" => new {
                     target = StringField(item, "target") ?? "",
                     area = StringField(item, "area") ?? "",
