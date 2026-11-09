@@ -109,7 +109,7 @@ public sealed class AgentRunner(IHttpClientFactory clients,
             object args = name switch {
                 "music_play_query" => new {
                     query = Required(item, "query"),
-                    kind = ValidateKind(Required(item, "kind", 8))
+                    kind = ValidateKind(StringField(item, "kind") ?? "auto")
                 },
                 "music_play_liked" => new { },
                 "music_control" => new {
